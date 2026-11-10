@@ -1,0 +1,32 @@
+import { eq } from "drizzle-orm";
+import { isAddress, getAddress } from "viem";
+import { z } from "zod";
+import { getSessionAddress } from "@/lib/auth";
+import { fail, handle, json } from "@/lib/api";
+import { getDb, schema } from "@/lib/db";
+import { ensureMerchant } from "@/lib/invoices";
+
+const Body = z.object({
+  name: z.string().trim().min(1, "Enter your name or business name").max(80),
+  evmAddress: z
+    .string()
+    .trim()
+    .nullable()
+    .optional()
+    .refine((v) => !v || isAddress(v), "That is not a valid Polygon address"),
+});
+
+// Update the merchant profile (display name, optional USDT receiving address).
+export const POST = handle(async (req: Request) => {
+  const address = await getSessionAddress();
+  if (!address) return fail("Please sign in first.", 401);
+  const body = Body.parse(await req.json());
+  await ensureMerchant(address);
+  const db = await getDb();
+  const [merchant] = await db
+    .update(schema.merchants)
+    .set({ name: body.name, ...(body.evmAddress !== undefined ? { evmAddress: body.evmAddress ? getAddress(body.evmAddress) : null } : {}) })
+    .where(eq(schema.merchants.address, address))
+    .returning();
+  return json({ merchant });
+});
