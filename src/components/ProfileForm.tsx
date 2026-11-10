@@ -3,9 +3,8 @@ import { useState } from "react";
 import { api, type MerchantInfo } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { inNimiqPay, walletErrorMessage } from "@/lib/client/nimiq";
+import { polygonWallet } from "@/lib/client/wallet";
 import { Alert, Button, Card, Checkbox, Field, Input } from "./ui";
-
-type Eth = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
 
 export function ProfileForm({ submitLabel = "Save", onSaved }: { submitLabel?: string; onSaved?: () => void }) {
   const { merchant, setMerchant } = useSession();
@@ -18,11 +17,9 @@ export function ProfileForm({ submitLabel = "Save", onSaved }: { submitLabel?: s
 
   async function useWalletAddress() {
     setError(null);
-    const eth = (window as unknown as { ethereum?: Eth }).ethereum;
-    if (!eth) return setError("Open NimBill in Nimiq Pay to use your wallet's Polygon address, or paste one.");
+    if (!polygonWallet.available()) return setError("Open NimBill in Nimiq Pay to use your wallet's Polygon address, or paste one.");
     try {
-      const accounts = (await eth.request({ method: "eth_requestAccounts" })) as string[];
-      if (accounts?.[0]) setEvm(accounts[0]);
+      setEvm(await polygonWallet.requestAccount());
     } catch (e) {
       const m = walletErrorMessage(e);
       if (m) setError(m);

@@ -1,6 +1,7 @@
 "use client";
 import { init, NimiqProviderError, type NimiqProvider } from "@nimiq/mini-app-sdk";
 import { useEffect, useState } from "react";
+import { AppError } from "@/lib/errors";
 
 let providerPromise: Promise<NimiqProvider> | null = null;
 
@@ -46,6 +47,7 @@ export class Cancelled extends Error {}
 /** Turn wallet / network errors into short, calm messages. Returns null for user cancellation. */
 export function walletErrorMessage(e: unknown): string | null {
   if (e instanceof Cancelled) return null;
+  if (AppError.is(e)) return e.publicMessage;
   if (NimiqProviderError.is(e)) {
     switch (e.type) {
       case "PERMISSION_DENIED":

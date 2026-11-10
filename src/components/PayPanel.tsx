@@ -1,10 +1,12 @@
 "use client";
 import { QRCodeSVG } from "qrcode.react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { encodeFunctionData, erc20Abi, type Hex } from "viem";
-import { api, ApiError, type PublicInvoice } from "@/lib/client/api";
+import type { Hex } from "viem";
+import { api, type PublicInvoice } from "@/lib/client/api";
 import { getNimiq, nimiqPaymentUri, useNimiq, walletErrorMessage } from "@/lib/client/nimiq";
+import { polygonWallet } from "@/lib/client/wallet";
 import { formatAsset, formatFiat } from "@/lib/currencies";
+import { AppError, Errors } from "@/lib/errors";
 import { Alert, AnchorButton, Button, Card, CardHeader, CopyButton, Countdown, Eyebrow, Loader, OpenInNimiqPay, SegmentedControl, Spinner, TextButton } from "./ui";
 
 type Asset = "NIM" | "USDT";
@@ -17,8 +19,6 @@ type Phase =
   | { k: "wallet"; quote: Quote }
   | { k: "verifying"; quote: Quote; hash: string | null; message: string };
 
-const USDT_POLYGON = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
-type Eth = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
 
 const ASSETS = [
   { value: "NIM", label: "NIM" },
@@ -76,7 +76,7 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
             if (r.invoice.status === "paid") return onPaid(r.invoice);
           }
         } catch (e) {
-          if (e instanceof ApiError && e.status === 404) return;
+          if (AppError.is(e) && e.code === "NOT_FOUND") return;
           // transient network error: keep trying
         }
       }
@@ -105,26 +105,14 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
   async function payUsdt(quote: Quote) {
     setError(null);
     setPhase({ k: "wallet", quote });
-    const eth = (window as unknown as { ethereum?: Eth }).ethereum;
     try {
-      if (!eth) throw new Error("USDT payments need Nimiq Pay. Open this invoice in Nimiq Pay.");
-      const [from] = (await eth.request({ method: "eth_requestAccounts" })) as string[];
-      try {
-        await eth.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x89" }] });
-      } catch (e) {
-        if ((e as { code?: number }).code === 4902) throw new Error("Polygon is not set up in your wallet. Update Nimiq Pay and try again.");
-        throw e;
-      }
+      const from = await polygonWallet.requestAccount();
+      await polygonWallet.switchToPolygon();
       // Pre-flight checks so the user gets a clear message instead of a failed transaction.
-      const balanceData = encodeFunctionData({ abi: erc20Abi, functionName: "balanceOf", args: [from as Hex] });
-      const [usdtBal, polBal] = await Promise.all([
-        eth.request({ method: "eth_call", params: [{ to: USDT_POLYGON, data: balanceData }, "latest"] }) as Promise<Hex>,
-        eth.request({ method: "eth_getBalance", params: [from, "latest"] }) as Promise<Hex>,
-      ]);
-      if (BigInt(usdtBal || "0x0") < BigInt(quote.amount)) throw new Error(`Not enough USDT on Polygon. You need ${formatAsset(quote.amount, "USDT")}.`);
-      if (BigInt(polBal || "0x0") === BigInt(0)) throw new Error("You need a little POL on Polygon to pay the network fee (a few cents). Add some POL and try again, or pay with NIM.");
-      const data = encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [quote.recipient as Hex, BigInt(quote.amount)] });
-      const hash = (await eth.request({ method: "eth_sendTransaction", params: [{ from, to: USDT_POLYGON, data, value: "0x0" }] })) as string;
+      const [usdtBal, polBal] = await Promise.all([polygonWallet.usdtBalance(from), polygonWallet.gasBalance(from)]);
+      if (usdtBal < BigInt(quote.amount)) throw Errors.wallet(`Not enough USDT on Polygon. You need ${formatAsset(quote.amount, "USDT")}.`);
+      if (polBal === BigInt(0)) throw Errors.wallet("You need a little POL on Polygon to pay the network fee (a few cents). Add some POL and try again, or pay with NIM.");
+      const hash = await polygonWallet.sendUsdt(from, quote.recipient as Hex, BigInt(quote.amount));
       await watch(quote, hash);
     } catch (e) {
       const msg = walletErrorMessage(e);

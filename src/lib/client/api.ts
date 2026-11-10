@@ -1,29 +1,30 @@
 "use client";
-import type { PublicInvoice } from "@/lib/invoices";
+// Browser client for NimBill's own API. Errors come back from the server as
+// `{ error: { code, message } }` and are turned back into AppErrors here.
 import type { Merchant } from "@/lib/db/schema";
+import { AppError, Errors, type ErrorCode } from "@/lib/errors";
+import { createHttpClient } from "@/lib/http";
+import type { PublicInvoice } from "@/lib/invoices";
 
 export type { PublicInvoice };
 export type MerchantInfo = Pick<Merchant, "address" | "name" | "evmAddress">;
 
-export class ApiError extends Error {
-  constructor(message: string, public status: number) {
-    super(message);
-  }
-}
+const CODES = new Set<ErrorCode>(["BAD_REQUEST", "VALIDATION", "UNAUTHORIZED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UPSTREAM", "CONFIG", "INTERNAL"]);
 
-export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
-  let res: Response;
-  try {
-    res = await fetch(path, {
-      method: init?.method ?? (init?.body ? "POST" : "GET"),
-      headers: init?.body ? { "content-type": "application/json" } : undefined,
-      body: init?.body ? JSON.stringify(init.body) : undefined,
-      cache: "no-store",
-    });
-  } catch {
-    throw new ApiError("You seem to be offline. Check your connection and try again.", 0);
-  }
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new ApiError(data.error || `Request failed (${res.status})`, res.status);
-  return data as T;
+const http = createHttpClient({
+  service: "nimbill-api",
+  timeoutMs: 30_000,
+  retries: 0, // the UI decides when to retry (e.g. payment polling)
+  credentials: "same-origin",
+  mapError: ({ status, data }) => {
+    const e = (data as { error?: { code?: string; message?: string } } | null)?.error;
+    const code = e?.code && CODES.has(e.code as ErrorCode) ? (e.code as ErrorCode) : status >= 500 ? "INTERNAL" : "BAD_REQUEST";
+    // The server already decided what is safe to show.
+    return new AppError(code, e?.message || `Request failed (${status})`, { status, expose: true });
+  },
+  onNetworkError: (cause) => Errors.network(undefined, { cause }),
+});
+
+export async function api<T>(path: string, init?: { method?: "GET" | "POST" | "DELETE"; body?: unknown }): Promise<T> {
+  return http.request<T>(path, { method: init?.method ?? (init?.body !== undefined ? "POST" : "GET"), body: init?.body });
 }
