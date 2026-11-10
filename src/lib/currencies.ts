@@ -45,6 +45,8 @@ export const USDT_DECIMALS = 6;
 
 export function formatAsset(units: string | number | bigint, asset: "NIM" | "USDT"): string {
   const n = Number(units) / (asset === "NIM" ? LUNA_PER_NIM : 10 ** USDT_DECIMALS);
-  const min = asset === "USDT" ? 2 : 0;
-  return `${new Intl.NumberFormat("en", { maximumFractionDigits: 2, minimumFractionDigits: min }).format(n)} ${asset}`;
+  // USDT shows all 6 decimals when present: each USDT price carries a unique sub-cent tag
+  // (see uniqueUsdtAmount), so the payer must see exactly what will be charged.
+  const fmt = asset === "USDT" ? { minimumFractionDigits: 2, maximumFractionDigits: 6 } : { minimumFractionDigits: 0, maximumFractionDigits: 2 };
+  return `${new Intl.NumberFormat("en", fmt).format(n)} ${asset}`;
 }

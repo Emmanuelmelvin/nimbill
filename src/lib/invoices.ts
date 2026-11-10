@@ -3,16 +3,11 @@ import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import { getDb, schema } from "./db";
 import type { Invoice, LineItem, Quote } from "./db/schema";
+import { Errors } from "./errors";
+import { metrics } from "./observability";
 import { getRate } from "./rates";
 import { LUNA_PER_NIM, USDT_DECIMALS } from "./currencies";
-import {
-  decodeData,
-  getNimTransaction,
-  getNimTransactionsByAddress,
-  getUsdtTransfers,
-  sameNimAddress,
-  type NimTx,
-} from "./chain";
+import { decodeData, nimiq, polygon, sameNimAddress, type NimTx } from "./clients";
 
 export const QUOTE_TTL_MS = 5 * 60 * 1000;
 // A payment broadcast just before a quote expires still counts if it lands within this window.
@@ -109,14 +104,16 @@ export async function cancelInvoice(id: string, merchantAddress: string): Promis
 // ---------- quotes (rate lock) ----------
 
 export async function createQuote(inv: Invoice, asset: "NIM" | "USDT"): Promise<Quote> {
-  if (inv.status !== "unpaid") throw new UserError(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
-  if (asset === "USDT" && !inv.merchantEvmAddress) throw new UserError("This merchant does not accept USDT yet.");
+  if (inv.status !== "unpaid") throw Errors.badRequest(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
+  if (asset === "USDT" && !inv.merchantEvmAddress) throw Errors.badRequest("This merchant does not accept USDT yet.");
   const rate = await getRate(asset, inv.currency);
   const coins = Number(inv.total) / rate;
   // Round up to 0.01 of the coin so the merchant never receives less than the invoice total.
   const unit = asset === "NIM" ? LUNA_PER_NIM : 10 ** USDT_DECIMALS;
   const step = unit / 100;
-  const amount = BigInt(Math.max(step, Math.ceil((coins * unit) / step) * step));
+  let amount = BigInt(Math.max(step, Math.ceil((coins * unit) / step) * step));
+  // USDT transfers can't carry a reference, so the amount itself identifies the invoice.
+  if (asset === "USDT") amount = await uniqueUsdtAmount(inv.merchantEvmAddress!, amount);
   const db = await getDb();
   const [q] = await db
     .insert(schema.quotes)
@@ -132,16 +129,51 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT"): Promise<
   return q;
 }
 
+/**
+ * NIM payments carry the invoice reference in their data, but a USDT (ERC-20) transfer has no
+ * room for one. So each USDT quote adds a tag of 0.000001–0.009999 USDT on top of the price
+ * (already rounded up to the cent) that no other payable quote to the same wallet uses. The
+ * exact amount received then points to one invoice, and the merchant still gets at least the total.
+ */
+const USDT_TAG_MAX = 9_999;
+async function uniqueUsdtAmount(evmAddress: string, base: bigint): Promise<bigint> {
+  const db = await getDb();
+  // Quotes whose payment window (expiry + grace) overlaps the new quote's window.
+  const active = await db
+    .select({ amount: schema.quotes.amount })
+    .from(schema.quotes)
+    .innerJoin(schema.invoices, eq(schema.quotes.invoiceId, schema.invoices.id))
+    .where(
+      and(
+        eq(schema.quotes.asset, "USDT"),
+        sql`lower(${schema.invoices.merchantEvmAddress}) = ${evmAddress.toLowerCase()}`,
+        gt(schema.quotes.expiresAt, new Date(Date.now() - QUOTE_GRACE_MS - 60_000)),
+      ),
+    );
+  const taken = new Set(active.map((a) => a.amount));
+  const rand = new Uint32Array(64);
+  crypto.getRandomValues(rand);
+  for (const r of rand) {
+    const amount = base + BigInt(1 + (r % USDT_TAG_MAX));
+    if (!taken.has(amount.toString())) return amount;
+  }
+  throw Errors.rateLimited("Lots of USDT payments are in progress for this merchant right now. Please try again in a minute.");
+}
+
 async function quotesFor(invoiceIds: string[]): Promise<Quote[]> {
   if (!invoiceIds.length) return [];
   const db = await getDb();
   return db.select().from(schema.quotes).where(inArray(schema.quotes.invoiceId, invoiceIds));
 }
 
-/** Smallest quote this payment satisfies: right asset, enough value, sent before the lock (plus grace) expired. */
+/**
+ * The quote this payment settles, sent before the lock (plus grace) expired.
+ * NIM: largest quote the value covers (the memo already identifies the invoice).
+ * USDT: the amount must match exactly, because the unique amount is what identifies the invoice.
+ */
 function matchQuote(quotes: Quote[], asset: "NIM" | "USDT", value: bigint, txTime: number): Quote | null {
   const ok = quotes
-    .filter((q) => q.asset === asset && value >= BigInt(q.amount))
+    .filter((q) => q.asset === asset && (asset === "USDT" ? value === BigInt(q.amount) : value >= BigInt(q.amount)))
     .filter((q) => txTime >= q.createdAt.getTime() - 60_000 && txTime <= q.expiresAt.getTime() + QUOTE_GRACE_MS);
   ok.sort((a, b) => Number(BigInt(b.amount) - BigInt(a.amount)));
   return ok[0] ?? null;
@@ -170,7 +202,6 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
   }
 }
 
-export class UserError extends Error {}
 
 export type VerifyResult =
   | { status: "paid"; invoice: Invoice }
@@ -193,38 +224,46 @@ export async function verifyPayment(inv: Invoice, asset: "NIM" | "USDT", txHash:
 
   if (asset === "NIM") {
     if (!/^[0-9a-f]{64}$/i.test(txHash)) return { status: "rejected", message: "Invalid transaction hash." };
-    const tx = await getNimTransaction(txHash.toLowerCase());
+    const tx = await nimiq.getTransaction(txHash.toLowerCase());
     if (!tx) return { status: "pending", message: "Waiting for the transaction to be included in a block…" };
     if (!tx.executionResult) return { status: "rejected", message: "The transaction failed on-chain." };
     if (!nimTxMatches(inv, tx)) return { status: "rejected", message: "This transaction does not pay this invoice." };
     const q = matchQuote(quotes, "NIM", BigInt(tx.value), tx.timestamp);
     if (!q) return { status: "rejected", message: "The amount paid is lower than the locked price, or the price lock expired." };
     const updated = await markPaid(inv, q, tx.hash, tx.from, new Date(tx.timestamp), BigInt(tx.value));
-    if (updated) return { status: "paid", invoice: updated };
+    if (updated) {
+      metrics.invoicePaid("NIM", "hash");
+      return { status: "paid", invoice: updated };
+    }
     const fresh = await getInvoice(inv.id);
     return fresh?.status === "paid" ? { status: "paid", invoice: fresh } : { status: "rejected", message: "This transaction was already used." };
   }
 
   if (!/^0x[0-9a-f]{64}$/i.test(txHash)) return { status: "rejected", message: "Invalid transaction hash." };
   if (!inv.merchantEvmAddress) return { status: "rejected", message: "This merchant does not accept USDT." };
-  const transfers = await getUsdtTransfers(txHash);
-  if (!transfers) return { status: "pending", message: "Waiting for Polygon to confirm the transaction…" };
+  const tx = await polygon.getUsdtTransfers(txHash);
+  if (tx.status === "pending") return { status: "pending", message: "Waiting for Polygon to confirm the transaction…" };
+  if (tx.status === "reverted") return { status: "rejected", message: "This USDT transaction failed on-chain." };
   const merchant = getAddress(inv.merchantEvmAddress);
-  const t = transfers.find((x) => getAddress(x.to) === merchant);
+  const t = tx.transfers.find((x) => getAddress(x.to) === merchant);
   if (!t) return { status: "rejected", message: "This transaction does not send USDT to the merchant." };
   if (!t.confirmed) return { status: "pending", message: "Confirming on Polygon…" };
   const q = matchQuote(quotes, "USDT", t.value, t.timestamp);
-  if (!q) return { status: "rejected", message: "The amount paid is lower than the locked price, or the price lock expired." };
+  if (!q) return { status: "rejected", message: "The amount paid doesn't match the locked price for this invoice, or the price lock expired." };
   const updated = await markPaid(inv, q, txHash, t.from, new Date(t.timestamp), t.value);
-  if (updated) return { status: "paid", invoice: updated };
+  if (updated) {
+    metrics.invoicePaid("USDT", "hash");
+    return { status: "paid", invoice: updated };
+  }
   const fresh = await getInvoice(inv.id);
   return fresh?.status === "paid" ? { status: "paid", invoice: fresh } : { status: "rejected", message: "This transaction was already used." };
 }
 
 /**
- * Find NIM payments for unpaid invoices by scanning the merchant's recent transactions
- * for the invoice memo. Recovers payments where the payer closed the app before we
- * saw the hash, or paid from another Nimiq wallet via the payment link / QR.
+ * Find payments for unpaid invoices that we never got a transaction hash for: the payer closed
+ * the app too early, or paid NIM from another wallet via the payment link / QR.
+ * NIM: scan the merchant's recent transactions for the invoice memo.
+ * USDT: scan Polygon for transfers to the merchant during each price lock, matched by exact amount.
  */
 export async function reconcileMerchant(merchantAddress: string, onlyInvoiceIds?: string[]): Promise<number> {
   const db = await getDb();
@@ -238,27 +277,74 @@ export async function reconcileMerchant(merchantAddress: string, onlyInvoiceIds?
   const unpaid = await db.select().from(schema.invoices).where(and(...conds));
   if (!unpaid.length) return 0;
   const quotes = await quotesFor(unpaid.map((i) => i.id));
-  if (!quotes.some((q) => q.asset === "NIM")) return 0;
+  const paid = new Set<string>();
+  if (quotes.some((q) => q.asset === "NIM")) await reconcileNim(merchantAddress, unpaid, quotes, paid);
+  const stillUnpaid = unpaid.filter((i) => !paid.has(i.id));
+  if (quotes.some((q) => q.asset === "USDT" && !paid.has(q.invoiceId))) await reconcileUsdt(stillUnpaid, quotes, paid);
+  return paid.size;
+}
 
+async function reconcileNim(merchantAddress: string, unpaid: Invoice[], quotes: Quote[], paid: Set<string>) {
   let txs: NimTx[];
   try {
-    txs = await getNimTransactionsByAddress(merchantAddress, 100);
+    txs = await nimiq.getTransactionsByAddress(merchantAddress, 100);
   } catch {
-    return 0;
+    return;
   }
-  let found = 0;
   for (const inv of unpaid) {
     const invQuotes = quotes.filter((q) => q.invoiceId === inv.id);
     for (const tx of txs) {
       if (!nimTxMatches(inv, tx)) continue;
       const q = matchQuote(invQuotes, "NIM", BigInt(tx.value), tx.timestamp);
       if (q && (await markPaid(inv, q, tx.hash, tx.from, new Date(tx.timestamp), BigInt(tx.value)))) {
-        found++;
+        paid.add(inv.id);
+        metrics.invoicePaid("NIM", "recovery");
         break;
       }
     }
   }
-  return found;
+}
+
+const MAX_USDT_QUOTES_SCANNED = 30;
+
+async function reconcileUsdt(unpaid: Invoice[], quotes: Quote[], paid: Set<string>) {
+  const byId = new Map(unpaid.map((i) => [i.id, i]));
+  // Most recent price locks first; each one is a ~9-minute window to search.
+  const usdtQuotes = quotes
+    .filter((q) => q.asset === "USDT" && byId.get(q.invoiceId)?.merchantEvmAddress)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
+    .slice(0, MAX_USDT_QUOTES_SCANNED);
+
+  // Invoices keep the Polygon address they were created with, so group by it.
+  const groups = new Map<string, Quote[]>();
+  for (const q of usdtQuotes) {
+    const addr = byId.get(q.invoiceId)!.merchantEvmAddress!.toLowerCase();
+    groups.set(addr, [...(groups.get(addr) ?? []), q]);
+  }
+
+  for (const [addr, qs] of groups) {
+    const now = Date.now();
+    const windows = qs.map((q) => ({ fromMs: q.createdAt.getTime() - 60_000, toMs: Math.min(now, q.expiresAt.getTime() + QUOTE_GRACE_MS) }));
+    let transfers;
+    try {
+      transfers = await polygon.getUsdtTransfersTo(addr, windows);
+    } catch {
+      continue; // RPC hiccup: the next page load tries again
+    }
+    for (const t of transfers) {
+      if (!t.confirmed) continue; // picked up once it has enough confirmations
+      // Exact amount + time window. Pay only when it points to exactly one invoice.
+      const hits = [...new Set(qs.map((q) => q.invoiceId))]
+        .map((id) => ({ inv: byId.get(id)!, q: matchQuote(qs.filter((q) => q.invoiceId === id), "USDT", t.value, t.timestamp) }))
+        .filter((h): h is { inv: Invoice; q: Quote } => !!h.q && !paid.has(h.inv.id));
+      if (hits.length !== 1) continue;
+      const { inv, q } = hits[0];
+      if (await markPaid(inv, q, t.hash, t.from, new Date(t.timestamp), t.value)) {
+        paid.add(inv.id);
+        metrics.invoicePaid("USDT", "recovery");
+      }
+    }
+  }
 }
 
 // ---------- public shape ----------
