@@ -2,6 +2,8 @@ import "server-only";
 import { drizzle as drizzleNeon } from "drizzle-orm/neon-http";
 import { drizzle as drizzlePglite } from "drizzle-orm/pglite";
 import { neon } from "@neondatabase/serverless";
+import { env } from "../env";
+import { Errors } from "../errors";
 import * as schema from "./schema";
 import { SCHEMA_SQL } from "./schema";
 
@@ -12,7 +14,7 @@ type DB = ReturnType<typeof drizzlePglite<typeof schema>>;
 const g = globalThis as unknown as { __nimbillDb?: Promise<DB> };
 
 async function create(): Promise<DB> {
-  const url = process.env.DATABASE_URL;
+  const url = env.DATABASE_URL;
   if (url) {
     const sql = neon(url);
     for (const stmt of SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean)) {
@@ -20,8 +22,8 @@ async function create(): Promise<DB> {
     }
     return drizzleNeon(sql, { schema }) as unknown as DB;
   }
-  if (process.env.VERCEL) {
-    throw new Error("DATABASE_URL is not set. Add a Postgres database (e.g. Neon) in your Vercel project.");
+  if (env.VERCEL) {
+    throw Errors.config("DATABASE_URL is not set. Add a Postgres database (e.g. Neon) in your Vercel project.");
   }
   const { PGlite } = await import("@electric-sql/pglite");
   const { mkdirSync } = await import("node:fs");

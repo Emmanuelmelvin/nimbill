@@ -4,6 +4,8 @@ import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { bytesToHex, hexToBytes, randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
+import { env, isProd } from "./env";
+import { Errors } from "./errors";
 import { addressFromPublicKey } from "./nimiq-address";
 
 const COOKIE = "nimbill_session";
@@ -13,11 +15,8 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 // Secret for signing challenges + session tokens. Must be set in production.
 const g = globalThis as unknown as { __nimbillDevSecret?: string };
 function secret(): Uint8Array {
-  const s = process.env.SESSION_SECRET;
-  if (s && s.length >= 32) return utf8ToBytes(s);
-  if (process.env.NODE_ENV === "production") {
-    throw new Error("SESSION_SECRET (32+ chars) must be set in production.");
-  }
+  if (env.SESSION_SECRET) return utf8ToBytes(env.SESSION_SECRET);
+  if (isProd) throw Errors.config("SESSION_SECRET (32+ chars) must be set in production.");
   g.__nimbillDevSecret ??= bytesToHex(randomBytes(32));
   return utf8ToBytes(g.__nimbillDevSecret);
 }
@@ -74,7 +73,7 @@ export async function setSession(address: string) {
   const jar = await cookies();
   jar.set(COOKIE, `${payload}.${mac(payload)}`, {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isProd,
     sameSite: "lax",
     path: "/",
     maxAge: SESSION_TTL_S,
@@ -83,6 +82,13 @@ export async function setSession(address: string) {
 
 export async function clearSession() {
   (await cookies()).delete(COOKIE);
+}
+
+/** The signed-in merchant's Nimiq address, or throws UNAUTHORIZED. */
+export async function requireSessionAddress(): Promise<string> {
+  const address = await getSessionAddress();
+  if (!address) throw Errors.unauthorized();
+  return address;
 }
 
 /** Returns the signed-in merchant's Nimiq address ("NQxx xxxx ..."), or null. */

@@ -24,14 +24,14 @@ r = await call("/api/auth/verify", { method: "POST", body: JSON.stringify({ mess
 ok(r.status === 200 && /^NQ\d\d( [0-9A-Z]{4}){8}$/.test(r.body.merchant.address), "valid signature signs in as " + r.body?.merchant?.address);
 
 r = await call("/api/invoices", { method: "POST", body: JSON.stringify({ clientName: "Acme", currency: "NGN", items: [{ description: "Logo", quantity: 1, unitPrice: 50000 }] }) });
-ok(r.status === 400 && /Settings/.test(r.body.error), "requires a merchant name first: " + r.body?.error);
+ok(r.status === 400 && /Settings/.test(r.body.error.message), "requires a merchant name first: " + `${r.body?.error?.code}: ${r.body?.error?.message}`);
 r = await call("/api/me", { method: "POST", body: JSON.stringify({ name: "Ada Studio", evmAddress: "0xnotanaddress" }) });
-ok(r.status === 400, "rejects bad Polygon address: " + r.body?.error);
+ok(r.status === 400, "rejects bad Polygon address: " + `${r.body?.error?.code}: ${r.body?.error?.message}`);
 r = await call("/api/me", { method: "POST", body: JSON.stringify({ name: "Ada Studio", evmAddress: "0x52908400098527886e0f7030069857d2e4169ee7" }) });
 ok(r.status === 200 && r.body.merchant.evmAddress === "0x52908400098527886E0F7030069857D2E4169EE7", "saves profile with checksummed EVM address");
 
 r = await call("/api/invoices", { method: "POST", body: JSON.stringify({ clientName: "", currency: "NGN", items: [] }) });
-ok(r.status === 400, "validation message: " + r.body?.error);
+ok(r.status === 400, "validation message: " + `${r.body?.error?.code}: ${r.body?.error?.message}`);
 r = await call("/api/invoices", { method: "POST", body: JSON.stringify({ clientName: "Acme Ltd", clientEmail: "a@acme.com", currency: "NGN", items: [{ description: "Logo design", quantity: 1, unitPrice: 50000 }, { description: "Revisions", quantity: 2, unitPrice: 7500.5 }], note: "Thanks!", dueDate: "2026-12-01" }) });
 ok(r.status === 201 && r.body.invoice.total === "65001.00" && r.body.invoice.number === "INV-0001", `creates invoice ${r.body?.invoice?.number} total ${r.body?.invoice?.total}`);
 const inv = r.body.invoice;
@@ -65,7 +65,7 @@ ok(r.status === 200, `demo costs ${Number(r.body.quote.amount) / 1e5} NIM`);
 r = await call(`/api/invoices/${inv.id}`, { method: "DELETE" });
 ok(r.status === 200 && r.body.invoice.status === "cancelled", "owner can cancel");
 r = await call(`/api/invoices/${inv.id}/quote`, { method: "POST", body: JSON.stringify({ asset: "NIM" }) });
-ok(r.status === 400, "cancelled invoice cannot be quoted: " + r.body?.error);
+ok(r.status === 400, "cancelled invoice cannot be quoted: " + `${r.body?.error?.code}: ${r.body?.error?.message}`);
 r = await call("/api/validators");
 ok(r.status === 200 && r.body.validators.length > 0, "validators: " + r.body.validators.map((v) => v.name).join(", "));
 r = await call("/api/staker");

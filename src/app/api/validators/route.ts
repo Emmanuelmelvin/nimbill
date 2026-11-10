@@ -1,4 +1,4 @@
 import { handle, json } from "@/lib/api";
-import { getValidators } from "@/lib/chain";
+import { validators } from "@/lib/clients";
 
-export const GET = handle(async () => json({ validators: await getValidators() }));
+export const GET = handle(async () => json({ validators: await validators.list() }));

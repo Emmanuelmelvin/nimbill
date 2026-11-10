@@ -1,8 +1,8 @@
 import { eq } from "drizzle-orm";
 import { isAddress, getAddress } from "viem";
 import { z } from "zod";
-import { getSessionAddress } from "@/lib/auth";
-import { fail, handle, json } from "@/lib/api";
+import { requireSessionAddress } from "@/lib/auth";
+import { handle, json } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { ensureMerchant } from "@/lib/invoices";
 
@@ -18,8 +18,7 @@ const Body = z.object({
 
 // Update the merchant profile (display name, optional USDT receiving address).
 export const POST = handle(async (req: Request) => {
-  const address = await getSessionAddress();
-  if (!address) return fail("Please sign in first.", 401);
+  const address = await requireSessionAddress();
   const body = Body.parse(await req.json());
   await ensureMerchant(address);
   const db = await getDb();

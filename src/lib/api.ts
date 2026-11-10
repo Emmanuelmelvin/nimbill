@@ -1,27 +1,29 @@
 import "server-only";
-import { ZodError } from "zod";
-import { UserError } from "./invoices";
+import { type AppError, toAppError } from "./errors";
+import { reportError } from "./observability";
 
 export function json(data: unknown, status = 200) {
   return Response.json(data, { status, headers: { "cache-control": "no-store" } });
 }
 
-export function fail(message: string, status = 400) {
-  return json({ error: message }, status);
+/** `{ error: { code, message } }` with the error's HTTP status. Internal details never leave the server. */
+export function errorResponse(err: AppError) {
+  return json({ error: err.toJSON() }, err.status);
 }
 
-/** Wrap a route handler so errors become friendly JSON instead of a 500 page. */
+/**
+ * Global error catcher for API routes. Every route handler is wrapped in this: anything thrown
+ * inside (AppError, ZodError, bad JSON, bugs) is reported and turned into a clean JSON error.
+ */
 export function handle<A extends unknown[]>(fn: (...args: A) => Promise<Response>) {
   return async (...args: A) => {
     try {
       return await fn(...args);
     } catch (e) {
-      if (e instanceof UserError) return fail(e.message, 400);
-      if (e instanceof ZodError) return fail(e.issues[0]?.message || "Invalid input", 400);
-      console.error(e);
-      const msg = e instanceof Error ? e.message : String(e);
-      const network = /fetch failed|timeout|aborted|RPC|CoinGecko|Validators/i.test(msg);
-      return fail(network ? "A network service is not responding. Please try again in a moment." : "Something went wrong. Please try again.", network ? 503 : 500);
+      const err = toAppError(e);
+      const req = args[0] instanceof Request ? args[0] : null;
+      reportError(err, req ? { method: req.method, path: new URL(req.url).pathname } : {});
+      return errorResponse(err);
     }
   };
 }

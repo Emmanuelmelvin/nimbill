@@ -1,17 +1,18 @@
 import type { NextRequest } from "next/server";
-import { z } from "zod";
-import { fail, handle, json } from "@/lib/api";
+import { handle, json } from "@/lib/api";
+import { Errors } from "@/lib/errors";
 import { createQuote, getInvoice, paymentMemo } from "@/lib/invoices";
-
-const Body = z.object({ asset: z.enum(["NIM", "USDT"]) });
+import { metrics } from "@/lib/observability";
+import { QuoteBody } from "@/lib/schemas";
 
 // Lock the exchange rate for 5 minutes and return the exact amount to pay.
 export const POST = handle(async (req: NextRequest, ctx: RouteContext<"/api/invoices/[id]/quote">) => {
   const { id } = await ctx.params;
-  const { asset } = Body.parse(await req.json());
+  const { asset } = QuoteBody.parse(await req.json());
   const inv = await getInvoice(id);
-  if (!inv) return fail("Invoice not found.", 404);
+  if (!inv) throw Errors.notFound("Invoice not found.");
   const q = await createQuote(inv, asset);
+  metrics.quoteCreated(asset);
   return json({
     quote: {
       id: q.id,

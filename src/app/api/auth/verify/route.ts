@@ -1,6 +1,7 @@
 import { z } from "zod";
+import { handle, json } from "@/lib/api";
 import { setSession, verifySignIn } from "@/lib/auth";
-import { fail, handle, json } from "@/lib/api";
+import { Errors } from "@/lib/errors";
 import { ensureMerchant } from "@/lib/invoices";
 
 const Body = z.object({
@@ -12,7 +13,7 @@ const Body = z.object({
 export const POST = handle(async (req: Request) => {
   const { message, publicKey, signature } = Body.parse(await req.json());
   const address = verifySignIn(message, publicKey, signature);
-  if (!address) return fail("Sign-in could not be verified. Please try again.", 401);
+  if (!address) throw Errors.unauthorized("Sign-in could not be verified. Please try again.");
   await setSession(address);
   const merchant = await ensureMerchant(address);
   return json({ merchant });
