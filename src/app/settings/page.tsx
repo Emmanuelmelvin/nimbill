@@ -1,6 +1,6 @@
 "use client";
 import { useRouter } from "next/navigation";
-import { Header, OpenInNimiqPay, CopyButton } from "@/components/ui";
+import { Button, Card, CodeBlock, CopyButton, Eyebrow, Header, OpenInNimiqPay, PageTitle } from "@/components/ui";
 import { ProfileForm } from "@/components/ProfileForm";
 import { signOut, useSession } from "@/lib/client/session";
 
@@ -19,25 +19,26 @@ export default function Settings() {
   return (
     <>
       <Header back="/" />
-      <h1 className="mb-4 text-2xl font-bold">Settings</h1>
+      <PageTitle title="Settings" />
       <div className="space-y-4">
-        <section className="card">
-          <p className="label">Payments go to</p>
-          <p className="font-mono text-sm break-all">{merchant.address}</p>
-          <CopyButton text={merchant.address} label="Copy address" className="btn-ghost mt-3 w-full text-sm" />
-        </section>
-        <section className="card">
+        <Card className="space-y-3">
+          <Eyebrow>Payments go to</Eyebrow>
+          <CodeBlock className="text-sm">{merchant.address}</CodeBlock>
+          <CopyButton text={merchant.address} label="Copy address" size="sm" block className="min-h-11" />
+        </Card>
+        <Card>
           <ProfileForm />
-        </section>
-        <button
-          className="btn-ghost w-full text-bad"
+        </Card>
+        <Button
+          variant="danger"
+          block
           onClick={async () => {
             await signOut();
             router.replace("/");
           }}
         >
           Sign out
-        </button>
+        </Button>
       </div>
     </>
   );

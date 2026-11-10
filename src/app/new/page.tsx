@@ -2,7 +2,7 @@
 import { getHostFiat } from "@nimiq/mini-app-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Header, Notice, OpenInNimiqPay, Spinner } from "@/components/ui";
+import { Alert, Button, Card, Field, Header, Input, Label, OpenInNimiqPay, PageTitle, Select, Textarea } from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { CURRENCIES, formatFiat } from "@/lib/currencies";
@@ -63,7 +63,7 @@ export default function NewInvoice() {
   return (
     <>
       <Header back="/" />
-      <h1 className="mb-4 text-2xl font-bold">New invoice</h1>
+      <PageTitle title="New invoice" />
       <form
         className="space-y-5"
         onSubmit={async (e) => {
@@ -89,48 +89,35 @@ export default function NewInvoice() {
           }
         }}
       >
-        <section className="card space-y-4">
-          <div>
-            <label className="label" htmlFor="client">
-              Bill to
-            </label>
-            <input id="client" className="input" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client or company name" required maxLength={80} />
-          </div>
-          <div>
-            <label className="label" htmlFor="email">
-              Client email <span className="font-normal">(optional, for your records)</span>
-            </label>
-            <input id="email" type="email" className="input" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="client@example.com" />
-          </div>
+        <Card className="space-y-4">
+          <Field label="Bill to" htmlFor="client">
+            <Input id="client" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client or company name" required maxLength={80} />
+          </Field>
+          <Field label="Client email" htmlFor="email" optional hint="For your records only. Your client never sees it.">
+            <Input id="email" type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="client@example.com" />
+          </Field>
           <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
-            <div>
-              <label className="label" htmlFor="currency">
-                Currency
-              </label>
-              <select id="currency" className="input" value={currency} onChange={(e) => setCurrency(e.target.value)}>
+            <Field label="Currency" htmlFor="currency">
+              <Select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
                 {CURRENCIES.map((c) => (
                   <option key={c.code} value={c.code}>
                     {c.code} — {c.name}
                   </option>
                 ))}
-              </select>
-            </div>
-            <div>
-              <label className="label" htmlFor="due">
-                Due date <span className="font-normal">(optional)</span>
-              </label>
-              <input id="due" type="date" className="input" value={dueDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDueDate(e.target.value)} />
-            </div>
+              </Select>
+            </Field>
+            <Field label="Due date" htmlFor="due" optional>
+              <Input id="due" type="date" value={dueDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDueDate(e.target.value)} />
+            </Field>
           </div>
-        </section>
+        </Card>
 
-        <section className="card space-y-3">
-          <h2 className="font-semibold">Items</h2>
+        <Card className="space-y-3">
+          <h2 className="font-bold">Items</h2>
           {rows.map((r, i) => (
-            <div key={i} className="space-y-2 rounded-xl bg-surface p-3">
+            <div key={i} className="space-y-2 border border-line bg-subtle p-3">
               <div className="flex gap-2">
-                <input
-                  className="input"
+                <Input
                   value={r.description}
                   onChange={(e) => update(i, { description: e.target.value })}
                   placeholder="e.g. Website design"
@@ -139,59 +126,63 @@ export default function NewInvoice() {
                   maxLength={120}
                 />
                 {rows.length > 1 && (
-                  <button type="button" className="h-12 w-12 shrink-0 rounded-xl text-muted hover:bg-white" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} aria-label={`Remove item ${i + 1}`}>
+                  <Button variant="ghost" size="icon" className="h-12 w-12" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} aria-label={`Remove item ${i + 1}`}>
                     ✕
-                  </button>
+                  </Button>
                 )}
               </div>
               <div className="grid grid-cols-[5rem_1fr] gap-2">
-                <label className="block">
-                  <span className="mb-1 block text-xs text-muted">Qty</span>
-                  <input className="input" inputMode="decimal" value={r.quantity} onChange={(e) => update(i, { quantity: e.target.value.replace(/[^0-9.]/g, "") })} aria-label={`Item ${i + 1} quantity`} required />
-                </label>
-                <label className="block">
-                  <span className="mb-1 block text-xs text-muted">Price ({currency})</span>
-                  <input
-                    className="input"
+                <div>
+                  <Label size="sm" htmlFor={`qty-${i}`}>
+                    Qty
+                  </Label>
+                  <Input id={`qty-${i}`} inputMode="decimal" value={r.quantity} onChange={(e) => update(i, { quantity: e.target.value.replace(/[^0-9.]/g, "") })} required />
+                </div>
+                <div>
+                  <Label size="sm" htmlFor={`price-${i}`}>
+                    Price ({currency})
+                  </Label>
+                  <Input
+                    id={`price-${i}`}
                     inputMode="decimal"
                     value={r.unitPrice}
                     onChange={(e) => update(i, { unitPrice: e.target.value.replace(/[^0-9.]/g, "") })}
                     placeholder="0.00"
-                    aria-label={`Item ${i + 1} price`}
                     required
                   />
-                </label>
+                </div>
               </div>
             </div>
           ))}
-          <button type="button" className="btn-ghost w-full" onClick={() => setRows((rs) => [...rs, emptyRow()])} disabled={rows.length >= 30}>
+          <Button variant="secondary" block onClick={() => setRows((rs) => [...rs, emptyRow()])} disabled={rows.length >= 30}>
             + Add item
-          </button>
-          <div className="flex items-end justify-between border-t border-line pt-3">
-            <span className="text-muted">Total</span>
+          </Button>
+          <div className="flex items-end justify-between border-t border-ink pt-3">
+            <span className="font-medium">Total</span>
             <span className="text-right">
-              <span className="block text-2xl font-bold">{formatFiat(total, currency)}</span>
+              <span className="block text-2xl font-bold tabular-nums">{formatFiat(total, currency)}</span>
               {rates && total > 0 && (
-                <span className="block text-xs text-muted">
+                <span className="block font-mono text-xs text-muted">
                   ≈ {Math.ceil(total / rates.NIM).toLocaleString()} NIM today{merchant.evmAddress ? ` · ${(total / rates.USDT).toFixed(2)} USDT` : ""}
                 </span>
               )}
             </span>
           </div>
-        </section>
+        </Card>
 
-        <section className="card">
-          <label className="label" htmlFor="note">
-            Note to client <span className="font-normal">(optional)</span>
-          </label>
-          <textarea id="note" className="input min-h-24 py-3" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Thanks for your business!" />
-        </section>
+        <Card>
+          <Field label="Note to client" htmlFor="note" optional>
+            <Textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Thanks for your business!" />
+          </Field>
+        </Card>
 
-        <Notice>Your client pays the exact amount in NIM{merchant.evmAddress ? " or USDT" : ""} at the live rate when they pay. Money goes straight to your wallet.</Notice>
-        {error && <Notice kind="error">{error}</Notice>}
-        <button className="btn-primary w-full text-lg" disabled={busy || total <= 0}>
-          {busy ? <Spinner /> : `Create invoice · ${formatFiat(total, currency)}`}
-        </button>
+        <Alert>
+          Your client pays the exact amount in NIM{merchant.evmAddress ? " or USDT" : ""} at the live rate when they pay. Money goes straight to your wallet.
+        </Alert>
+        {error && <Alert kind="error">{error}</Alert>}
+        <Button type="submit" size="lg" block loading={busy} disabled={total <= 0}>
+          Create invoice · {formatFiat(total, currency)}
+        </Button>
       </form>
     </>
   );

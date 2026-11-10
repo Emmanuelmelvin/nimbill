@@ -3,7 +3,7 @@ import { useState } from "react";
 import { api, type MerchantInfo } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { inNimiqPay, walletErrorMessage } from "@/lib/client/nimiq";
-import { Notice, Spinner } from "./ui";
+import { Alert, Button, Card, Checkbox, Field, Input } from "./ui";
 
 type Eth = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
 
@@ -51,45 +51,34 @@ export function ProfileForm({ submitLabel = "Save", onSaved }: { submitLabel?: s
         }
       }}
     >
-      <div>
-        <label className="label" htmlFor="name">
-          Your name or business
-        </label>
-        <input id="name" className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ada Studio" maxLength={80} required />
-      </div>
+      <Field label="Your name or business" htmlFor="name">
+        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ada Studio" maxLength={80} required />
+      </Field>
 
-      <div className="rounded-xl border border-line p-4">
-        <label className="flex min-h-11 cursor-pointer items-center justify-between gap-3">
-          <span>
-            <span className="block font-medium">Also accept USDT</span>
-            <span className="block text-sm text-muted">On Polygon. Clients need a little POL for the network fee.</span>
-          </span>
-          <input type="checkbox" className="h-6 w-6 accent-[#1f2348]" checked={usdt} onChange={(e) => setUsdt(e.target.checked)} />
-        </label>
+      <Card as="div" padding="sm">
+        <Checkbox
+          label="Also accept USDT"
+          description="On Polygon. Clients need a little POL for the network fee."
+          checked={usdt}
+          onChange={(e) => setUsdt(e.target.checked)}
+        />
         {usdt && (
           <div className="mt-3 space-y-2">
-            <input
-              className="input font-mono text-sm"
-              value={evm}
-              onChange={(e) => setEvm(e.target.value.trim())}
-              placeholder="0x… Polygon address that receives USDT"
-              aria-label="Polygon address for USDT"
-              required
-            />
+            <Input mono value={evm} onChange={(e) => setEvm(e.target.value.trim())} placeholder="0x… Polygon address that receives USDT" aria-label="Polygon address for USDT" required />
             {inNimiqPay() && (
-              <button type="button" className="btn-ghost w-full text-sm" onClick={useWalletAddress}>
+              <Button variant="secondary" size="sm" block className="min-h-11" onClick={useWalletAddress}>
                 Use my Nimiq Pay Polygon address
-              </button>
+              </Button>
             )}
           </div>
         )}
-      </div>
+      </Card>
 
-      {error && <Notice kind="error">{error}</Notice>}
-      {saved && !onSaved && <Notice kind="success">Saved.</Notice>}
-      <button className="btn-primary w-full" disabled={busy || !name.trim()}>
-        {busy ? <Spinner /> : submitLabel}
-      </button>
+      {error && <Alert kind="error">{error}</Alert>}
+      {saved && !onSaved && <Alert kind="success">Saved.</Alert>}
+      <Button type="submit" block loading={busy} disabled={!name.trim()}>
+        {submitLabel}
+      </Button>
     </form>
   );
 }
