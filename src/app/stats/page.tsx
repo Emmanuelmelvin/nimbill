@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Header, Notice, Spinner } from "@/components/ui";
+import { Alert, Badge, Card, CardHeader, Header, Loader, PageTitle, Stat } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { nimExplorerTx, polygonExplorerTx } from "@/lib/client/nimiq";
 import { formatAsset, formatFiat } from "@/lib/currencies";
@@ -27,53 +27,43 @@ export default function StatsPage() {
   return (
     <>
       <Header back="/" />
-      <h1 className="mb-1 text-2xl font-bold">NimBill in numbers</h1>
-      <p className="mb-4 text-sm text-muted">Every payment below is a public blockchain transaction you can check.</p>
-      {error && <Notice kind="error">{error}</Notice>}
-      {!s && !error && (
-        <div className="flex justify-center py-20 text-navy">
-          <Spinner />
-        </div>
-      )}
+      <PageTitle title="NimBill in numbers" description="Every payment below is a public blockchain transaction you can check." />
+      {error && <Alert kind="error">{error}</Alert>}
+      {!s && !error && <Loader />}
       {s && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
-            <Tile label="Invoices paid" value={String(count(real))} sub={`${s.invoicesCreated} created`} />
-            <Tile label="Sample invoices paid" value={String(count(demo))} sub="by people trying NimBill" />
-            <Tile label="NIM received" value={formatAsset(vol(real, "NIM"), "NIM")} />
-            <Tile label="USDT received" value={formatAsset(vol(real, "USDT"), "USDT")} />
+            <Stat label="Invoices paid" value={String(count(real))} sub={`${s.invoicesCreated} created`} />
+            <Stat label="Sample invoices paid" value={String(count(demo))} sub="by people trying NimBill" />
+            <Stat label="NIM received" value={formatAsset(vol(real, "NIM"), "NIM")} />
+            <Stat label="USDT received" value={formatAsset(vol(real, "USDT"), "USDT")} />
           </div>
-          <section className="card">
-            <h2 className="mb-2 font-bold">Latest payments</h2>
-            {s.recent.length === 0 && <p className="text-sm text-muted">No payments yet.</p>}
+          <Card padding="none">
+            <CardHeader title="Latest payments" className="border-b border-line p-4" />
+            {s.recent.length === 0 && <p className="p-4 text-sm text-muted">No payments yet.</p>}
             <ul className="divide-y divide-line">
               {s.recent.map((r) => (
-                <li key={r.txHash} className="flex items-center justify-between gap-3 py-3 text-sm">
+                <li key={r.txHash} className="flex items-center justify-between gap-3 p-4 text-sm">
                   <div>
-                    <p className="font-medium">
-                      {formatFiat(r.total, r.currency)} {r.isDemo && <span className="ml-1 rounded bg-line px-1.5 text-xs text-muted">sample</span>}
+                    <p className="flex items-center gap-2 font-medium tabular-nums">
+                      {formatFiat(r.total, r.currency)} {r.isDemo && <Badge variant="muted">Sample</Badge>}
                     </p>
                     <p className="text-xs text-muted">{new Date(r.paidAt).toLocaleString()}</p>
                   </div>
-                  <a className="text-right text-xs underline" href={r.asset === "NIM" ? nimExplorerTx(r.txHash) : polygonExplorerTx(r.txHash)} target="_blank" rel="noreferrer">
+                  <a
+                    className="text-right font-mono text-xs underline decoration-1 underline-offset-4 hover:decoration-2"
+                    href={r.asset === "NIM" ? nimExplorerTx(r.txHash) : polygonExplorerTx(r.txHash)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
                     {formatAsset(r.amount, r.asset)} ↗
                   </a>
                 </li>
               ))}
             </ul>
-          </section>
+          </Card>
         </div>
       )}
     </>
-  );
-}
-
-function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="card p-4">
-      <p className="text-xs font-medium tracking-wide text-muted uppercase">{label}</p>
-      <p className="mt-1 text-xl font-bold">{value}</p>
-      {sub && <p className="text-xs text-muted">{sub}</p>}
-    </div>
   );
 }

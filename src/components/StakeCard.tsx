@@ -4,7 +4,7 @@ import { api } from "@/lib/client/api";
 import { getNimiq, inNimiqPay, nimExplorerTx, walletErrorMessage } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { LUNA_PER_NIM } from "@/lib/currencies";
-import { Notice, OpenInNimiqPay, Spinner } from "./ui";
+import { Alert, Badge, Button, Card, CardHeader, Field, Input, Loader, OpenInNimiqPay, RadioCard, TextLink, labelStyles } from "./ui";
 
 type Validator = { name: string; address: string; fee: number; payoutType: string; logo?: string };
 type Staker = { delegation: string; balance: number } | null;
@@ -80,19 +80,17 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
   }
 
   return (
-    <section className="card border border-gold/30 bg-gradient-to-br from-white to-gold/10">
-      <div className="flex items-start gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gold text-lg font-bold text-navy">%</span>
-        <div className="flex-1">
-          <h3 className="font-bold">{title}</h3>
-          <p className="text-sm text-muted">Stake your NIM earnings with a staking pool and earn rewards. Your NIM stays in your wallet&apos;s control.</p>
-        </div>
-      </div>
+    <Card tone="strong">
+      <CardHeader
+        icon="%"
+        title={title}
+        description="Stake your NIM earnings with a staking pool and earn rewards. Your NIM stays in your wallet's control."
+      />
 
       {!open && (
-        <button className="btn-dark mt-4 w-full" onClick={() => setOpen(true)}>
+        <Button block className="mt-4" onClick={() => setOpen(true)}>
           Stake my earnings
-        </button>
+        </Button>
       )}
 
       {open && !inNimiqPay() && (
@@ -103,86 +101,74 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
 
       {open && inNimiqPay() && !hash && (
         <div className="mt-4 space-y-4">
-          {(!validators || staker === undefined) && !error && (
-            <div className="flex justify-center py-4 text-navy">
-              <Spinner />
-            </div>
-          )}
+          {(!validators || staker === undefined) && !error && <Loader compact />}
 
           {validators && staker !== undefined && (
             <>
               {isStaker ? (
-                <Notice>
+                <Alert>
                   You already stake {existing.toLocaleString()} NIM{currentPool ? ` with ${currentPool.name}` : ""}. This adds to it.
-                </Notice>
+                </Alert>
               ) : (
                 <fieldset>
-                  <legend className="label">Choose a staking pool</legend>
+                  <legend className={labelStyles()}>Choose a staking pool</legend>
                   <div className="space-y-2">
                     {validators.slice(0, 4).map((v, i) => (
-                      <label
-                        key={v.address}
-                        className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border p-3 ${choice === v.address ? "border-navy bg-navy/5" : "border-line bg-white"}`}
-                      >
-                        <input type="radio" name="pool" className="accent-[#1f2348]" checked={choice === v.address} onChange={() => setChoice(v.address)} />
+                      <RadioCard key={v.address} name="pool" checked={choice === v.address} onChange={() => setChoice(v.address)}>
                         {v.logo && (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={v.logo} alt="" width={28} height={28} className="h-7 w-7 rounded-full" />
+                          <img src={v.logo} alt="" width={28} height={28} className="h-7 w-7 grayscale" />
                         )}
                         <span className="flex-1">
-                          <span className="block font-medium">
-                            {v.name} {i === 0 && <span className="ml-1 rounded bg-gold/20 px-1.5 py-0.5 text-xs text-gold-dark">Top rated</span>}
+                          <span className="flex flex-wrap items-center gap-2 font-medium">
+                            {v.name} {i === 0 && <Badge variant="solid">Top rated</Badge>}
                           </span>
                           <span className="block text-xs text-muted">
                             {(v.fee * 100).toFixed(v.fee * 100 < 1 ? 1 : 0)}% pool fee · {v.payoutType === "restake" ? "rewards auto-compound" : "rewards paid to wallet"}
                           </span>
                         </span>
-                      </label>
+                      </RadioCard>
                     ))}
                   </div>
                 </fieldset>
               )}
 
-              <div>
-                <label className="label" htmlFor="stake-amount">
-                  Amount (NIM)
-                </label>
-                <input
-                  id="stake-amount"
-                  className="input"
-                  inputMode="decimal"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
-                />
-                <p className="mt-1 text-xs text-muted">
-                  {balance !== null && <>Available: {(balance / LUNA_PER_NIM).toLocaleString(undefined, { maximumFractionDigits: 2 })} NIM · </>}
-                  {!isStaker && <>Minimum {MIN_STAKE_NIM} NIM</>}
-                </p>
-              </div>
+              <Field
+                label="Amount (NIM)"
+                htmlFor="stake-amount"
+                hint={
+                  <>
+                    {balance !== null && <>Available: {(balance / LUNA_PER_NIM).toLocaleString(undefined, { maximumFractionDigits: 2 })} NIM · </>}
+                    {!isStaker && <>Minimum {MIN_STAKE_NIM} NIM</>}
+                  </>
+                }
+              >
+                <Input id="stake-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} />
+              </Field>
 
-              {tooBig && <Notice kind="warn">That&apos;s more than your wallet holds.</Notice>}
-              {!isStaker && nim > 0 && nim < MIN_STAKE_NIM && (
-                <Notice kind="warn">Staking starts at {MIN_STAKE_NIM} NIM. Keep invoicing — you&apos;ll get there!</Notice>
-              )}
+              {tooBig && <Alert kind="warn">That&apos;s more than your wallet holds.</Alert>}
+              {!isStaker && nim > 0 && nim < MIN_STAKE_NIM && <Alert kind="warn">Staking starts at {MIN_STAKE_NIM} NIM. Keep invoicing — you&apos;ll get there!</Alert>}
 
-              <button className="btn-primary w-full" disabled={busy || tooSmall || tooBig || (!isStaker && !choice)} onClick={stake}>
-                {busy ? <Spinner /> : `Stake ${nim > 0 ? nim.toLocaleString() : ""} NIM`}
-              </button>
+              <Button block loading={busy} disabled={tooSmall || tooBig || (!isStaker && !choice)} onClick={stake}>
+                Stake {nim > 0 ? nim.toLocaleString() : ""} NIM
+              </Button>
               <p className="text-center text-xs text-muted">You can unstake any time from Nimiq Pay; unstaked NIM unlocks after a short waiting period.</p>
             </>
           )}
-          {error && <Notice kind="error">{error}</Notice>}
+          {error && <Alert kind="error">{error}</Alert>}
         </div>
       )}
 
       {hash && (
         <div className="mt-4 space-y-2">
-          <Notice kind="success">Staked! Your NIM is now earning rewards.</Notice>
-          <a className="block text-center text-sm text-muted underline" href={nimExplorerTx(hash)} target="_blank" rel="noreferrer">
-            View transaction
-          </a>
+          <Alert kind="success">Staked! Your NIM is now earning rewards.</Alert>
+          <p className="text-center text-sm">
+            <TextLink href={nimExplorerTx(hash)} external muted>
+              View transaction
+            </TextLink>
+          </p>
         </div>
       )}
-    </section>
+    </Card>
   );
 }
