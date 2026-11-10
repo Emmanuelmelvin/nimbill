@@ -6,14 +6,15 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "NimBill — invoices paid in NIM & USDT",
+  // Each route sets its own title (see the layout.tsx next to each page); this adds " · NimBill".
+  title: { default: "NimBill — invoices paid in NIM & USDT", template: "%s · NimBill" },
   description: "Invoice clients in your local currency. Get paid in NIM or USDT, straight to your Nimiq Pay wallet, verified on-chain.",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#1f2348",
+  themeColor: "#000000",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
