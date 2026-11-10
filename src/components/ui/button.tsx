@@ -38,9 +38,26 @@ type ButtonProps = ComponentProps<"button"> &
     loadingText?: ReactNode;
   };
 
-export function Button({ variant, size, block, loading, loadingText, className, children, disabled, type = "button", ...rest }: ButtonProps) {
+export function Button({
+  variant,
+  size,
+  block,
+  loading,
+  loadingText,
+  className,
+  children,
+  disabled,
+  type = "button",
+  ...rest
+}: ButtonProps) {
   return (
-    <button type={type} disabled={disabled || loading} aria-busy={loading || undefined} className={buttonStyles({ variant, size, block, className })} {...rest}>
+    <button
+      type={type}
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
+      className={buttonStyles({ variant, size, block, className })}
+      {...rest}
+    >
       {loading ? (
         <>
           <Spinner size="sm" />

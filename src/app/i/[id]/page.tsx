@@ -141,7 +141,9 @@ function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolea
       <p className="mt-1 text-muted">
         {formatAsset(p.amount, p.asset as "NIM" | "USDT")} for {formatFiat(inv.total, inv.currency)} · {new Date(p.paidAt).toLocaleString()}
       </p>
-      <p className="mt-1 font-mono text-[11px] tracking-wider text-muted uppercase">Verified on the {p.asset === "NIM" ? "Nimiq" : "Polygon"} blockchain</p>
+      <p className="mt-1 font-mono text-[11px] tracking-wider text-muted uppercase">
+        Verified on the {p.asset === "NIM" ? "Nimiq" : "Polygon"} blockchain
+      </p>
       <div className="mt-4 grid grid-cols-2 gap-2">
         <LinkButton href={`/i/${inv.id}/receipt`} size="sm" className="min-h-11">
           View receipt
@@ -166,11 +168,16 @@ function SharePanel({ inv, onCancelled }: { inv: PublicInvoice; onCancelled: (i:
 
   return (
     <Card className="space-y-3">
-      <CardHeader title="Get paid" description={`Send this link to ${inv.clientName}. It opens the invoice in Nimiq Pay, where they can pay in a few taps.`} />
+      <CardHeader
+        title="Get paid"
+        description={`Send this link to ${inv.clientName}. It opens the invoice in Nimiq Pay, where they can pay in a few taps.`}
+      />
       <CodeBlock>{nimiqPayUrl || "…"}</CodeBlock>
       <div className="grid grid-cols-2 gap-2">
         {canShare ? (
-          <Button onClick={() => navigator.share({ title: `Invoice ${inv.number}`, text: shareText, url: nimiqPayUrl }).catch(() => {})}>Share</Button>
+          <Button onClick={() => navigator.share({ title: `Invoice ${inv.number}`, text: shareText, url: nimiqPayUrl }).catch(() => {})}>
+            Share
+          </Button>
         ) : (
           <AnchorButton href={`https://wa.me/?text=${encodeURIComponent(`${shareText} ${nimiqPayUrl}`)}`} target="_blank" rel="noreferrer">
             WhatsApp

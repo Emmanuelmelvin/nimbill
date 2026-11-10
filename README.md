@@ -17,14 +17,14 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 
 ## How it uses Nimiq Pay
 
-| Feature | Nimiq Pay API |
-| --- | --- |
-| Passwordless sign-in (proves wallet ownership) | `nimiq.sign()`, verified server-side (Ed25519 over the Nimiq signed-message hash; address derived from the public key) |
-| Pay an invoice in NIM, with the invoice ID on-chain | `nimiq.sendBasicTransactionWithData({ recipient, value, data: "NimBill <id>" })` |
-| Pay an invoice in USDT (Polygon) | `window.ethereum`: `wallet_switchEthereumChain`, `eth_call` balance checks, `eth_sendTransaction` (ERC-20 `transfer`) |
-| Stake earnings | `nimiq.sendNewStakerTransaction()` / `nimiq.sendStakeTransaction()`, `nimiq.getBalance()` |
-| Default invoice currency | `getHostFiat()` |
-| Open links inside the app | `https://nimpay.app/miniapps/open/<url>` deep links |
+| Feature                                             | Nimiq Pay API                                                                                                          |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Passwordless sign-in (proves wallet ownership)      | `nimiq.sign()`, verified server-side (Ed25519 over the Nimiq signed-message hash; address derived from the public key) |
+| Pay an invoice in NIM, with the invoice ID on-chain | `nimiq.sendBasicTransactionWithData({ recipient, value, data: "NimBill <id>" })`                                       |
+| Pay an invoice in USDT (Polygon)                    | `window.ethereum`: `wallet_switchEthereumChain`, `eth_call` balance checks, `eth_sendTransaction` (ERC-20 `transfer`)  |
+| Stake earnings                                      | `nimiq.sendNewStakerTransaction()` / `nimiq.sendStakeTransaction()`, `nimiq.getBalance()`                              |
+| Default invoice currency                            | `getHostFiat()`                                                                                                        |
+| Open links inside the app                           | `https://nimpay.app/miniapps/open/<url>` deep links                                                                    |
 
 All wallet actions are triggered by an explicit tap. Cancelling a dialog shows a calm message and keeps your place. Outside Nimiq Pay, clients can still pay from any Nimiq wallet with a `nimiq:` payment link or QR code, and the invoice is matched by its on-chain reference.
 

@@ -34,7 +34,19 @@ export function Card({ as: Tag = "section", tone, padding, className, ...rest }:
 }
 
 /** Title row for a card: heading, optional description, optional icon and action. */
-export function CardHeader({ title, description, icon, action, className }: { title: ReactNode; description?: ReactNode; icon?: ReactNode; action?: ReactNode; className?: string }) {
+export function CardHeader({
+  title,
+  description,
+  icon,
+  action,
+  className,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  icon?: ReactNode;
+  action?: ReactNode;
+  className?: string;
+}) {
   return (
     <div className={cx("flex items-start gap-3", className)}>
       {icon && (

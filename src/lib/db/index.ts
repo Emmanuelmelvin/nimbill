@@ -17,7 +17,9 @@ async function create(): Promise<DB> {
   const url = env.DATABASE_URL;
   if (url) {
     const sql = neon(url);
-    for (const stmt of SCHEMA_SQL.split(";").map((s) => s.trim()).filter(Boolean)) {
+    for (const stmt of SCHEMA_SQL.split(";")
+      .map((s) => s.trim())
+      .filter(Boolean)) {
       await sql.query(stmt);
     }
     return drizzleNeon(sql, { schema }) as unknown as DB;

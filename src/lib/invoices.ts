@@ -104,7 +104,8 @@ export async function cancelInvoice(id: string, merchantAddress: string): Promis
 // ---------- quotes (rate lock) ----------
 
 export async function createQuote(inv: Invoice, asset: "NIM" | "USDT"): Promise<Quote> {
-  if (inv.status !== "unpaid") throw Errors.badRequest(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
+  if (inv.status !== "unpaid")
+    throw Errors.badRequest(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
   if (asset === "USDT" && !inv.merchantEvmAddress) throw Errors.badRequest("This merchant does not accept USDT yet.");
   const rate = await getRate(asset, inv.currency);
   const coins = Number(inv.total) / rate;
@@ -202,18 +203,11 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
   }
 }
 
-
 export type VerifyResult =
-  | { status: "paid"; invoice: Invoice }
-  | { status: "pending"; message: string }
-  | { status: "rejected"; message: string };
+  { status: "paid"; invoice: Invoice } | { status: "pending"; message: string } | { status: "rejected"; message: string };
 
 function nimTxMatches(inv: Invoice, tx: NimTx): boolean {
-  return (
-    tx.executionResult &&
-    sameNimAddress(tx.to, inv.merchantAddress) &&
-    decodeData(tx.recipientData).trim() === paymentMemo(inv.id)
-  );
+  return tx.executionResult && sameNimAddress(tx.to, inv.merchantAddress) && decodeData(tx.recipientData).trim() === paymentMemo(inv.id);
 }
 
 /** Verify a specific transaction hash the payer's wallet returned. */
@@ -236,7 +230,9 @@ export async function verifyPayment(inv: Invoice, asset: "NIM" | "USDT", txHash:
       return { status: "paid", invoice: updated };
     }
     const fresh = await getInvoice(inv.id);
-    return fresh?.status === "paid" ? { status: "paid", invoice: fresh } : { status: "rejected", message: "This transaction was already used." };
+    return fresh?.status === "paid"
+      ? { status: "paid", invoice: fresh }
+      : { status: "rejected", message: "This transaction was already used." };
   }
 
   if (!/^0x[0-9a-f]{64}$/i.test(txHash)) return { status: "rejected", message: "Invalid transaction hash." };
@@ -249,14 +245,17 @@ export async function verifyPayment(inv: Invoice, asset: "NIM" | "USDT", txHash:
   if (!t) return { status: "rejected", message: "This transaction does not send USDT to the merchant." };
   if (!t.confirmed) return { status: "pending", message: "Confirming on Polygon…" };
   const q = matchQuote(quotes, "USDT", t.value, t.timestamp);
-  if (!q) return { status: "rejected", message: "The amount paid doesn't match the locked price for this invoice, or the price lock expired." };
+  if (!q)
+    return { status: "rejected", message: "The amount paid doesn't match the locked price for this invoice, or the price lock expired." };
   const updated = await markPaid(inv, q, txHash, t.from, new Date(t.timestamp), t.value);
   if (updated) {
     metrics.invoicePaid("USDT", "hash");
     return { status: "paid", invoice: updated };
   }
   const fresh = await getInvoice(inv.id);
-  return fresh?.status === "paid" ? { status: "paid", invoice: fresh } : { status: "rejected", message: "This transaction was already used." };
+  return fresh?.status === "paid"
+    ? { status: "paid", invoice: fresh }
+    : { status: "rejected", message: "This transaction was already used." };
 }
 
 /**
@@ -274,7 +273,10 @@ export async function reconcileMerchant(merchantAddress: string, onlyInvoiceIds?
     gt(schema.invoices.createdAt, since),
   ];
   if (onlyInvoiceIds?.length) conds.push(inArray(schema.invoices.id, onlyInvoiceIds));
-  const unpaid = await db.select().from(schema.invoices).where(and(...conds));
+  const unpaid = await db
+    .select()
+    .from(schema.invoices)
+    .where(and(...conds));
   if (!unpaid.length) return 0;
   const quotes = await quotesFor(unpaid.map((i) => i.id));
   const paid = new Set<string>();
@@ -324,7 +326,10 @@ async function reconcileUsdt(unpaid: Invoice[], quotes: Quote[], paid: Set<strin
 
   for (const [addr, qs] of groups) {
     const now = Date.now();
-    const windows = qs.map((q) => ({ fromMs: q.createdAt.getTime() - 60_000, toMs: Math.min(now, q.expiresAt.getTime() + QUOTE_GRACE_MS) }));
+    const windows = qs.map((q) => ({
+      fromMs: q.createdAt.getTime() - 60_000,
+      toMs: Math.min(now, q.expiresAt.getTime() + QUOTE_GRACE_MS),
+    }));
     let transfers;
     try {
       transfers = await polygon.getUsdtTransfersTo(addr, windows);
@@ -335,7 +340,15 @@ async function reconcileUsdt(unpaid: Invoice[], quotes: Quote[], paid: Set<strin
       if (!t.confirmed) continue; // picked up once it has enough confirmations
       // Exact amount + time window. Pay only when it points to exactly one invoice.
       const hits = [...new Set(qs.map((q) => q.invoiceId))]
-        .map((id) => ({ inv: byId.get(id)!, q: matchQuote(qs.filter((q) => q.invoiceId === id), "USDT", t.value, t.timestamp) }))
+        .map((id) => ({
+          inv: byId.get(id)!,
+          q: matchQuote(
+            qs.filter((q) => q.invoiceId === id),
+            "USDT",
+            t.value,
+            t.timestamp,
+          ),
+        }))
         .filter((h): h is { inv: Invoice; q: Quote } => !!h.q && !paid.has(h.inv.id));
       if (hits.length !== 1) continue;
       const { inv, q } = hits[0];

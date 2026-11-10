@@ -60,7 +60,9 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
   const existing = isStaker ? staker!.balance / LUNA_PER_NIM : 0;
   const tooSmall = !(nim > 0) || (!isStaker && nim < MIN_STAKE_NIM);
   const tooBig = balance !== null && nim * LUNA_PER_NIM > balance;
-  const currentPool = isStaker ? validators?.find((v) => v.address.replace(/\s/g, "") === staker!.delegation.replace(/\s/g, "")) : undefined;
+  const currentPool = isStaker
+    ? validators?.find((v) => v.address.replace(/\s/g, "") === staker!.delegation.replace(/\s/g, ""))
+    : undefined;
 
   async function stake() {
     setBusy(true);
@@ -124,7 +126,8 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
                             {v.name} {i === 0 && <Badge variant="solid">Top rated</Badge>}
                           </span>
                           <span className="block text-xs text-muted">
-                            {(v.fee * 100).toFixed(v.fee * 100 < 1 ? 1 : 0)}% pool fee · {v.payoutType === "restake" ? "rewards auto-compound" : "rewards paid to wallet"}
+                            {(v.fee * 100).toFixed(v.fee * 100 < 1 ? 1 : 0)}% pool fee ·{" "}
+                            {v.payoutType === "restake" ? "rewards auto-compound" : "rewards paid to wallet"}
                           </span>
                         </span>
                       </RadioCard>
@@ -138,21 +141,32 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
                 htmlFor="stake-amount"
                 hint={
                   <>
-                    {balance !== null && <>Available: {(balance / LUNA_PER_NIM).toLocaleString(undefined, { maximumFractionDigits: 2 })} NIM · </>}
+                    {balance !== null && (
+                      <>Available: {(balance / LUNA_PER_NIM).toLocaleString(undefined, { maximumFractionDigits: 2 })} NIM · </>
+                    )}
                     {!isStaker && <>Minimum {MIN_STAKE_NIM} NIM</>}
                   </>
                 }
               >
-                <Input id="stake-amount" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))} />
+                <Input
+                  id="stake-amount"
+                  inputMode="decimal"
+                  value={amount}
+                  onChange={(e) => setAmount(e.target.value.replace(/[^0-9.]/g, ""))}
+                />
               </Field>
 
               {tooBig && <Alert kind="warn">That&apos;s more than your wallet holds.</Alert>}
-              {!isStaker && nim > 0 && nim < MIN_STAKE_NIM && <Alert kind="warn">Staking starts at {MIN_STAKE_NIM} NIM. Keep invoicing — you&apos;ll get there!</Alert>}
+              {!isStaker && nim > 0 && nim < MIN_STAKE_NIM && (
+                <Alert kind="warn">Staking starts at {MIN_STAKE_NIM} NIM. Keep invoicing — you&apos;ll get there!</Alert>
+              )}
 
               <Button block loading={busy} disabled={tooSmall || tooBig || (!isStaker && !choice)} onClick={stake}>
                 Stake {nim > 0 ? nim.toLocaleString() : ""} NIM
               </Button>
-              <p className="text-center text-xs text-muted">You can unstake any time from Nimiq Pay; unstaked NIM unlocks after a short waiting period.</p>
+              <p className="text-center text-xs text-muted">
+                You can unstake any time from Nimiq Pay; unstaked NIM unlocks after a short waiting period.
+              </p>
             </>
           )}
           {error && <Alert kind="error">{error}</Alert>}

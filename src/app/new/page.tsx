@@ -77,7 +77,9 @@ export default function NewInvoice() {
                 clientName,
                 clientEmail,
                 currency,
-                items: rows.filter((r) => r.description || r.unitPrice).map((r) => ({ ...r, quantity: Number(r.quantity), unitPrice: Number(r.unitPrice) })),
+                items: rows
+                  .filter((r) => r.description || r.unitPrice)
+                  .map((r) => ({ ...r, quantity: Number(r.quantity), unitPrice: Number(r.unitPrice) })),
                 note,
                 dueDate,
               },
@@ -91,10 +93,23 @@ export default function NewInvoice() {
       >
         <Card className="space-y-4">
           <Field label="Bill to" htmlFor="client">
-            <Input id="client" value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client or company name" required maxLength={80} />
+            <Input
+              id="client"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              placeholder="Client or company name"
+              required
+              maxLength={80}
+            />
           </Field>
           <Field label="Client email" htmlFor="email" optional hint="For your records only. Your client never sees it.">
-            <Input id="email" type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="client@example.com" />
+            <Input
+              id="email"
+              type="email"
+              value={clientEmail}
+              onChange={(e) => setClientEmail(e.target.value)}
+              placeholder="client@example.com"
+            />
           </Field>
           <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
             <Field label="Currency" htmlFor="currency">
@@ -107,7 +122,13 @@ export default function NewInvoice() {
               </Select>
             </Field>
             <Field label="Due date" htmlFor="due" optional>
-              <Input id="due" type="date" value={dueDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setDueDate(e.target.value)} />
+              <Input
+                id="due"
+                type="date"
+                value={dueDate}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
             </Field>
           </div>
         </Card>
@@ -126,7 +147,13 @@ export default function NewInvoice() {
                   maxLength={120}
                 />
                 {rows.length > 1 && (
-                  <Button variant="ghost" size="icon" className="h-12 w-12" onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))} aria-label={`Remove item ${i + 1}`}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-12 w-12"
+                    onClick={() => setRows((rs) => rs.filter((_, j) => j !== i))}
+                    aria-label={`Remove item ${i + 1}`}
+                  >
                     ✕
                   </Button>
                 )}
@@ -136,7 +163,13 @@ export default function NewInvoice() {
                   <Label size="sm" htmlFor={`qty-${i}`}>
                     Qty
                   </Label>
-                  <Input id={`qty-${i}`} inputMode="decimal" value={r.quantity} onChange={(e) => update(i, { quantity: e.target.value.replace(/[^0-9.]/g, "") })} required />
+                  <Input
+                    id={`qty-${i}`}
+                    inputMode="decimal"
+                    value={r.quantity}
+                    onChange={(e) => update(i, { quantity: e.target.value.replace(/[^0-9.]/g, "") })}
+                    required
+                  />
                 </div>
                 <div>
                   <Label size="sm" htmlFor={`price-${i}`}>
@@ -163,7 +196,8 @@ export default function NewInvoice() {
               <span className="block text-2xl font-bold tabular-nums">{formatFiat(total, currency)}</span>
               {rates && total > 0 && (
                 <span className="block font-mono text-xs text-muted">
-                  ≈ {Math.ceil(total / rates.NIM).toLocaleString()} NIM today{merchant.evmAddress ? ` · ${(total / rates.USDT).toFixed(2)} USDT` : ""}
+                  ≈ {Math.ceil(total / rates.NIM).toLocaleString()} NIM today
+                  {merchant.evmAddress ? ` · ${(total / rates.USDT).toFixed(2)} USDT` : ""}
                 </span>
               )}
             </span>
@@ -172,12 +206,19 @@ export default function NewInvoice() {
 
         <Card>
           <Field label="Note to client" htmlFor="note" optional>
-            <Textarea id="note" value={note} onChange={(e) => setNote(e.target.value)} maxLength={500} placeholder="Thanks for your business!" />
+            <Textarea
+              id="note"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              maxLength={500}
+              placeholder="Thanks for your business!"
+            />
           </Field>
         </Card>
 
         <Alert>
-          Your client pays the exact amount in NIM{merchant.evmAddress ? " or USDT" : ""} at the live rate when they pay. Money goes straight to your wallet.
+          Your client pays the exact amount in NIM{merchant.evmAddress ? " or USDT" : ""} at the live rate when they pay. Money goes
+          straight to your wallet.
         </Alert>
         {error && <Alert kind="error">{error}</Alert>}
         <Button type="submit" size="lg" block loading={busy} disabled={total <= 0}>

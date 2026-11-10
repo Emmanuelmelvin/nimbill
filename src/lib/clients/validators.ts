@@ -9,9 +9,11 @@ import { serviceHttp } from "./shared";
 
 const SERVICE = "validators-api";
 const http = serviceHttp({ service: SERVICE, timeoutMs: 10_000, retries: 1 });
-const SOURCES = [env.VALIDATORS_API_URL, "https://validators-api-mainnet.nuxt.dev/api/v1/validators", "https://validators-api-mainnet.pages.dev/api/v1/validators"].filter(
-  (u): u is string => !!u,
-);
+const SOURCES = [
+  env.VALIDATORS_API_URL,
+  "https://validators-api-mainnet.nuxt.dev/api/v1/validators",
+  "https://validators-api-mainnet.pages.dev/api/v1/validators",
+].filter((u): u is string => !!u);
 const CACHE_MS = 10 * 60_000;
 
 const RawValidator = z
@@ -40,7 +42,14 @@ export const validators = {
         const raw = await http.get(url, { schema: z.array(RawValidator) });
         const list = raw
           .filter((v) => v.isListed && (v.payoutType === "restake" || v.payoutType === "direct"))
-          .map((v) => ({ name: v.name, address: v.address, fee: v.fee ?? 0, payoutType: v.payoutType, score: v.score?.total ?? 0, logo: v.logo ?? undefined }))
+          .map((v) => ({
+            name: v.name,
+            address: v.address,
+            fee: v.fee ?? 0,
+            payoutType: v.payoutType,
+            score: v.score?.total ?? 0,
+            logo: v.logo ?? undefined,
+          }))
           .sort((a, b) => b.score - a.score || a.fee - b.fee)
           .slice(0, 6);
         g.__nimbillValidators = { at: Date.now(), list };

@@ -31,7 +31,8 @@ export const polygonWallet = {
     try {
       await provider().request({ method: "wallet_switchEthereumChain", params: [{ chainId: POLYGON_CHAIN_ID }] });
     } catch (e) {
-      if ((e as { code?: number }).code === 4902) throw Errors.wallet("Polygon is not set up in your wallet. Update Nimiq Pay and try again.", { cause: e });
+      if ((e as { code?: number }).code === 4902)
+        throw Errors.wallet("Polygon is not set up in your wallet. Update Nimiq Pay and try again.", { cause: e });
       throw e;
     }
   },

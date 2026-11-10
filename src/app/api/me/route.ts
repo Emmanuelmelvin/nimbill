@@ -24,7 +24,10 @@ export const POST = handle(async (req: Request) => {
   const db = await getDb();
   const [merchant] = await db
     .update(schema.merchants)
-    .set({ name: body.name, ...(body.evmAddress !== undefined ? { evmAddress: body.evmAddress ? getAddress(body.evmAddress) : null } : {}) })
+    .set({
+      name: body.name,
+      ...(body.evmAddress !== undefined ? { evmAddress: body.evmAddress ? getAddress(body.evmAddress) : null } : {}),
+    })
     .where(eq(schema.merchants.address, address))
     .returning();
   return json({ merchant });

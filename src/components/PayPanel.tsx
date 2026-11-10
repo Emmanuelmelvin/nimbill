@@ -7,7 +7,21 @@ import { getNimiq, nimiqPaymentUri, useNimiq, walletErrorMessage } from "@/lib/c
 import { polygonWallet } from "@/lib/client/wallet";
 import { formatAsset, formatFiat } from "@/lib/currencies";
 import { AppError, Errors } from "@/lib/errors";
-import { Alert, AnchorButton, Button, Card, CardHeader, CopyButton, Countdown, Eyebrow, Loader, OpenInNimiqPay, SegmentedControl, Spinner, TextButton } from "./ui";
+import {
+  Alert,
+  AnchorButton,
+  Button,
+  Card,
+  CardHeader,
+  CopyButton,
+  Countdown,
+  Eyebrow,
+  Loader,
+  OpenInNimiqPay,
+  SegmentedControl,
+  Spinner,
+  TextButton,
+} from "./ui";
 
 type Asset = "NIM" | "USDT";
 type Quote = { id: string; asset: Asset; amount: string; rate: string; expiresAt: string; recipient: string; memo: string };
@@ -19,13 +33,20 @@ type Phase =
   | { k: "wallet"; quote: Quote }
   | { k: "verifying"; quote: Quote; hash: string | null; message: string };
 
-
 const ASSETS = [
   { value: "NIM", label: "NIM" },
   { value: "USDT", label: "USDT (Polygon)" },
 ] as const;
 
-export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onPaid: (inv: PublicInvoice) => void; selfPreview?: boolean }) {
+export function PayPanel({
+  inv,
+  onPaid,
+  selfPreview,
+}: {
+  inv: PublicInvoice;
+  onPaid: (inv: PublicInvoice) => void;
+  selfPreview?: boolean;
+}) {
   const { state } = useNimiq();
   const [asset, setAsset] = useState<Asset>("NIM");
   const [phase, setPhase] = useState<Phase>({ k: "choose" });
@@ -80,7 +101,9 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
           // transient network error: keep trying
         }
       }
-      setError("We haven't seen the payment yet. If you sent it, it will show up here shortly — refresh this page in a minute. Don't pay twice.");
+      setError(
+        "We haven't seen the payment yet. If you sent it, it will show up here shortly — refresh this page in a minute. Don't pay twice.",
+      );
       setPhase({ k: "choose" });
     },
     [inv.id, onPaid],
@@ -111,7 +134,10 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
       // Pre-flight checks so the user gets a clear message instead of a failed transaction.
       const [usdtBal, polBal] = await Promise.all([polygonWallet.usdtBalance(from), polygonWallet.gasBalance(from)]);
       if (usdtBal < BigInt(quote.amount)) throw Errors.wallet(`Not enough USDT on Polygon. You need ${formatAsset(quote.amount, "USDT")}.`);
-      if (polBal === BigInt(0)) throw Errors.wallet("You need a little POL on Polygon to pay the network fee (a few cents). Add some POL and try again, or pay with NIM.");
+      if (polBal === BigInt(0))
+        throw Errors.wallet(
+          "You need a little POL on Polygon to pay the network fee (a few cents). Add some POL and try again, or pay with NIM.",
+        );
       const hash = await polygonWallet.sendUsdt(from, quote.recipient as Hex, BigInt(quote.amount));
       await watch(quote, hash);
     } catch (e) {
@@ -126,7 +152,8 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
   if (selfPreview) {
     return (
       <Alert kind="warn">
-        This is how your client sees the invoice. You can&apos;t pay your own invoice — send the link to your client, or try the sample invoice from the home screen.
+        This is how your client sees the invoice. You can&apos;t pay your own invoice — send the link to your client, or try the sample
+        invoice from the home screen.
       </Alert>
     );
   }
@@ -137,7 +164,9 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
 
       {phase.k === "choose" || phase.k === "quoting" ? (
         <>
-          {inv.acceptsUsdt && <SegmentedControl kind="radio" label="Pay with" size="md" block options={ASSETS} value={asset} onChange={setAsset} />}
+          {inv.acceptsUsdt && (
+            <SegmentedControl kind="radio" label="Pay with" size="md" block options={ASSETS} value={asset} onChange={setAsset} />
+          )}
           {state === "checking" ? (
             <Loader compact />
           ) : inWallet || external ? (
@@ -152,7 +181,9 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
               </TextButton>
             </>
           )}
-          <p className="text-center text-xs text-muted">The price is converted from {inv.currency} at the live rate and locked for 5 minutes.</p>
+          <p className="text-center text-xs text-muted">
+            The price is converted from {inv.currency} at the live rate and locked for 5 minutes.
+          </p>
         </>
       ) : null}
 
@@ -216,7 +247,8 @@ function QuoteBox({
         <p className="font-mono text-[11px] tracking-wider text-paper/70 uppercase">You pay</p>
         <p className="mt-1 text-3xl font-bold tabular-nums">{formatAsset(quote.amount, quote.asset)}</p>
         <p className="mt-1 text-sm text-paper/70">
-          for {formatFiat(inv.total, inv.currency)} · 1 {quote.asset} = {rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {inv.currency}
+          for {formatFiat(inv.total, inv.currency)} · 1 {quote.asset} ={" "}
+          {rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {inv.currency}
         </p>
         <p className="mt-3 border-t border-paper/20 pt-3 text-sm">
           {expired ? (

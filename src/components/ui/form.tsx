@@ -9,7 +9,13 @@ export function labelStyles(size: "md" | "sm" = "md") {
   return size === "sm" ? "mb-1 block text-xs font-medium text-muted" : "mb-1.5 block text-sm font-medium text-ink";
 }
 
-export function Label({ optional, size, className, children, ...rest }: ComponentProps<"label"> & { optional?: boolean; size?: "md" | "sm" }) {
+export function Label({
+  optional,
+  size,
+  className,
+  children,
+  ...rest
+}: ComponentProps<"label"> & { optional?: boolean; size?: "md" | "sm" }) {
   return (
     <label className={cx(labelStyles(size), className)} {...rest}>
       {children}
@@ -69,7 +75,12 @@ export function Select({ className, children, ...rest }: ComponentProps<"select"
 }
 
 /** A square checkbox with a label and optional description. */
-export function Checkbox({ label, description, className, ...rest }: Omit<ComponentProps<"input">, "type"> & { label: ReactNode; description?: ReactNode }) {
+export function Checkbox({
+  label,
+  description,
+  className,
+  ...rest
+}: Omit<ComponentProps<"input">, "type"> & { label: ReactNode; description?: ReactNode }) {
   return (
     <label className={cx("flex min-h-11 cursor-pointer items-center justify-between gap-4", className)}>
       <span>
@@ -77,8 +88,16 @@ export function Checkbox({ label, description, className, ...rest }: Omit<Compon
         {description && <span className="block text-sm text-muted">{description}</span>}
       </span>
       <span className="relative inline-flex h-6 w-6 shrink-0">
-        <input type="checkbox" className="peer h-6 w-6 cursor-pointer appearance-none border border-ink bg-paper checked:bg-ink" {...rest} />
-        <svg aria-hidden viewBox="0 0 16 16" className="pointer-events-none absolute inset-0 m-auto hidden h-4 w-4 text-paper peer-checked:block">
+        <input
+          type="checkbox"
+          className="peer h-6 w-6 cursor-pointer appearance-none border border-ink bg-paper checked:bg-ink"
+          {...rest}
+        />
+        <svg
+          aria-hidden
+          viewBox="0 0 16 16"
+          className="pointer-events-none absolute inset-0 m-auto hidden h-4 w-4 text-paper peer-checked:block"
+        >
           <path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />
         </svg>
       </span>
@@ -126,7 +145,11 @@ export function SegmentedControl<T extends string>({
 }) {
   const tabs = kind === "tabs";
   return (
-    <div role={tabs ? "tablist" : "radiogroup"} aria-label={label} className={cx("border border-ink", block ? "flex w-full" : "inline-flex")}>
+    <div
+      role={tabs ? "tablist" : "radiogroup"}
+      aria-label={label}
+      className={cx("border border-ink", block ? "flex w-full" : "inline-flex")}
+    >
       {options.map((o, i) => {
         const on = o.value === value;
         return (

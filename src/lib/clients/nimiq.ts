@@ -40,7 +40,8 @@ async function call<T>(method: string, params: unknown[], schema: z.ZodType<T>):
     throw Errors.upstream(SERVICE, `Nimiq RPC ${method} failed`, { details: { method, rpcError: res.error } });
   }
   const parsed = schema.safeParse(res.result?.data);
-  if (!parsed.success) throw Errors.upstream(SERVICE, `Nimiq RPC ${method} returned an unexpected result`, { cause: parsed.error, details: { method } });
+  if (!parsed.success)
+    throw Errors.upstream(SERVICE, `Nimiq RPC ${method} returned an unexpected result`, { cause: parsed.error, details: { method } });
   return parsed.data;
 }
 

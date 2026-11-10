@@ -8,13 +8,25 @@ import { TextLink } from "./navigation";
 const noopSubscribe = () => () => {};
 /** window.location.href on the client, "" during server render (no hydration mismatch). */
 export function useHref(): string {
-  return useSyncExternalStore(noopSubscribe, () => window.location.href, () => "");
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => window.location.href,
+    () => "",
+  );
 }
 export function useCanShare(): boolean {
-  return useSyncExternalStore(noopSubscribe, () => "share" in navigator, () => false);
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => "share" in navigator,
+    () => false,
+  );
 }
 export function useOrigin(): string {
-  return useSyncExternalStore(noopSubscribe, () => window.location.origin, () => "");
+  return useSyncExternalStore(
+    noopSubscribe,
+    () => window.location.origin,
+    () => "",
+  );
 }
 
 /** Shown when a wallet action is needed but the page is open in a normal browser. */

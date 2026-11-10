@@ -9,7 +9,18 @@ import type { PublicInvoice } from "@/lib/invoices";
 export type { PublicInvoice };
 export type MerchantInfo = Pick<Merchant, "address" | "name" | "evmAddress">;
 
-const CODES = new Set<ErrorCode>(["BAD_REQUEST", "VALIDATION", "UNAUTHORIZED", "FORBIDDEN", "NOT_FOUND", "CONFLICT", "RATE_LIMITED", "UPSTREAM", "CONFIG", "INTERNAL"]);
+const CODES = new Set<ErrorCode>([
+  "BAD_REQUEST",
+  "VALIDATION",
+  "UNAUTHORIZED",
+  "FORBIDDEN",
+  "NOT_FOUND",
+  "CONFLICT",
+  "RATE_LIMITED",
+  "UPSTREAM",
+  "CONFIG",
+  "INTERNAL",
+]);
 
 const http = createHttpClient({
   service: "nimbill-api",

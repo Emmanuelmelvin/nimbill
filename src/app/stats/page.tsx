@@ -8,7 +8,16 @@ import { formatAsset, formatFiat } from "@/lib/currencies";
 type Stats = {
   invoicesCreated: number;
   groups: { isDemo: boolean; asset: "NIM" | "USDT"; count: number; amount: string }[];
-  recent: { number: string; currency: string; total: string; asset: "NIM" | "USDT"; amount: string; txHash: string; paidAt: string; isDemo: boolean }[];
+  recent: {
+    number: string;
+    currency: string;
+    total: string;
+    asset: "NIM" | "USDT";
+    amount: string;
+    txHash: string;
+    paidAt: string;
+    isDemo: boolean;
+  }[];
 };
 
 /** Public, verifiable usage: every paid invoice links to its on-chain transaction. */
@@ -16,7 +25,9 @@ export default function StatsPage() {
   const [s, setS] = useState<Stats | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
-    api<Stats>("/api/stats").then(setS).catch((e) => setError(e.message));
+    api<Stats>("/api/stats")
+      .then(setS)
+      .catch((e) => setError(e.message));
   }, []);
 
   const real = s?.groups.filter((g) => !g.isDemo) ?? [];

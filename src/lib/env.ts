@@ -9,7 +9,8 @@ import { Errors } from "./errors";
 
 const blankToUndefined = (v: unknown) => (typeof v === "string" && v.trim() === "" ? undefined : v);
 const optional = <T extends z.ZodType>(schema: T) => z.preprocess(blankToUndefined, schema.optional());
-const withDefault = <T extends z.ZodType>(schema: T, fallback: z.input<T>) => z.preprocess(blankToUndefined, schema.default(fallback as never));
+const withDefault = <T extends z.ZodType>(schema: T, fallback: z.input<T>) =>
+  z.preprocess(blankToUndefined, schema.default(fallback as never));
 
 const Schema = z.object({
   NODE_ENV: withDefault(z.enum(["development", "production", "test"]), "development"),

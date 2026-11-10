@@ -9,13 +9,15 @@ import { env, isProd } from "./env";
 // Personal data is redacted before anything is written: see REDACT below.
 
 /** Keys whose values never get logged. */
-const REDACT = /^(client_?email|email|cookie|set-cookie|authorization|signature|public_?key|session_?secret|secret|password|token|api_?key|x-cg-demo-api-key)$/i;
+const REDACT =
+  /^(client_?email|email|cookie|set-cookie|authorization|signature|public_?key|session_?secret|secret|password|token|api_?key|x-cg-demo-api-key)$/i;
 const EMAIL = /[^\s@"'<>]+@[^\s@"'<>]+\.[a-z]{2,}/gi;
 
 function scrub(value: unknown, depth = 0): unknown {
   if (typeof value === "string") return value.replace(EMAIL, "[email]");
   if (!value || typeof value !== "object" || depth > 4) return value;
-  if (value instanceof Error) return { name: value.name, message: scrub(value.message, depth + 1), ...(isProd ? {} : { stack: value.stack }) };
+  if (value instanceof Error)
+    return { name: value.name, message: scrub(value.message, depth + 1), ...(isProd ? {} : { stack: value.stack }) };
   if (Array.isArray(value)) return value.map((v) => scrub(v, depth + 1));
   return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, REDACT.test(k) ? "[redacted]" : scrub(v, depth + 1)]));
 }

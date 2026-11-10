@@ -61,7 +61,14 @@ export function ProfileForm({ submitLabel = "Save", onSaved }: { submitLabel?: s
         />
         {usdt && (
           <div className="mt-3 space-y-2">
-            <Input mono value={evm} onChange={(e) => setEvm(e.target.value.trim())} placeholder="0x… Polygon address that receives USDT" aria-label="Polygon address for USDT" required />
+            <Input
+              mono
+              value={evm}
+              onChange={(e) => setEvm(e.target.value.trim())}
+              placeholder="0x… Polygon address that receives USDT"
+              aria-label="Polygon address for USDT"
+              required
+            />
             {inNimiqPay() && (
               <Button variant="secondary" size="sm" block className="min-h-11" onClick={useWalletAddress}>
                 Use my Nimiq Pay Polygon address

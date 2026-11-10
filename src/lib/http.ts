@@ -92,7 +92,14 @@ export function createHttpClient(cfg: HttpClientConfig) {
 
     for (let attempt = 0; ; attempt++) {
       const started = Date.now();
-      const event = (status?: number): HttpEvent => ({ service: cfg.service, method, url: forLog(url), status, ms: Date.now() - started, attempt });
+      const event = (status?: number): HttpEvent => ({
+        service: cfg.service,
+        method,
+        url: forLog(url),
+        status,
+        ms: Date.now() - started,
+        attempt,
+      });
       let error: AppError;
       let retryable: boolean;
       try {
@@ -119,7 +126,9 @@ export function createHttpClient(cfg: HttpClientConfig) {
         } else {
           error = cfg.mapError
             ? cfg.mapError({ status: res.status, data })
-            : Errors.upstream(cfg.service, `${cfg.service} responded with HTTP ${res.status}`, { details: { url: forLog(url), status: res.status } });
+            : Errors.upstream(cfg.service, `${cfg.service} responded with HTTP ${res.status}`, {
+                details: { url: forLog(url), status: res.status },
+              });
           retryable = RETRY_STATUS.has(res.status);
         }
       } catch (e) {
@@ -128,7 +137,10 @@ export function createHttpClient(cfg: HttpClientConfig) {
         const timedOut = e instanceof DOMException && (e.name === "TimeoutError" || e.name === "AbortError");
         error = cfg.onNetworkError
           ? cfg.onNetworkError(e)
-          : Errors.upstream(cfg.service, `${cfg.service} is unreachable${timedOut ? " (timed out)" : ""}`, { cause: e, details: { url: forLog(url) } });
+          : Errors.upstream(cfg.service, `${cfg.service} is unreachable${timedOut ? " (timed out)" : ""}`, {
+              cause: e,
+              details: { url: forLog(url) },
+            });
         retryable = true;
       }
 
@@ -145,7 +157,8 @@ export function createHttpClient(cfg: HttpClientConfig) {
   return {
     request,
     get: <T = unknown>(path: string, o: Omit<RequestOptions<T>, "method" | "body"> = {}) => request<T>(path, { ...o, method: "GET" }),
-    post: <T = unknown>(path: string, body?: unknown, o: Omit<RequestOptions<T>, "method" | "body"> = {}) => request<T>(path, { ...o, method: "POST", body }),
+    post: <T = unknown>(path: string, body?: unknown, o: Omit<RequestOptions<T>, "method" | "body"> = {}) =>
+      request<T>(path, { ...o, method: "POST", body }),
     delete: <T = unknown>(path: string, o: Omit<RequestOptions<T>, "method"> = {}) => request<T>(path, { ...o, method: "DELETE" }),
   };
 }

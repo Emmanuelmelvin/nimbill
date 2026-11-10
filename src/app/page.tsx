@@ -92,7 +92,9 @@ function Landing() {
           <br />
           <span className="text-muted">Get paid in NIM or USDT.</span>
         </h1>
-        <p className="mt-3 text-muted">For freelancers and small businesses. Send a link — your client pays from their wallet, straight into yours.</p>
+        <p className="mt-3 text-muted">
+          For freelancers and small businesses. Send a link — your client pays from their wallet, straight into yours.
+        </p>
       </section>
 
       <CallToAction />

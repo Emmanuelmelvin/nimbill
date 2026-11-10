@@ -3,7 +3,8 @@ import { env } from "./env";
 
 export const SITE_NAME = "NimBill";
 export const SITE_TITLE = "NimBill — invoices paid in NIM & USDT";
-export const SITE_DESCRIPTION = "Invoice clients in your local currency. Get paid in NIM or USDT, straight to your Nimiq Pay wallet, verified on-chain.";
+export const SITE_DESCRIPTION =
+  "Invoice clients in your local currency. Get paid in NIM or USDT, straight to your Nimiq Pay wallet, verified on-chain.";
 
 /**
  * Absolute base URL for link previews (og:image etc. must be absolute).

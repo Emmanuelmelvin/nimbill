@@ -5,7 +5,12 @@ const SPINNER_SIZES = { sm: "h-4 w-4 border-2", md: "h-5 w-5 border-2", lg: "h-8
 
 /** A square spinner in the current text color. */
 export function Spinner({ size = "md", className }: { size?: keyof typeof SPINNER_SIZES; className?: string }) {
-  return <span aria-hidden className={cx("inline-block shrink-0 animate-spin border-current border-r-transparent", SPINNER_SIZES[size], className)} />;
+  return (
+    <span
+      aria-hidden
+      className={cx("inline-block shrink-0 animate-spin border-current border-r-transparent", SPINNER_SIZES[size], className)}
+    />
+  );
 }
 
 /** A centered loading state for a page or section. */
@@ -28,11 +33,27 @@ const ALERTS: Record<AlertKind, { box: string; icon: string }> = {
 };
 
 /** A message box. Errors are inverted (white on black) so they stand out without color. */
-export function Alert({ kind = "info", title, children, className }: { kind?: AlertKind; title?: ReactNode; children?: ReactNode; className?: string }) {
+export function Alert({
+  kind = "info",
+  title,
+  children,
+  className,
+}: {
+  kind?: AlertKind;
+  title?: ReactNode;
+  children?: ReactNode;
+  className?: string;
+}) {
   const a = ALERTS[kind];
   return (
-    <div role={kind === "error" ? "alert" : "status"} className={cx("flex gap-3 border px-4 py-3 text-sm leading-relaxed", a.box, className)}>
-      <span aria-hidden className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border border-current font-mono text-xs leading-none font-bold">
+    <div
+      role={kind === "error" ? "alert" : "status"}
+      className={cx("flex gap-3 border px-4 py-3 text-sm leading-relaxed", a.box, className)}
+    >
+      <span
+        aria-hidden
+        className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center border border-current font-mono text-xs leading-none font-bold"
+      >
         {a.icon}
       </span>
       <div className="min-w-0 flex-1">

@@ -11,7 +11,9 @@ export function InvoiceDoc({ inv }: { inv: PublicInvoice }) {
         <div>
           <Eyebrow>Invoice {inv.number}</Eyebrow>
           <p className="mt-1 text-3xl font-bold tracking-tight tabular-nums">{formatFiat(inv.total, inv.currency)}</p>
-          {inv.dueDate && inv.status === "unpaid" && <p className="mt-1 text-sm text-muted">Due {new Date(inv.dueDate + "T00:00:00").toLocaleDateString()}</p>}
+          {inv.dueDate && inv.status === "unpaid" && (
+            <p className="mt-1 text-sm text-muted">Due {new Date(inv.dueDate + "T00:00:00").toLocaleDateString()}</p>
+          )}
         </div>
         <StatusBadge status={inv.status} dueDate={inv.dueDate} />
       </div>

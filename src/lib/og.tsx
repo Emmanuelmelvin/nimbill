@@ -19,7 +19,18 @@ export function OgMark({ size = 64 }: { size?: number }) {
 /** White canvas with the logo on top, the given content in the middle and a footer line. */
 export function OgFrame({ children, footerLeft, footerRight }: { children: React.ReactNode; footerLeft: string; footerRight: string }) {
   return (
-    <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", background: PAPER, color: INK, padding: 72 }}>
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        flexDirection: "column",
+        justifyContent: "space-between",
+        background: PAPER,
+        color: INK,
+        padding: 72,
+      }}
+    >
       <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
         <OgMark size={64} />
         <div style={{ fontSize: 44, letterSpacing: -1.5 }}>NimBill</div>

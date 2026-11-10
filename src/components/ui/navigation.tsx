@@ -64,7 +64,19 @@ export function PageTitle({ title, description, className }: { title: ReactNode;
 const LINK = "underline decoration-1 underline-offset-4 hover:decoration-2";
 
 /** An underlined text link. `external` opens in a new tab. */
-export function TextLink({ href, external, muted, className, children }: { href: string; external?: boolean; muted?: boolean; className?: string; children: ReactNode }) {
+export function TextLink({
+  href,
+  external,
+  muted,
+  className,
+  children,
+}: {
+  href: string;
+  external?: boolean;
+  muted?: boolean;
+  className?: string;
+  children: ReactNode;
+}) {
   const cls = cx(LINK, muted ? "text-muted hover:text-ink" : "text-ink", className);
   return external ? (
     <a href={href} target="_blank" rel="noreferrer" className={cls}>

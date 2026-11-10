@@ -1,5 +1,15 @@
 import "server-only";
-import { BaseError, createPublicClient, decodeEventLog, erc20Abi, getAddress, http, parseAbiItem, TransactionReceiptNotFoundError, type Hash } from "viem";
+import {
+  BaseError,
+  createPublicClient,
+  decodeEventLog,
+  erc20Abi,
+  getAddress,
+  http,
+  parseAbiItem,
+  TransactionReceiptNotFoundError,
+  type Hash,
+} from "viem";
 import { polygon as polygonChain } from "viem/chains";
 import { env } from "../env";
 import { Errors } from "../errors";
@@ -115,7 +125,9 @@ export const polygon = {
     const logs = (
       await Promise.all(
         chunks.map(([a, b]) =>
-          rpc("transfer logs", () => client.getLogs({ address: USDT_POLYGON, event: TRANSFER, args: { to: recipient }, fromBlock: BigInt(a), toBlock: BigInt(b) })),
+          rpc("transfer logs", () =>
+            client.getLogs({ address: USDT_POLYGON, event: TRANSFER, args: { to: recipient }, fromBlock: BigInt(a), toBlock: BigInt(b) }),
+          ),
         ),
       )
     ).flat();
@@ -127,11 +139,21 @@ export const polygon = {
       if (seen.has(key) || !log.blockNumber || !log.transactionHash) continue;
       seen.add(key);
       const blockNumber = log.blockNumber;
-      const ts = log.blockTimestamp != null ? toMs(log.blockTimestamp) : toMs((await rpc("block", () => client.getBlock({ blockNumber }))).timestamp);
+      const ts =
+        log.blockTimestamp != null
+          ? toMs(log.blockTimestamp)
+          : toMs((await rpc("block", () => client.getBlock({ blockNumber }))).timestamp);
       if (!windows.some((w) => ts >= w.fromMs && ts <= w.toMs)) continue;
       const { from, to: dest, value } = log.args;
       if (!from || !dest || value === undefined) continue;
-      out.push({ hash: log.transactionHash, from, to: dest, value, timestamp: ts, confirmed: c.number - Number(blockNumber) >= MIN_CONFIRMATIONS });
+      out.push({
+        hash: log.transactionHash,
+        from,
+        to: dest,
+        value,
+        timestamp: ts,
+        confirmed: c.number - Number(blockNumber) >= MIN_CONFIRMATIONS,
+      });
     }
     return out;
   },
