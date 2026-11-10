@@ -5,7 +5,7 @@ import { encodeFunctionData, erc20Abi, type Hex } from "viem";
 import { api, ApiError, type PublicInvoice } from "@/lib/client/api";
 import { getNimiq, nimiqPaymentUri, useNimiq, walletErrorMessage } from "@/lib/client/nimiq";
 import { formatAsset, formatFiat } from "@/lib/currencies";
-import { CopyButton, Countdown, Notice, OpenInNimiqPay, Spinner } from "./ui";
+import { Alert, AnchorButton, Button, Card, CardHeader, CopyButton, Countdown, Eyebrow, Loader, OpenInNimiqPay, SegmentedControl, Spinner, TextButton } from "./ui";
 
 type Asset = "NIM" | "USDT";
 type Quote = { id: string; asset: Asset; amount: string; rate: string; expiresAt: string; recipient: string; memo: string };
@@ -19,6 +19,11 @@ type Phase =
 
 const USDT_POLYGON = "0xc2132D05D31c914a87C6611C10748AEb04B58e8F";
 type Eth = { request: (a: { method: string; params?: unknown[] }) => Promise<unknown> };
+
+const ASSETS = [
+  { value: "NIM", label: "NIM" },
+  { value: "USDT", label: "USDT (Polygon)" },
+] as const;
 
 export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onPaid: (inv: PublicInvoice) => void; selfPreview?: boolean }) {
   const { state } = useNimiq();
@@ -131,44 +136,32 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
   const inWallet = state === "ready";
 
   if (selfPreview) {
-    return <Notice kind="warn">This is how your client sees the invoice. You can&apos;t pay your own invoice — send the link to your client, or try the sample invoice from the home screen.</Notice>;
+    return (
+      <Alert kind="warn">
+        This is how your client sees the invoice. You can&apos;t pay your own invoice — send the link to your client, or try the sample invoice from the home screen.
+      </Alert>
+    );
   }
 
   return (
-    <section className="card space-y-4" aria-live="polite">
-      <h2 className="text-lg font-bold">Pay this invoice</h2>
+    <Card className="space-y-4" aria-live="polite">
+      <CardHeader title="Pay this invoice" />
 
       {phase.k === "choose" || phase.k === "quoting" ? (
         <>
-          {inv.acceptsUsdt && (
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-surface p-1" role="radiogroup" aria-label="Pay with">
-              {(["NIM", "USDT"] as const).map((a) => (
-                <button
-                  key={a}
-                  role="radio"
-                  aria-checked={asset === a}
-                  onClick={() => setAsset(a)}
-                  className={`min-h-11 rounded-lg font-semibold ${asset === a ? "bg-white text-navy shadow-sm" : "text-muted"}`}
-                >
-                  {a === "NIM" ? "NIM" : "USDT (Polygon)"}
-                </button>
-              ))}
-            </div>
-          )}
+          {inv.acceptsUsdt && <SegmentedControl kind="radio" label="Pay with" size="md" block options={ASSETS} value={asset} onChange={setAsset} />}
           {state === "checking" ? (
-            <div className="flex justify-center py-3 text-navy">
-              <Spinner />
-            </div>
+            <Loader compact />
           ) : inWallet || external ? (
-            <button className="btn-primary w-full text-lg" disabled={phase.k === "quoting"} onClick={() => getQuote(external ? "NIM" : asset)}>
-              {phase.k === "quoting" ? <Spinner /> : `Get price in ${external ? "NIM" : asset}`}
-            </button>
+            <Button size="lg" block loading={phase.k === "quoting"} onClick={() => getQuote(external ? "NIM" : asset)}>
+              Get price in {external ? "NIM" : asset}
+            </Button>
           ) : (
             <>
               <OpenInNimiqPay text="Pay in a few taps with the Nimiq Pay wallet." />
-              <button className="w-full py-2 text-sm text-muted underline" onClick={() => setExternal(true)}>
+              <TextButton className="w-full" onClick={() => setExternal(true)}>
                 I use a different Nimiq wallet
-              </button>
+              </TextButton>
             </>
           )}
           <p className="text-center text-xs text-muted">The price is converted from {inv.currency} at the live rate and locked for 5 minutes.</p>
@@ -183,39 +176,35 @@ export function PayPanel({ inv, onPaid, selfPreview }: { inv: PublicInvoice; onP
           onExpire={() => setPhase((p) => (p.k === "quoted" ? { k: "expired", quote: p.quote } : p))}
         >
           {phase.k === "expired" ? (
-            <button className="btn-dark w-full" onClick={() => getQuote(phase.quote.asset)}>
+            <Button block onClick={() => getQuote(phase.quote.asset)}>
               Price lock expired — refresh price
-            </button>
+            </Button>
           ) : external ? (
             <ExternalWallet quote={phase.quote} onSent={() => watch(phase.quote, null)} />
           ) : (
-            <button
-              className="btn-primary w-full text-lg"
-              disabled={phase.k === "wallet"}
+            <Button
+              size="lg"
+              block
+              loading={phase.k === "wallet"}
+              loadingText="Confirm in your wallet…"
               onClick={() => (phase.quote.asset === "NIM" ? payNim(phase.quote) : payUsdt(phase.quote))}
             >
-              {phase.k === "wallet" ? (
-                <>
-                  <Spinner /> Confirm in your wallet…
-                </>
-              ) : (
-                `Pay ${formatAsset(phase.quote.amount, phase.quote.asset)}`
-              )}
-            </button>
+              Pay {formatAsset(phase.quote.amount, phase.quote.asset)}
+            </Button>
           )}
         </QuoteBox>
       )}
 
       {phase.k === "verifying" && (
         <div className="flex flex-col items-center gap-3 py-6 text-center">
-          <Spinner className="h-8 w-8 text-gold-dark" />
+          <Spinner size="lg" />
           <p className="font-semibold">{phase.message}</p>
           <p className="text-sm text-muted">This usually takes a few seconds. You can close this page — the invoice updates on its own.</p>
         </div>
       )}
 
-      {error && <Notice kind={/cancelled/i.test(error) ? "info" : "error"}>{error}</Notice>}
-    </section>
+      {error && <Alert kind={/cancelled/i.test(error) ? "info" : "error"}>{error}</Alert>}
+    </Card>
   );
 }
 
@@ -235,14 +224,22 @@ function QuoteBox({
   const rate = Number(quote.rate);
   return (
     <div className="space-y-3">
-      <div className="rounded-xl bg-navy p-4 text-white">
-        <p className="text-sm text-white/70">You pay</p>
-        <p className="text-3xl font-bold">{formatAsset(quote.amount, quote.asset)}</p>
-        <p className="mt-1 text-sm text-white/70">
+      <Card as="div" tone="inverse" padding="sm">
+        <p className="font-mono text-[11px] tracking-wider text-paper/70 uppercase">You pay</p>
+        <p className="mt-1 text-3xl font-bold tabular-nums">{formatAsset(quote.amount, quote.asset)}</p>
+        <p className="mt-1 text-sm text-paper/70">
           for {formatFiat(inv.total, inv.currency)} · 1 {quote.asset} = {rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {inv.currency}
         </p>
-        <p className="mt-2 text-sm">{expired ? <span className="text-gold">Price lock expired</span> : <>Price locked for <Countdown until={quote.expiresAt} onExpire={onExpire} /></>}</p>
-      </div>
+        <p className="mt-3 border-t border-paper/20 pt-3 text-sm">
+          {expired ? (
+            <span className="font-semibold underline underline-offset-4">Price lock expired</span>
+          ) : (
+            <>
+              Price locked for <Countdown until={quote.expiresAt} onExpire={onExpire} />
+            </>
+          )}
+        </p>
+      </Card>
       {children}
     </div>
   );
@@ -253,35 +250,35 @@ function ExternalWallet({ quote, onSent }: { quote: Quote; onSent: () => void })
   const uri = nimiqPaymentUri(quote.recipient, quote.amount, quote.memo);
   return (
     <div className="space-y-3">
-      <div className="flex justify-center rounded-xl bg-white p-3">
+      <div className="flex justify-center border border-line bg-paper p-4">
         <QRCodeSVG value={uri} size={200} level="M" />
       </div>
-      <a href={uri} className="btn-dark w-full">
+      <AnchorButton href={uri} variant="secondary" block>
         Open in my Nimiq wallet
-      </a>
-      <div className="space-y-2 rounded-xl bg-surface p-3 text-sm">
+      </AnchorButton>
+      <Card as="div" tone="subtle" padding="sm" className="space-y-3 text-sm">
         <p className="text-muted">Or send manually — the message is required so we can match your payment:</p>
-        <Field label="To" value={quote.recipient} />
-        <Field label="Amount" value={(Number(quote.amount) / 100_000).toString()} suffix="NIM" />
-        <Field label="Message" value={quote.memo} />
-      </div>
-      <button className="btn-primary w-full" onClick={onSent}>
+        <CopyRow label="To" value={quote.recipient} />
+        <CopyRow label="Amount" value={(Number(quote.amount) / 100_000).toString()} suffix="NIM" />
+        <CopyRow label="Message" value={quote.memo} />
+      </Card>
+      <Button block onClick={onSent}>
         I&apos;ve sent the payment
-      </button>
+      </Button>
     </div>
   );
 }
 
-function Field({ label, value, suffix }: { label: string; value: string; suffix?: string }) {
+function CopyRow({ label, value, suffix }: { label: string; value: string; suffix?: string }) {
   return (
     <div className="flex items-center justify-between gap-2">
       <div className="min-w-0">
-        <p className="text-xs text-muted">{label}</p>
+        <Eyebrow>{label}</Eyebrow>
         <p className="font-mono text-xs break-all">
           {value} {suffix}
         </p>
       </div>
-      <CopyButton text={value} className="btn-ghost min-h-9 shrink-0 px-3 text-xs" />
+      <CopyButton text={value} size="sm" />
     </div>
   );
 }

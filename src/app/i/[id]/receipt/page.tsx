@@ -1,7 +1,7 @@
 "use client";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Header, Notice, Spinner } from "@/components/ui";
+import { Alert, Badge, Button, Card, DescriptionList, Eyebrow, Header, Loader, TextLink } from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { nimExplorerTx, polygonExplorerTx } from "@/lib/client/nimiq";
 import { formatAsset, formatFiat } from "@/lib/currencies";
@@ -21,7 +21,7 @@ export default function Receipt() {
     return (
       <>
         <Header back={`/i/${id}`} />
-        <Notice kind="error">{error ?? "This invoice has not been paid yet, so there is no receipt."}</Notice>
+        <Alert kind="error">{error ?? "This invoice has not been paid yet, so there is no receipt."}</Alert>
       </>
     );
   }
@@ -29,9 +29,7 @@ export default function Receipt() {
     return (
       <>
         <Header back={`/i/${id}`} />
-        <div className="flex justify-center py-24 text-navy">
-          <Spinner />
-        </div>
+        <Loader />
       </>
     );
   }
@@ -43,75 +41,75 @@ export default function Receipt() {
   return (
     <>
       <Header back={`/i/${id}`} />
-      <article className="card space-y-5 text-sm">
-        <div className="flex items-start justify-between">
+      <Card as="article" className="space-y-5 text-sm">
+        <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-medium tracking-wide text-muted uppercase">Payment receipt</p>
-            <h1 className="text-2xl font-bold">{formatFiat(inv.total, inv.currency)}</h1>
+            <Eyebrow>Payment receipt</Eyebrow>
+            <h1 className="mt-1 text-2xl font-bold tabular-nums">{formatFiat(inv.total, inv.currency)}</h1>
             <p className="text-muted">Invoice {inv.number}</p>
           </div>
-          <span className="rounded-full bg-ok/10 px-3 py-1 text-xs font-bold text-ok">PAID</span>
+          <Badge variant="solid">Paid</Badge>
         </div>
 
-        <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-2">
-          <dt className="text-muted">From</dt>
-          <dd className="font-medium break-words">{inv.merchantName}</dd>
-          <dt className="text-muted">Billed to</dt>
-          <dd className="font-medium break-words">{inv.clientName}</dd>
-          <dt className="text-muted">Issued</dt>
-          <dd>{new Date(inv.createdAt).toLocaleDateString()}</dd>
-          <dt className="text-muted">Paid</dt>
-          <dd>{new Date(p.paidAt).toLocaleString()}</dd>
-        </dl>
+        <DescriptionList
+          className="border-y border-line py-4"
+          rows={[
+            { term: "From", detail: <span className="font-medium">{inv.merchantName}</span> },
+            { term: "Billed to", detail: <span className="font-medium">{inv.clientName}</span> },
+            { term: "Issued", detail: new Date(inv.createdAt).toLocaleDateString() },
+            { term: "Paid", detail: new Date(p.paidAt).toLocaleString() },
+          ]}
+        />
 
         <table className="w-full">
           <tbody>
             {inv.items.map((it, i) => (
-              <tr key={i} className="border-b border-line/60">
+              <tr key={i} className="border-b border-line">
                 <td className="py-2 pr-2 break-words">
                   {it.description}
                   {it.quantity !== 1 && <span className="text-muted"> × {it.quantity}</span>}
                 </td>
-                <td className="py-2 text-right whitespace-nowrap">{formatFiat(it.quantity * it.unitPrice, inv.currency)}</td>
+                <td className="py-2 text-right whitespace-nowrap tabular-nums">{formatFiat(it.quantity * it.unitPrice, inv.currency)}</td>
               </tr>
             ))}
             <tr>
               <td className="pt-2 font-semibold">Total</td>
-              <td className="pt-2 text-right font-bold">{formatFiat(inv.total, inv.currency)}</td>
+              <td className="pt-2 text-right font-bold tabular-nums">{formatFiat(inv.total, inv.currency)}</td>
             </tr>
           </tbody>
         </table>
 
-        <div className="space-y-2 rounded-xl bg-surface p-4">
-          <p className="font-semibold">Settlement</p>
-          <dl className="grid grid-cols-[7rem_1fr] gap-x-3 gap-y-1.5">
-            <dt className="text-muted">Amount</dt>
-            <dd className="font-medium">{formatAsset(p.amount, asset)}</dd>
-            <dt className="text-muted">Rate used</dt>
-            <dd>
-              1 {asset} = {rate < 0.01 ? rate.toPrecision(4) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {inv.currency}
-            </dd>
-            <dt className="text-muted">Network</dt>
-            <dd>{asset === "NIM" ? "Nimiq" : "Polygon (USDT)"}</dd>
-            <dt className="text-muted">Paid to</dt>
-            <dd className="font-mono text-xs break-all">{asset === "NIM" ? inv.merchantAddress : inv.merchantEvmAddress}</dd>
-            <dt className="text-muted">Paid from</dt>
-            <dd className="font-mono text-xs break-all">{p.from}</dd>
-            <dt className="text-muted">Transaction</dt>
-            <dd className="font-mono text-xs break-all">
-              <a className="underline" href={explorer} target="_blank" rel="noreferrer">
-                {p.txHash}
-              </a>
-            </dd>
-          </dl>
-        </div>
+        <Card as="div" tone="subtle" padding="sm" className="space-y-3">
+          <Eyebrow>Settlement</Eyebrow>
+          <DescriptionList
+            rows={[
+              { term: "Amount", detail: <span className="font-medium">{formatAsset(p.amount, asset)}</span> },
+              {
+                term: "Rate used",
+                detail: `1 ${asset} = ${rate < 0.01 ? rate.toPrecision(4) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${inv.currency}`,
+              },
+              { term: "Network", detail: asset === "NIM" ? "Nimiq" : "Polygon (USDT)" },
+              { term: "Paid to", detail: asset === "NIM" ? inv.merchantAddress : inv.merchantEvmAddress, mono: true },
+              { term: "Paid from", detail: p.from, mono: true },
+              {
+                term: "Transaction",
+                mono: true,
+                detail: (
+                  <TextLink href={explorer} external>
+                    {p.txHash}
+                  </TextLink>
+                ),
+              },
+            ]}
+          />
+        </Card>
         <p className="text-xs text-muted">
           This receipt is backed by a public blockchain transaction. Anyone can verify it using the transaction link above. Generated by NimBill.
         </p>
-      </article>
-      <button className="btn-primary no-print mt-4 w-full" onClick={() => window.print()}>
+      </Card>
+      <Button block className="no-print mt-4" onClick={() => window.print()}>
         Download PDF / Print
-      </button>
+      </Button>
     </>
   );
 }
