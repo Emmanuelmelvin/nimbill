@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .r { fill: #000; } .n { stroke: #fff; }
+    @media (prefers-color-scheme: dark) { .r { fill: #fff; } .n { stroke: #000; } }
+  </style>
+  <path class="r" d="M5 2H27V26L24.25 30L21.5 26L18.75 30L16 26L13.25 30L10.5 26L7.75 30L5 26Z"/>
+  <path class="n" d="M11 20V9L21 20V9" fill="none" stroke-width="3" stroke-linecap="square" stroke-linejoin="miter"/>
+</svg>
