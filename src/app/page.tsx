@@ -4,8 +4,10 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert,
+  Badge,
   Button,
   Card,
+  CardHeader,
   EmptyState,
   Header,
   LinkButton,
@@ -146,6 +148,23 @@ function CallToAction() {
   );
 }
 
+/** Placeholder for the upcoming USDT → local-currency payout (Paycrest, Nigeria first). */
+function WithdrawToBankCard() {
+  return (
+    <Card tone="subtle" aria-disabled="true">
+      <CardHeader
+        icon="₦"
+        title="Withdraw to bank"
+        description="Cash out your USDT straight to a Nigerian bank account, in Naira."
+        action={<Badge variant="muted">Coming soon</Badge>}
+      />
+      <Button variant="secondary" block disabled className="mt-4">
+        Withdraw to bank
+      </Button>
+    </Card>
+  );
+}
+
 const FILTERS = [
   { value: "all", label: "All" },
   { value: "unpaid", label: "Unpaid" },
@@ -191,6 +210,8 @@ function Dashboard() {
       </LinkButton>
 
       <StakeCard suggestedLuna={summary.nimEarned} />
+
+      <WithdrawToBankCard />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">
