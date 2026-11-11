@@ -2,7 +2,8 @@
 import { getHostFiat } from "@nimiq/mini-app-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Field, Header, Input, Label, OpenInNimiqPay, PageTitle, Select, Textarea } from "@/components/ui";
+import { Alert, Button, Card, Field, Header, Input, Label, OpenInNimiqPay, PageTitle, Textarea } from "@/components/ui";
+import { CurrencySelect } from "@/components/CurrencySelect";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { CURRENCIES, formatFiat } from "@/lib/currencies";
@@ -113,13 +114,7 @@ export default function NewInvoice() {
           </Field>
           <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
             <Field label="Currency" htmlFor="currency">
-              <Select id="currency" value={currency} onChange={(e) => setCurrency(e.target.value)}>
-                {CURRENCIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.code} — {c.name}
-                  </option>
-                ))}
-              </Select>
+              <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
             </Field>
             <Field label="Due date" htmlFor="due" optional>
               <Input

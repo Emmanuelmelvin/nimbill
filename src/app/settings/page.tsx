@@ -27,7 +27,7 @@ export default function Settings() {
           <CopyButton text={merchant.address} label="Copy address" size="sm" block className="min-h-11" />
         </Card>
         <Card>
-          <ProfileForm />
+          <ProfileForm withEmail />
         </Card>
         <Button
           variant="danger"

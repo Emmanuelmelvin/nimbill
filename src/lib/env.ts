@@ -31,7 +31,13 @@ const Schema = z.object({
   VALIDATORS_API_URL: optional(z.url()),
   COINGECKO_API_KEY: optional(z.string()),
 
-  // Public URL (link previews)
+  // Email ("invoice paid" notifications to merchants), sent through Resend. Optional: without
+  // RESEND_API_KEY no email is sent and everything else works as usual. See lib/clients/mail.ts.
+  RESEND_API_KEY: optional(z.string()),
+  MAIL_FROM: optional(z.string()), // "NimBill <billing@your-domain.com>"; defaults to Resend's shared test sender
+  RESEND_API_URL: withDefault(z.url(), "https://api.resend.com"),
+
+  // Public URL (link previews, links in emails)
   SITE_URL: optional(z.url()),
   PORT: optional(z.coerce.number().int().positive()),
   VERCEL: optional(z.string()),

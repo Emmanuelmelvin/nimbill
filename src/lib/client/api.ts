@@ -7,7 +7,8 @@ import { createHttpClient } from "@/lib/http";
 import type { PublicInvoice } from "@/lib/invoices";
 
 export type { PublicInvoice };
-export type MerchantInfo = Pick<Merchant, "address" | "name" | "evmAddress">;
+// `email` is the signed-in merchant's own address (settings only); it is never part of PublicInvoice.
+export type MerchantInfo = Pick<Merchant, "address" | "name" | "evmAddress" | "email">;
 
 const CODES = new Set<ErrorCode>([
   "BAD_REQUEST",

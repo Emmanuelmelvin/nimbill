@@ -36,7 +36,8 @@ async function call<T>(method: string, params: unknown[], schema: z.ZodType<T>):
   const res = await http.post("", { jsonrpc: "2.0", method, params, id: 1 }, { schema: RpcEnvelope });
   if (res.error) {
     const text = String(res.error.data ?? res.error.message ?? "Nimiq RPC error");
-    if (/not found/i.test(text)) throw new AppError("NOT_FOUND", text, { service: SERVICE, expose: false });
+    // "Transaction not found", and for stakers "No staker with address: NQ…".
+    if (/not found|no staker with address/i.test(text)) throw new AppError("NOT_FOUND", text, { service: SERVICE, expose: false });
     throw Errors.upstream(SERVICE, `Nimiq RPC ${method} failed`, { details: { method, rpcError: res.error } });
   }
   const parsed = schema.safeParse(res.result?.data);

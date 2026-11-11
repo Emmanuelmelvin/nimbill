@@ -6,11 +6,21 @@ import { inNimiqPay, walletErrorMessage } from "@/lib/client/nimiq";
 import { polygonWallet } from "@/lib/client/wallet";
 import { Alert, Button, Card, Checkbox, Field, Input } from "./ui";
 
-export function ProfileForm({ submitLabel = "Save", onSaved }: { submitLabel?: string; onSaved?: () => void }) {
+export function ProfileForm({
+  submitLabel = "Save",
+  onSaved,
+  withEmail,
+}: {
+  submitLabel?: string;
+  onSaved?: () => void;
+  /** Show the optional "invoice paid" email field (settings only; the welcome step stays short). */
+  withEmail?: boolean;
+}) {
   const { merchant, setMerchant } = useSession();
   const [name, setName] = useState(merchant?.name ?? "");
   const [usdt, setUsdt] = useState(!!merchant?.evmAddress);
   const [evm, setEvm] = useState(merchant?.evmAddress ?? "");
+  const [email, setEmail] = useState(merchant?.email ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -36,7 +46,8 @@ export function ProfileForm({ submitLabel = "Save", onSaved }: { submitLabel?: s
         setSaved(false);
         try {
           const { merchant: m } = await api<{ merchant: MerchantInfo }>("/api/me", {
-            body: { name, evmAddress: usdt ? evm || null : null },
+            // An empty email clears the saved one, which turns the notifications off.
+            body: { name, evmAddress: usdt ? evm || null : null, ...(withEmail ? { email: email.trim() } : {}) },
           });
           setMerchant(m);
           setSaved(true);
@@ -51,6 +62,20 @@ export function ProfileForm({ submitLabel = "Save", onSaved }: { submitLabel?: s
       <Field label="Your name or business" htmlFor="name">
         <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Ada Studio" maxLength={80} required />
       </Field>
+
+      {withEmail && (
+        <Field label="Email" htmlFor="email" optional hint="We email you when an invoice is paid. Leave it empty for no emails.">
+          <Input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+            maxLength={254}
+          />
+        </Field>
+      )}
 
       <Card as="div" padding="sm">
         <Checkbox

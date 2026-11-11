@@ -6,6 +6,7 @@ export const merchants = pgTable("merchants", {
   address: text("address").primaryKey(), // Nimiq user-friendly address, "NQ.. .... ..."
   name: text("name").notNull().default(""),
   evmAddress: text("evm_address"), // optional, enables USDT (Polygon) payments
+  email: text("email"), // optional, private: where "invoice paid" emails go. Never shown publicly.
   invoiceCounter: integer("invoice_counter").notNull().default(0),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -55,6 +56,7 @@ CREATE TABLE IF NOT EXISTS merchants (
   address text PRIMARY KEY,
   name text NOT NULL DEFAULT '',
   evm_address text,
+  email text,
   invoice_counter integer NOT NULL DEFAULT 0,
   created_at timestamptz NOT NULL DEFAULT now()
 );
@@ -92,4 +94,5 @@ CREATE TABLE IF NOT EXISTS quotes (
   expires_at timestamptz NOT NULL
 );
 CREATE INDEX IF NOT EXISTS quotes_invoice_idx ON quotes (invoice_id);
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS email text;
 `;

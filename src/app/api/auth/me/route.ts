@@ -8,5 +8,5 @@ export const GET = handle(async () => {
   if (!address) return json({ merchant: null });
   const db = await getDb();
   const [merchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, address));
-  return json({ merchant: merchant ?? { address, name: "", evmAddress: null } });
+  return json({ merchant: merchant ?? { address, name: "", evmAddress: null, email: null } });
 });

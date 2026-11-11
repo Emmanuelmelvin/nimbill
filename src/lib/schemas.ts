@@ -23,6 +23,18 @@ export const NewInvoiceBody = z.object({
 });
 export type NewInvoiceInput = z.input<typeof NewInvoiceBody>;
 
+/**
+ * The merchant's own email for "invoice paid" notifications. Optional: leaving it out keeps the
+ * saved value, while "" or null clears it (which turns the emails off).
+ */
+export const MerchantEmail = z
+  .string()
+  .trim()
+  .max(254, "That email is too long")
+  .pipe(z.union([z.literal(""), z.email("That email does not look right")]))
+  .nullable()
+  .optional();
+
 export const AssetInput = z.enum(["NIM", "USDT"]);
 
 export const QuoteBody = z.object({ asset: AssetInput });

@@ -25,7 +25,8 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+    // Nimiq Pay injects --safe-area-inset-* styles on <html> before React hydrates; ignore that attribute mismatch.
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="min-h-full font-sans">
         <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-4 pb-12">{children}</div>
       </body>

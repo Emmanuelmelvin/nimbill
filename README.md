@@ -11,6 +11,7 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 - **Client pays in a few taps.** No account needed. The fiat total is converted at the live rate and **locked for 5 minutes**. Payment goes wallet-to-wallet: NimBill never holds funds.
 - **Verified on the blockchain.** The server checks the transaction on-chain (recipient, amount, invoice reference) before marking the invoice paid. A returned hash is never trusted on its own.
 - **Receipts you can show an accountant.** The receipt includes the exchange rate used, both addresses and a link to the transaction. Download it as a PDF.
+- **Know when you are paid.** Add an email in Settings (optional) and NimBill emails you once when an invoice is paid. Needs `RESEND_API_KEY` on the server; without it no email is sent.
 - **Stake what you earn.** After a NIM payment, the freelancer can stake it with a top-rated staking pool in one tap.
 - **Try it in 30 seconds.** "Pay a sample invoice" walks anyone through the full flow for about $0.05.
 - **Public usage page** (`/stats`). Every paid invoice links to its on-chain transaction.
@@ -75,7 +76,7 @@ node scripts/api-smoke.mjs   # 25 end-to-end API checks, simulating a wallet wit
 
 - No private keys or secrets are in the code. `SESSION_SECRET` and `DATABASE_URL` come from environment variables.
 - Sessions are HMAC-signed, httpOnly cookies. Sign-in challenges are single-purpose, expire after 5 minutes and are bound to the host.
-- Invoice links use unguessable random IDs. The public view never exposes the client's email.
+- Invoice links use unguessable random IDs. The public view never exposes the client's email or the merchant's notification email, and neither is written to logs.
 - USDT has no on-chain memo, so a USDT payment is matched by recipient, amount and time window, and each transaction hash can be used only once.
 
 ## Roadmap

@@ -4,6 +4,7 @@ import { getAddress } from "viem";
 import { getDb, schema } from "./db";
 import type { Invoice, LineItem, Quote } from "./db/schema";
 import { Errors } from "./errors";
+import { notifyInvoicePaid } from "./notifications";
 import { metrics } from "./observability";
 import { getRate } from "./rates";
 import { LUNA_PER_NIM, USDT_DECIMALS } from "./currencies";
@@ -196,6 +197,10 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
       })
       .where(and(eq(schema.invoices.id, inv.id), eq(schema.invoices.status, "unpaid"), isNull(schema.invoices.paidTxHash)))
       .returning();
+    // The update only matches while the invoice is still unpaid, so exactly one caller ever gets
+    // a row back here, however often verify or recovery run. That makes this the one place to
+    // announce the payment. (It only schedules the email; it cannot throw or slow this down.)
+    if (updated) notifyInvoicePaid(updated);
     return updated ?? null;
   } catch {
     // unique(paid_tx_hash): this transaction already paid another invoice

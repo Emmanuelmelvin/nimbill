@@ -2,7 +2,7 @@ import type { ComponentProps, ReactNode } from "react";
 import { cx } from "./cx";
 
 /** Shared look for text inputs, selects and textareas. */
-const CONTROL =
+export const CONTROL =
   "block min-h-12 w-full border border-edge bg-paper px-4 text-base text-ink outline-none transition-colors placeholder:text-muted/70 hover:border-ink focus:border-ink focus:shadow-[inset_0_0_0_1px_var(--color-ink)] disabled:cursor-not-allowed disabled:bg-subtle disabled:text-muted";
 
 export function labelStyles(size: "md" | "sm" = "md") {

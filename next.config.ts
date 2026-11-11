@@ -6,7 +6,9 @@ const nextConfig: NextConfig = {
   // its transports dynamically and runs best unbundled on the server.
   serverExternalPackages: ["@electric-sql/pglite", "winston", "winston-transport"],
   // Allow loading the dev server from a phone on the LAN (Nimiq Pay "Custom URL").
-  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.16.*.*"],
+  // 172.* covers the whole 172.16–31 private range, including iPhone hotspots (172.20.10.x).
+  // *.outray.app: HTTPS tunnel for testing in Nimiq Pay from anywhere (`outray 3000`).
+  allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*", "*.outray.app"],
   turbopack: {
     rules: {
       "*.css": {
