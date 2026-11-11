@@ -4,6 +4,8 @@ import { requireSessionAddress } from "@/lib/auth";
 import { getDb, schema } from "@/lib/db";
 import { Errors } from "@/lib/errors";
 import { computeTotal, createInvoice, listInvoices, publicInvoice, reconcileMerchant } from "@/lib/invoices";
+import { saveClient } from "@/lib/clients-book";
+import { invoiceUsd, prepareLedger } from "@/lib/ledger";
 import { metrics } from "@/lib/observability";
 import { NewInvoiceBody } from "@/lib/schemas";
 
@@ -11,8 +13,15 @@ import { NewInvoiceBody } from "@/lib/schemas";
 export const GET = handle(async () => {
   const address = await requireSessionAddress();
   await reconcileMerchant(address);
+  // After reconciling, so a payment found just now gets its dollar value too.
+  const { fx, currency } = await prepareLedger(address);
   const invoices = await listInvoices(address);
-  return json({ invoices: invoices.map((i) => ({ ...publicInvoice(i), clientEmail: i.clientEmail })) });
+  return json({
+    // `usd` lets the browser add up invoices in different currencies (clients view).
+    invoices: invoices.map((i) => ({ ...publicInvoice(i), clientEmail: i.clientEmail, usd: invoiceUsd(i, fx) })),
+    fx,
+    currency,
+  });
 });
 
 export const POST = handle(async (req: Request) => {
@@ -33,6 +42,7 @@ export const POST = handle(async (req: Request) => {
     note: body.note || null,
     dueDate: body.dueDate || null,
   });
+  if (body.saveClient) await saveClient(address, { name: body.clientName, email: body.clientEmail || null });
   metrics.invoiceCreated(inv.currency);
   return json({ invoice: publicInvoice(inv) }, 201);
 });

@@ -181,8 +181,19 @@ function matchQuote(quotes: Quote[], asset: "NIM" | "USDT", value: bigint, txTim
   return ok[0] ?? null;
 }
 
+/** Dollar value of a payment at the current price, or null when prices are unavailable (backfilled later). */
+async function usdValue(asset: "NIM" | "USDT", value: bigint): Promise<string | null> {
+  try {
+    const coins = Number(value) / (asset === "NIM" ? LUNA_PER_NIM : 10 ** USDT_DECIMALS);
+    return (coins * (await getRate(asset, "USD"))).toFixed(6);
+  } catch {
+    return null;
+  }
+}
+
 async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, paidAt: Date, value: bigint): Promise<Invoice | null> {
   const db = await getDb();
+  const paidUsd = await usdValue(q.asset, value);
   try {
     const [updated] = await db
       .update(schema.invoices)
@@ -194,6 +205,7 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
         paidTxHash: txHash.toLowerCase(),
         paidFrom: from,
         paidAt,
+        paidUsd,
       })
       .where(and(eq(schema.invoices.id, inv.id), eq(schema.invoices.status, "unpaid"), isNull(schema.invoices.paidTxHash)))
       .returning();

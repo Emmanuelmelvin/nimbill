@@ -3,6 +3,7 @@ import { coingecko, type SimplePrice } from "./clients/coingecko";
 import { CURRENCY_CODES } from "./currencies";
 import { Errors } from "./errors";
 import { logger } from "./logger";
+import type { Fx } from "./money";
 
 // Live NIM / USDT prices in fiat from CoinGecko, cached briefly in memory.
 const CACHE_MS = 60_000;
@@ -43,4 +44,28 @@ export async function getRate(asset: "NIM" | "USDT", currency: string): Promise<
 export async function getAllRates(currency: string) {
   const [nim, usdt] = await Promise.all([getRate("NIM", currency), getRate("USDT", currency)]);
   return { NIM: nim, USDT: usdt };
+}
+
+/** Rates for turning a dollar value into NIM, USDT or any supported fiat (see lib/money.ts). */
+export async function getFx(): Promise<Fx> {
+  const prices = await fetchPrices();
+  const nim = prices[IDS.NIM];
+  const usdt = prices[IDS.USDT];
+  if (!(nim?.usd > 0) || !(usdt?.usd > 0)) throw Errors.upstream("coingecko", "No USD prices for NIM/USDT");
+  const perUsd: Record<string, number> = {};
+  for (const c of CURRENCY_CODES) {
+    const v = usdt[c.toLowerCase()];
+    if (v > 0) perUsd[c] = v / usdt.usd;
+  }
+  return { nimUsd: nim.usd, usdtUsd: usdt.usd, perUsd };
+}
+
+/** Like getFx, but null instead of throwing: totals are nice to have, never worth failing a page for. */
+export async function tryGetFx(): Promise<Fx | null> {
+  try {
+    return await getFx();
+  } catch (e) {
+    logger.warn("fx unavailable", { error: (e as Error).message });
+    return null;
+  }
 }

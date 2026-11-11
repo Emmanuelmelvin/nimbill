@@ -25,6 +25,7 @@ export function Dropdown<T extends string>({
   placeholder = "Select…",
   disabled,
   className,
+  labels = "code",
   "aria-label": ariaLabel,
 }: {
   id?: string;
@@ -34,6 +35,8 @@ export function Dropdown<T extends string>({
   placeholder?: string;
   disabled?: boolean;
   className?: string;
+  /** "code": short labels in a fixed column (USD · US Dollar). "name": long labels get the room, the detail sits on the right. */
+  labels?: "code" | "name";
   "aria-label"?: string;
 }) {
   const listId = useId();
@@ -168,8 +171,14 @@ export function Dropdown<T extends string>({
                 className={cx("flex min-h-11 cursor-pointer items-center gap-3 px-4", i === active && "bg-subtle")}
               >
                 {o.icon}
-                <span className={cx("w-10 shrink-0", on ? "font-bold" : "font-medium")}>{o.label}</span>
-                {o.detail && <span className="min-w-0 flex-1 truncate text-sm text-muted">{o.detail}</span>}
+                <span className={cx(labels === "code" ? "w-10 shrink-0" : "min-w-0 flex-1 truncate", on ? "font-bold" : "font-medium")}>
+                  {o.label}
+                </span>
+                {o.detail && (
+                  <span className={cx("truncate text-sm text-muted", labels === "code" ? "min-w-0 flex-1" : "max-w-[45%] shrink-0")}>
+                    {o.detail}
+                  </span>
+                )}
                 {on && (
                   <svg aria-hidden viewBox="0 0 16 16" className="ml-auto h-4 w-4 shrink-0">
                     <path d="M3 8.5l3 3 7-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" />

@@ -93,7 +93,7 @@ function InvoiceScreen() {
 
   return (
     <>
-      <Header back={isOwner ? "/" : undefined} />
+      <Header back={isOwner ? "/invoices" : undefined} />
       <div className="space-y-4">
         {inv.isDemo && (
           <Alert kind="warn" title="Sample invoice">
@@ -112,6 +112,11 @@ function InvoiceScreen() {
           <TextButton className="w-full" onClick={() => setPreview((p) => !p)}>
             {preview ? "Back to my view" : "Preview as client"}
           </TextButton>
+        )}
+        {isOwner && !inv.isDemo && !preview && (
+          <LinkButton href={`/new?from=${inv.id}`} variant="secondary" block>
+            Duplicate this invoice
+          </LinkButton>
         )}
         {inv.status === "cancelled" && <Alert>This invoice was cancelled by {inv.merchantName}. No payment is due.</Alert>}
 

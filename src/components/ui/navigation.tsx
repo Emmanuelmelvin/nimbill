@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useSession } from "@/lib/client/session";
 import { LinkButton } from "./button";
@@ -101,5 +102,66 @@ export function Disclosure({ summary, children, className }: { summary: ReactNod
       </summary>
       <div className="space-y-2 pb-1">{children}</div>
     </details>
+  );
+}
+
+const TAB_ICON = {
+  width: 22,
+  height: 22,
+  viewBox: "0 0 24 24",
+  fill: "none",
+  stroke: "currentColor",
+  strokeWidth: 2,
+  strokeLinecap: "square",
+} as const;
+
+const TABS = [
+  { href: "/", label: "Home", icon: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /> },
+  { href: "/invoices", label: "Invoices", icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /> },
+  { href: "/save", label: "Save", icon: <path d="M12 3v18M3 12h18M5 5h14v14H5z" /> },
+  { href: "/withdraw", label: "Withdraw", icon: <path d="M12 4v12M7 11l5 5 5-5M4 20h16" /> },
+] as const;
+
+/**
+ * The signed-in app's main navigation: a bar along the bottom on phones (where NimBill mostly
+ * runs, inside Nimiq Pay), a rail to the right of the page on wide screens.
+ */
+export function TabBar() {
+  const path = usePathname();
+  return (
+    <>
+      {/* Keeps the last bit of the page clear of the fixed bar. */}
+      <div aria-hidden className="no-print h-16 lg:hidden" />
+      <nav
+        aria-label="Main"
+        className={cx(
+          "no-print fixed inset-x-0 bottom-0 z-20 border-t border-ink bg-paper pb-[var(--safe-area-inset-bottom,env(safe-area-inset-bottom))]",
+          "lg:inset-x-auto lg:top-24 lg:bottom-auto lg:left-[calc(50%+19.5rem)] lg:w-40 lg:border lg:pb-0",
+        )}
+      >
+        <ul className="mx-auto grid max-w-xl grid-cols-4 lg:grid-cols-1">
+          {TABS.map((t, i) => {
+            const on = t.href === "/" ? path === "/" : path.startsWith(t.href);
+            return (
+              <li key={t.href} className={cx(i > 0 && "border-l border-line lg:border-t lg:border-l-0")}>
+                <Link
+                  href={t.href}
+                  aria-current={on ? "page" : undefined}
+                  className={cx(
+                    "flex h-14 flex-col items-center justify-center gap-0.5 transition-colors lg:h-12 lg:flex-row lg:justify-start lg:gap-3 lg:px-4",
+                    on ? "bg-ink text-paper" : "text-ink hover:bg-subtle",
+                  )}
+                >
+                  <svg aria-hidden {...TAB_ICON}>
+                    {t.icon}
+                  </svg>
+                  <span className="font-mono text-[11px] font-semibold tracking-wider uppercase lg:text-xs">{t.label}</span>
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
+      </nav>
+    </>
   );
 }

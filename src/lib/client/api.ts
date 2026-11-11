@@ -1,14 +1,15 @@
 "use client";
 // Browser client for NimBill's own API. Errors come back from the server as
 // `{ error: { code, message } }` and are turned back into AppErrors here.
+import type { BookClient } from "@/lib/clients-book";
 import type { Merchant } from "@/lib/db/schema";
 import { AppError, Errors, type ErrorCode } from "@/lib/errors";
 import { createHttpClient } from "@/lib/http";
 import type { PublicInvoice } from "@/lib/invoices";
 
-export type { PublicInvoice };
+export type { BookClient, PublicInvoice };
 // `email` is the signed-in merchant's own address (settings only); it is never part of PublicInvoice.
-export type MerchantInfo = Pick<Merchant, "address" | "name" | "evmAddress" | "email">;
+export type MerchantInfo = Pick<Merchant, "address" | "name" | "evmAddress" | "email" | "displayCurrency">;
 
 const CODES = new Set<ErrorCode>([
   "BAD_REQUEST",

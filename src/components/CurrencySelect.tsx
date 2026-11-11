@@ -17,7 +17,33 @@ const OPTIONS = CURRENCIES.map((c) => {
   };
 });
 
-/** Currency picker: flag, code and name for each currency an invoice can be priced in. */
-export function CurrencySelect({ id, value, onChange }: { id?: string; value: string; onChange: (code: string) => void }) {
-  return <Dropdown id={id} options={OPTIONS} value={value} onChange={onChange} />;
+const coinIcon = (letter: string) => (
+  <span aria-hidden className="flex h-4 w-6 shrink-0 items-center justify-center bg-ink font-mono text-[10px] font-bold text-paper">
+    {letter}
+  </span>
+);
+const COIN_OPTIONS = [
+  { value: "NIM", label: "NIM", detail: "Nimiq", icon: coinIcon("N") },
+  { value: "USDT", label: "USDT", detail: "Tether", icon: coinIcon("T") },
+];
+const WITH_COINS = [...OPTIONS, ...COIN_OPTIONS];
+
+/**
+ * Currency picker: flag, code and name for each currency an invoice can be priced in.
+ * `coins` adds NIM and USDT (for goals, which can be set in either).
+ */
+export function CurrencySelect({
+  id,
+  value,
+  onChange,
+  coins,
+  placeholder,
+}: {
+  id?: string;
+  value: string;
+  onChange: (code: string) => void;
+  coins?: boolean;
+  placeholder?: string;
+}) {
+  return <Dropdown id={id} options={coins ? WITH_COINS : OPTIONS} value={value} onChange={onChange} placeholder={placeholder} />;
 }

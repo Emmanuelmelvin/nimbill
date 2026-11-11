@@ -2,9 +2,9 @@
 import { getHostFiat } from "@nimiq/mini-app-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Field, Header, Input, Label, OpenInNimiqPay, PageTitle, Textarea } from "@/components/ui";
+import { Alert, Button, Card, Checkbox, Dropdown, Field, Header, Input, Label, OpenInNimiqPay, PageTitle, Textarea } from "@/components/ui";
 import { CurrencySelect } from "@/components/CurrencySelect";
-import { api, type PublicInvoice } from "@/lib/client/api";
+import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { CURRENCIES, formatFiat } from "@/lib/currencies";
 
@@ -17,6 +17,9 @@ export default function NewInvoice() {
   const { merchant, loading } = useSession();
   const [clientName, setClientName] = useState("");
   const [clientEmail, setClientEmail] = useState("");
+  // Clients to pick from: the ones saved for later, then anyone billed before.
+  const [book, setBook] = useState<BookClient[]>([]);
+  const [saveIt, setSaveIt] = useState(true);
   const [currency, setCurrency] = useState("USD");
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [note, setNote] = useState("");
@@ -35,6 +38,30 @@ export default function NewInvoice() {
   }, []);
 
   useEffect(() => {
+    api<{ clients: BookClient[] }>("/api/clients")
+      .then((r) => setBook(r.clients))
+      .catch(() => {}); // the picker is a shortcut; typing the name still works
+  }, []);
+
+  // "Duplicate": /new?from=<invoice id> starts from that invoice's client, currency, items and note.
+  // (Read from the URL after mount; the page itself is prerendered without it.)
+  const [copied, setCopied] = useState<string | null>(null);
+  useEffect(() => {
+    const from = new URLSearchParams(window.location.search).get("from");
+    if (!from || !/^[a-z0-9]{6,20}$/.test(from)) return;
+    api<{ invoice: PublicInvoice; isOwner: boolean }>(`/api/invoices/${from}`)
+      .then(({ invoice, isOwner }) => {
+        if (!isOwner) return;
+        setClientName(invoice.clientName);
+        setCurrency(invoice.currency);
+        setRows(invoice.items.map((i) => ({ description: i.description, quantity: String(i.quantity), unitPrice: String(i.unitPrice) })));
+        setNote(invoice.note ?? "");
+        setCopied(invoice.number);
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     api<{ rates: { NIM: number; USDT: number } }>(`/api/rates?currency=${currency}`)
       .then((r) => alive && setRateFor({ currency, ...r.rates }))
@@ -49,22 +76,31 @@ export default function NewInvoice() {
     [rows],
   );
 
-  if (loading) return <Header back="/" />;
+  if (loading) return <Header back="/invoices" />;
   if (!merchant) {
     return (
       <>
-        <Header back="/" />
+        <Header back="/invoices" />
         <OpenInNimiqPay text="Sign in with Nimiq Pay to create invoices." />
       </>
     );
   }
 
+  const nameKey = clientName.trim().toLowerCase();
+  const picked = book.find((c) => c.name.toLowerCase() === nameKey);
+  const clientOptions = book.map((c) => ({
+    value: c.name.toLowerCase(),
+    label: c.name,
+    detail: c.email ?? (c.saved ? undefined : "billed before"),
+  }));
+
   const update = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
 
   return (
     <>
-      <Header back="/" />
+      <Header back="/invoices" />
       <PageTitle title="New invoice" />
+      {copied && <Alert className="mb-5">Copied from {copied}. Change anything you like before creating it.</Alert>}
       <form
         className="space-y-5"
         onSubmit={async (e) => {
@@ -83,6 +119,8 @@ export default function NewInvoice() {
                   .map((r) => ({ ...r, quantity: Number(r.quantity), unitPrice: Number(r.unitPrice) })),
                 note,
                 dueDate,
+                // Saved clients are kept up to date (e.g. a new email); new ones only if asked.
+                saveClient: picked?.saved ? true : saveIt,
               },
             });
             router.replace(`/i/${invoice.id}?created=1`);
@@ -93,6 +131,23 @@ export default function NewInvoice() {
         }}
       >
         <Card className="space-y-4">
+          {book.length > 0 && (
+            <Field label="Saved clients" htmlFor="saved-client">
+              <Dropdown
+                id="saved-client"
+                labels="name"
+                options={clientOptions}
+                value={picked ? picked.name.toLowerCase() : ""}
+                placeholder="Choose a client…"
+                onChange={(key) => {
+                  const c = book.find((x) => x.name.toLowerCase() === key);
+                  if (!c) return;
+                  setClientName(c.name);
+                  setClientEmail(c.email ?? "");
+                }}
+              />
+            </Field>
+          )}
           <Field label="Bill to" htmlFor="client">
             <Input
               id="client"
@@ -112,6 +167,14 @@ export default function NewInvoice() {
               placeholder="client@example.com"
             />
           </Field>
+          {nameKey && !picked?.saved && (
+            <Checkbox
+              label="Save this client"
+              description="Pick them from the list next time."
+              checked={saveIt}
+              onChange={(e) => setSaveIt(e.target.checked)}
+            />
+          )}
           <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
             <Field label="Currency" htmlFor="currency">
               <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
