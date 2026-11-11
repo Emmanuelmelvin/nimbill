@@ -29,7 +29,17 @@ export const NimTx = z
   .loose();
 export type NimTx = z.infer<typeof NimTx>;
 
-const Staker = z.object({ delegation: z.string(), balance: z.number() }).loose();
+// `balance` is the active stake. Inactive stake is being unstaked (locked from `inactiveFrom`
+// until the reporting window after it has passed); retired stake can be removed to the wallet.
+const Staker = z
+  .object({
+    delegation: z.string(),
+    balance: z.number(),
+    inactiveBalance: z.number().default(0),
+    inactiveFrom: z.number().nullish(),
+    retiredBalance: z.number().default(0),
+  })
+  .loose();
 export type NimStaker = z.infer<typeof Staker>;
 
 async function call<T>(method: string, params: unknown[], schema: z.ZodType<T>): Promise<T> {
@@ -72,6 +82,16 @@ export const nimiq = {
       if (isNotFound(e)) return null;
       throw e;
     }
+  },
+
+  /** Height of the latest block. */
+  getBlockNumber(): Promise<number> {
+    return call("getBlockNumber", [], z.number());
+  },
+
+  /** First block at which stake made inactive at `block` can be retired. */
+  getBlockAfterReportingWindow(block: number): Promise<number> {
+    return call("getBlockAfterReportingWindow", [block], z.number());
   },
 };
 

@@ -190,7 +190,7 @@ function Dashboard() {
         + New invoice
       </LinkButton>
 
-      {summary.nimEarned > 0 && <StakeCard suggestedLuna={summary.nimEarned} />}
+      <StakeCard suggestedLuna={summary.nimEarned} />
 
       <section className="space-y-3">
         <div className="flex items-center justify-between gap-3">

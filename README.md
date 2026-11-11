@@ -12,7 +12,7 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 - **Verified on the blockchain.** The server checks the transaction on-chain (recipient, amount, invoice reference) before marking the invoice paid. A returned hash is never trusted on its own.
 - **Receipts you can show an accountant.** The receipt includes the exchange rate used, both addresses and a link to the transaction. Download it as a PDF.
 - **Know when you are paid.** Add an email in Settings (optional) and NimBill emails you once when an invoice is paid. Needs `RESEND_API_KEY` on the server; without it no email is sent.
-- **Stake what you earn.** After a NIM payment, the freelancer can stake it with a top-rated staking pool in one tap.
+- **Stake what you earn.** After a NIM payment, the freelancer can stake it with a top-rated staking pool in one tap. The dashboard shows what is staked and with which pool, and lets them stake more, unstake, and move unstaked NIM back to the wallet once the waiting period ends.
 - **Try it in 30 seconds.** "Pay a sample invoice" walks anyone through the full flow for about $0.05.
 - **Public usage page** (`/stats`). Every paid invoice links to its on-chain transaction.
 
@@ -24,6 +24,7 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 | Pay an invoice in NIM, with the invoice ID on-chain | `nimiq.sendBasicTransactionWithData({ recipient, value, data: "NimBill <id>" })`                                       |
 | Pay an invoice in USDT (Polygon)                    | `window.ethereum`: `wallet_switchEthereumChain`, `eth_call` balance checks, `eth_sendTransaction` (ERC-20 `transfer`)  |
 | Stake earnings                                      | `nimiq.sendNewStakerTransaction()` / `nimiq.sendStakeTransaction()`, `nimiq.getBalance()`                              |
+| Unstake and withdraw                                | `nimiq.sendSetActiveStakeTransaction()`, `nimiq.sendRetireStakeTransaction()`, `nimiq.sendRemoveStakeTransaction()`    |
 | Default invoice currency                            | `getHostFiat()`                                                                                                        |
 | Open links inside the app                           | `https://nimpay.app/miniapps/open/<url>` deep links                                                                    |
 
