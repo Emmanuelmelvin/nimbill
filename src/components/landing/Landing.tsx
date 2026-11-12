@@ -39,22 +39,22 @@ function Container({ children, className }: { children: ReactNode; className?: s
 function Nav() {
   return (
     <header className="no-print sticky top-0 z-30 border-b border-line bg-paper">
-      <Container className="flex h-16 items-center justify-between gap-3">
-        <Link href="/" className="flex items-center gap-2 text-ink" aria-label="NimBill home">
+      <Container className="flex h-16 items-center justify-between gap-2 sm:gap-3">
+        <Link href="/" className="flex shrink-0 items-center gap-2 text-ink" aria-label="NimBill home">
           <LogoMark />
           <span className="text-lg font-bold tracking-tighter">NimBill</span>
         </Link>
-        <nav aria-label="Page" className="flex items-center gap-1 sm:gap-2">
-          <a href="#how" className="hidden px-3 py-2 text-sm text-muted hover:text-ink sm:block">
+        <nav aria-label="Page" className="flex items-center gap-0.5 sm:gap-2">
+          <a href="#how" className="hidden px-3 py-2 text-sm text-muted hover:text-ink md:block">
             How it works
           </a>
-          <Link href="/stats" className="hidden px-3 py-2 text-sm text-muted hover:text-ink sm:block">
+          <Link href="/stats" className="px-2 py-2 text-sm text-muted hover:text-ink sm:px-3">
             Payments
           </Link>
-          <Link href="/docs" className="hidden px-3 py-2 text-sm text-muted hover:text-ink sm:block">
+          <Link href="/docs" className="px-2 py-2 text-sm text-muted hover:text-ink sm:px-3">
             API
           </Link>
-          <a href="#start" className={buttonStyles({ size: "sm" })}>
+          <a href="#start" className={buttonStyles({ size: "sm", className: "ml-1 whitespace-nowrap sm:ml-0" })}>
             Get started
           </a>
         </nav>
