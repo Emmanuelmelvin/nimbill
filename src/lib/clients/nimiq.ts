@@ -8,6 +8,7 @@ import { serviceHttp } from "./shared";
 
 const SERVICE = "nimiq-rpc";
 const http = serviceHttp({ service: SERVICE, baseUrl: env.NIMIQ_RPC_URL, timeoutMs: 10_000, retries: 2 });
+const writeHttp = serviceHttp({ service: SERVICE, baseUrl: env.NIMIQ_RPC_URL, timeoutMs: 10_000, retries: 0 });
 
 const RpcEnvelope = z.object({
   result: z.object({ data: z.unknown() }).loose().optional(),
@@ -92,6 +93,22 @@ export const nimiq = {
   /** First block at which stake made inactive at `block` can be retired. */
   getBlockAfterReportingWindow(block: number): Promise<number> {
     return call("getBlockAfterReportingWindow", [block], z.number());
+  },
+
+  /** Broadcast a pre-signed raw transaction (hex) to the Nimiq network. Returns the tx hash. */
+  async sendRawTransaction(rawTxHex: string): Promise<string> {
+    const res = await writeHttp.post(
+      "",
+      { jsonrpc: "2.0", method: "sendRawTransaction", params: [rawTxHex], id: 1 },
+      { schema: RpcEnvelope },
+    );
+    if (res.error) {
+      const text = String(res.error.data ?? res.error.message ?? "Transaction rejected by the Nimiq network");
+      throw Errors.badRequest(text, { details: { rpcError: res.error } });
+    }
+    const parsed = z.string().safeParse(res.result?.data);
+    if (!parsed.success) throw Errors.upstream(SERVICE, "Nimiq RPC sendRawTransaction returned an unexpected result");
+    return parsed.data;
   },
 };
 

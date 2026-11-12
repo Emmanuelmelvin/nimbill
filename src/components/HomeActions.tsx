@@ -22,11 +22,10 @@ const ACTIONS: Action[] = [
   { label: "New invoice", href: "/new", primary: true, icon: <path d="M12 5v14M5 12h14" /> },
   { label: "Send", href: "/send", icon: <path d="M7 17L17 7M9 7h8v8" /> },
   { label: "Pay", href: "/pay", icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /> },
-  { label: "Cheque", href: "/cheques", soon: true, icon: <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" /> },
+  { label: "Cheque", href: "/cheques", icon: <path d="M4 20h4L19 9l-4-4L4 16zM14 6l4 4" /> },
   {
     label: "Cash",
     href: "/cheques#cash",
-    soon: true,
     icon: (
       <>
         <path d="M3 7h18v10H3z" />

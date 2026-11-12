@@ -153,3 +153,34 @@ export const ClientBody = z.object({
   name: z.string().trim().min(1, "Enter the client's name").max(80),
   email: z.union([z.literal(""), z.email("That email does not look right")]).optional(),
 });
+
+/** Write a cheque: either for a specific person's @tag, or a free cheque for the first person to claim. */
+export const NewChequeBody = z.object({
+  amount: z.coerce.number("Enter the amount as a number").positive("Enter an amount above 0").max(1e12, "That amount is too large"),
+  currency: z.enum([...CURRENCY_CODES, "NIM"], { error: "Unsupported currency" }),
+  linkPublicKey: z.string().regex(/^[0-9a-f]{64}$/i, "Invalid cheque public key"),
+  recipientTag: z.string().trim().max(60).nullish(),
+  note: z.string().trim().max(80, "Keep the note under 80 characters").optional(),
+});
+export type NewChequeInput = z.input<typeof NewChequeBody>;
+
+export const ChequeVerifyBody = z.object({ txHash: z.string().trim().max(80).optional() });
+
+export const ChequeClaimBody = z.discriminatedUnion("step", [
+  z.object({
+    step: z.literal("prepare"),
+    action: z.enum(["cash", "cancel"]),
+    recipientAddress: z.string().trim().min(1, "Enter the Nimiq address to receive the funds").max(60),
+    claimerName: z.string().trim().max(80).optional(),
+    validityStartHeight: z.coerce.number().int().positive(),
+    clientNoncePublicKey: z.string().regex(/^[0-9a-f]{64}$/i, "Invalid nonce public key"),
+  }),
+  z.object({
+    step: z.literal("broadcast"),
+    action: z.enum(["cash", "cancel"]),
+    recipientAddress: z.string().trim().min(1).max(60),
+    claimerName: z.string().trim().max(80).optional(),
+    validityStartHeight: z.coerce.number().int().positive(),
+    rawTx: z.string().regex(/^[0-9a-f]{278}$/i, "Invalid signed transaction"),
+  }),
+]);

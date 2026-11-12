@@ -708,3 +708,76 @@ for (const path of ["/api/me", "/api/invoices", "/api/transfers", "/api/products
 }
 res = await fetch(B + `/api/pay/${tagB}`, { headers: fromAgent });
 ok(res.headers.get("access-control-allow-credentials") === null, "CORS: never sends the visitor's NimBill session");
+
+// ---- cheques: non-custodial 2-of-2 Ed25519 cheques (free & tag-locked) ----
+cookie = "";
+r = await call("/api/cheques");
+ok(r.status === 401, "cheques: anonymous cannot list cheques");
+const linkPubHex = bytesToHex(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
+r = await call("/api/cheques", {
+  method: "POST",
+  body: JSON.stringify({ amount: 25, currency: "NIM", linkPublicKey: linkPubHex, recipientTag: null, note: "Tip" }),
+});
+ok(r.status === 401, "cheques: anonymous cannot write a cheque");
+
+cookie = mine;
+r = await call("/api/cheques", {
+  method: "POST",
+  body: JSON.stringify({ amount: 25, currency: "NIM", linkPublicKey: linkPubHex, recipientTag: tagB, note: "To self" }),
+});
+ok(r.status === 400 && /own tag/i.test(r.body.error.message), "cheques: refuses writing a cheque to your own tag");
+r = await call("/api/cheques", {
+  method: "POST",
+  body: JSON.stringify({ amount: 25, currency: "NIM", linkPublicKey: linkPubHex, recipientTag: `nobody_${rnd}` }),
+});
+ok(r.status === 404, "cheques: refuses writing a cheque to an unclaimed tag");
+r = await call("/api/cheques", {
+  method: "POST",
+  body: JSON.stringify({ amount: 25, currency: "NIM", linkPublicKey: linkPubHex, recipientTag: otherTag, note: "For Tunde" }),
+});
+ok(
+  r.status === 201 &&
+    r.body.cheque.recipient.kind === "tag" &&
+    r.body.cheque.recipient.tag === otherTag &&
+    r.body.cheque.amount === "2500000" &&
+    /^NQ\d\d( [0-9A-Z]{4}){8}$/.test(r.body.cheque.chequeAddress),
+  "cheques: creates a tag-locked cheque with combined 2-of-2 address " + r.body?.cheque?.chequeAddress,
+);
+const tagCheque = r.body.cheque;
+
+const freeLinkPubHex = bytesToHex(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
+r = await call("/api/cheques", {
+  method: "POST",
+  body: JSON.stringify({ amount: 10, currency: "NIM", linkPublicKey: freeLinkPubHex, recipientTag: null, note: "First to claim" }),
+});
+ok(r.status === 201 && r.body.cheque.recipient.kind === "anyone" && r.body.cheque.status === "pending", "cheques: creates a free cheque");
+const freeCheque = r.body.cheque;
+
+r = await call("/api/cheques");
+ok(r.status === 200 && r.body.cheques.length === 2, "cheques: lists writer's cheques");
+
+cookie = "";
+r = await call(`/api/cheques/${tagCheque.id}`);
+ok(
+  r.status === 200 && r.body.cheque.number === tagCheque.number && typeof r.body.currentBlock === "number",
+  "cheques: public GET returns cheque details and current block height",
+);
+r = await call(`/api/cheques/${freeCheque.id}/verify`, {
+  method: "POST",
+  body: JSON.stringify({ txHash: "cd".repeat(32) }),
+});
+ok(r.status === 200 && r.body.status === "pending", "cheques: verify returns pending for unmined txHash");
+r = await call(`/api/cheques/${freeCheque.id}/claim`, {
+  method: "POST",
+  body: JSON.stringify({
+    step: "prepare",
+    action: "cash",
+    recipientAddress: myAddress,
+    validityStartHeight: 100,
+    clientNoncePublicKey: freeLinkPubHex,
+  }),
+});
+ok(
+  r.status === 400 && /hasn't been funded/i.test(r.body.error.message),
+  "cheques: refuses to co-sign a claim before the cheque is funded on-chain",
+);

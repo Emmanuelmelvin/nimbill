@@ -1,7 +1,23 @@
-// Unit tests for the rules shared by the browser and the server: tags, board requests, agent docs.
+// Unit tests for the rules shared by the browser and the server: tags, board requests, cheques, agent docs.
 import { agentStepsText, agentUrl } from "../src/lib/agent-docs.ts";
 import { ENDPOINTS, openApiSpec, skillMarkdown } from "../src/lib/api-reference.ts";
-import { BoardInvoiceBody, NewTransferBody, ProductBody } from "../src/lib/schemas.ts";
+import {
+  chequeNumber,
+  clientNonceForTx,
+  combinePublicKeys,
+  completeDualSignature,
+  formatChequeCode,
+  hashBasicTxContent,
+  isValidChequeSecret,
+  keyFromSeedBytes,
+  linkKeyFromSecret,
+  newChequeSecret,
+  parseChequeInput,
+  serializeBasicTxContent,
+  serverPartialSignTx,
+  verifyRawBasicTx,
+} from "../src/lib/cheque-crypto.ts";
+import { BoardInvoiceBody, ChequeClaimBody, NewChequeBody, NewTransferBody, ProductBody } from "../src/lib/schemas.ts";
 import { TagInput, avatarUrl, formatTag, normalizeTag, suggestTag, tagProblem } from "../src/lib/tags.ts";
 
 let failed = 0;
@@ -67,6 +83,92 @@ ok(skill.includes("seed phrase"), "skill tells agents never to ask for keys");
 const spec = openApiSpec(origin);
 ok(Object.values(spec.paths).flatMap((p) => Object.keys(p)).length === ENDPOINTS.length, "OpenAPI has one operation per endpoint");
 ok(spec.servers[0].url === origin, "OpenAPI server is the origin");
+
+// ---- cheques: codes, schemas, 2-of-2 Ed25519 Nimiq transactions ----
+const sampleSecret = newChequeSecret();
+ok(isValidChequeSecret(sampleSecret), "newChequeSecret produces a valid 24-char base32 secret");
+const sampleId = "c9f8e7d6c5";
+const fullCode = formatChequeCode(sampleId, sampleSecret);
+ok(
+  fullCode ===
+    `${chequeNumber(sampleId)}-${sampleSecret
+      .toUpperCase()
+      .match(/.{1,6}/g)!
+      .join("-")}`,
+  "formatChequeCode formats CHQ-ID-SECRET",
+);
+const parsedCode = parseChequeInput(fullCode);
+ok(parsedCode?.id === sampleId && parsedCode?.secret === sampleSecret, "parseChequeInput parses full CHQ code");
+const parsedUrl = parseChequeInput(`https://nimbill.app/c/${sampleId}#${sampleSecret}`);
+ok(parsedUrl?.id === sampleId && parsedUrl?.secret === sampleSecret, "parseChequeInput parses cheque URL with #secret");
+const parsedShort = parseChequeInput(chequeNumber(sampleId));
+ok(parsedShort?.id === sampleId && parsedShort?.secret === null, "parseChequeInput parses short CHQ number without secret");
+
+const linkKey = linkKeyFromSecret(sampleSecret);
+const serverKey = keyFromSeedBytes("test-server-key:", new Uint8Array([1, 2, 3, 4]));
+const chequeWallet = combinePublicKeys(linkKey.publicKey, serverKey.publicKey);
+ok(/^NQ\d{2}(\s[0-9A-Z]{4}){8}$/.test(chequeWallet.address), "combinePublicKeys produces a valid Nimiq address");
+
+const txFields = {
+  senderPublicKey: chequeWallet.publicKey,
+  recipient: "NQ07 0000 0000 0000 0000 0000 0000 0000 0000",
+  value: 2500000,
+  fee: 0,
+  validityStartHeight: 40123456,
+};
+const txContent = serializeBasicTxContent(txFields);
+ok(txContent.length === 67, "serializeBasicTxContent is 67 bytes");
+const { noncePublicKey } = clientNonceForTx(sampleSecret, txContent);
+const { serverNoncePublicKey, serverPartialSig } = serverPartialSignTx({
+  serverScalar: serverKey.scalar,
+  chequePublicKey: chequeWallet.publicKey,
+  clientNoncePublicKey: noncePublicKey,
+  txContent,
+});
+const signed = completeDualSignature({
+  secret: sampleSecret,
+  tx: txFields,
+  serverNoncePublicKey,
+  serverPartialSig,
+});
+ok(signed.rawTx.length === 278, "completeDualSignature produces a 139-byte (278 hex) raw transaction");
+ok(signed.txHash === hashBasicTxContent(txFields), "signed txHash matches Blake2b-256 of content");
+const verified = verifyRawBasicTx(signed.rawTx, txFields);
+ok(verified.valid && verified.txHash === signed.txHash, "verifyRawBasicTx validates 2-of-2 signed transaction");
+ok(
+  !verifyRawBasicTx(signed.rawTx, { ...txFields, recipient: chequeWallet.address }).valid,
+  "verifyRawBasicTx rejects raw transaction if recipient differs",
+);
+
+ok(
+  NewChequeBody.safeParse({
+    amount: "50",
+    currency: "NIM",
+    linkPublicKey: linkKey.publicKey,
+    recipientTag: "  @Ada@nimbill ",
+    note: "Lunch",
+  }).data?.recipientTag === "@Ada@nimbill",
+  "NewChequeBody trims recipientTag and coerces amount",
+);
+ok(
+  NewChequeBody.safeParse({
+    amount: 50,
+    currency: "NIM",
+    linkPublicKey: linkKey.publicKey,
+    recipientTag: null,
+  }).success,
+  "NewChequeBody accepts free cheque (recipientTag: null)",
+);
+ok(
+  ChequeClaimBody.safeParse({
+    step: "prepare",
+    action: "cash",
+    recipientAddress: chequeWallet.address,
+    validityStartHeight: 100,
+    clientNoncePublicKey: noncePublicKey,
+  }).success,
+  "ChequeClaimBody validates prepare step",
+);
 
 if (failed) {
   console.log(`\n${failed} failed`);

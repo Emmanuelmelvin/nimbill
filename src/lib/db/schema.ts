@@ -153,6 +153,36 @@ export const merchantAvatars = pgTable("merchant_avatars", {
   data: text("data").notNull(), // base64
 });
 
+// Money funded into a throwaway 2-of-2 Ed25519 cheque wallet (`chequeAddress`).
+// Either locked to a specific recipient's NimBill tag (`recipientTag`), or a free cheque
+// where the first person with the link/QR/code to claim gets the NIM.
+export const cheques = pgTable("cheques", {
+  id: text("id").primaryKey(),
+  writerAddress: text("writer_address").notNull(),
+  writerName: text("writer_name").notNull(),
+  writerTag: text("writer_tag"),
+  chequeAddress: text("cheque_address").notNull().unique(),
+  chequePublicKey: text("cheque_public_key").notNull(),
+  linkPublicKey: text("link_public_key").notNull(),
+  recipientTag: text("recipient_tag"), // null = free cheque (first to claim gets it)
+  recipientName: text("recipient_name"),
+  amount: text("amount").notNull(), // Luna, as string
+  currency: text("currency").notNull(), // a fiat code or "NIM"
+  fiatAmount: text("fiat_amount").notNull(), // typed amount, decimal string in `currency`
+  rate: text("rate").notNull(), // `currency` per 1 NIM ("1" when written in NIM)
+  note: text("note"),
+  status: text("status").$type<"pending" | "funded" | "cashed" | "cancelled">().notNull().default("pending"),
+  fundTxHash: text("fund_tx_hash").unique(),
+  settleTxHash: text("settle_tx_hash").unique(),
+  claimedByAddress: text("claimed_by_address"),
+  claimedByName: text("claimed_by_name"),
+  claimedByTag: text("claimed_by_tag"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  fundedAt: timestamp("funded_at", { withTimezone: true }),
+  settledAt: timestamp("settled_at", { withTimezone: true }),
+});
+
+export type Cheque = typeof cheques.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Transfer = typeof transfers.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
@@ -286,4 +316,30 @@ CREATE TABLE IF NOT EXISTS merchant_avatars (
   mime text NOT NULL,
   data text NOT NULL
 );
+CREATE TABLE IF NOT EXISTS cheques (
+  id text PRIMARY KEY,
+  writer_address text NOT NULL,
+  writer_name text NOT NULL,
+  writer_tag text,
+  cheque_address text NOT NULL UNIQUE,
+  cheque_public_key text NOT NULL,
+  link_public_key text NOT NULL,
+  recipient_tag text,
+  recipient_name text,
+  amount text NOT NULL,
+  currency text NOT NULL,
+  fiat_amount text NOT NULL,
+  rate text NOT NULL,
+  note text,
+  status text NOT NULL DEFAULT 'pending',
+  fund_tx_hash text UNIQUE,
+  settle_tx_hash text UNIQUE,
+  claimed_by_address text,
+  claimed_by_name text,
+  claimed_by_tag text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  funded_at timestamptz,
+  settled_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS cheques_writer_idx ON cheques (writer_address, created_at DESC);
 `;
