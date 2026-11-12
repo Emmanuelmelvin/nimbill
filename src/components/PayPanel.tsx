@@ -132,9 +132,11 @@ export function PayPanel({
       const from = await polygonWallet.requestAccount();
       await polygonWallet.switchToPolygon();
       // Pre-flight checks so the user gets a clear message instead of a failed transaction.
+      // A balance the wallet couldn't report (null) doesn't block the payment: the wallet checks again.
       const [usdtBal, polBal] = await Promise.all([polygonWallet.usdtBalance(from), polygonWallet.gasBalance(from)]);
-      if (usdtBal < BigInt(quote.amount)) throw Errors.wallet(`Not enough USDT on Polygon. You need ${formatAsset(quote.amount, "USDT")}.`);
-      if (polBal === BigInt(0))
+      if (usdtBal !== null && usdtBal < BigInt(quote.amount))
+        throw Errors.wallet(`Not enough USDT on Polygon. You need ${formatAsset(quote.amount, "USDT")}.`);
+      if (polBal !== null && polBal === BigInt(0))
         throw Errors.wallet(
           "You need a little POL on Polygon to pay the network fee (a few cents). Add some POL and try again, or pay with NIM.",
         );
@@ -148,6 +150,14 @@ export function PayPanel({
   }
 
   const inWallet = state === "ready";
+  // USDT is paid through Nimiq Pay's Polygon wallet, so other Nimiq wallets only get NIM.
+  const canSwitch = inv.acceptsUsdt && !external;
+
+  /** Swap the coin after a price was already locked: the old quote is dropped for a fresh one. */
+  function switchAsset(a: Asset) {
+    setAsset(a);
+    void getQuote(a);
+  }
 
   if (selfPreview) {
     return (
@@ -164,7 +174,7 @@ export function PayPanel({
 
       {phase.k === "choose" || phase.k === "quoting" ? (
         <>
-          {inv.acceptsUsdt && (
+          {canSwitch && (
             <SegmentedControl kind="radio" label="Pay with" size="md" block options={ASSETS} value={asset} onChange={setAsset} />
           )}
           {state === "checking" ? (
@@ -210,6 +220,11 @@ export function PayPanel({
             >
               Pay {formatAsset(phase.quote.amount, phase.quote.asset)}
             </Button>
+          )}
+          {canSwitch && phase.k !== "wallet" && (
+            <TextButton className="w-full" onClick={() => switchAsset(phase.quote.asset === "NIM" ? "USDT" : "NIM")}>
+              Pay with {phase.quote.asset === "NIM" ? "USDT (Polygon)" : "NIM"} instead
+            </TextButton>
           )}
         </QuoteBox>
       )}

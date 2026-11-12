@@ -69,6 +69,11 @@ export function walletErrorMessage(e: unknown): string | null {
   if (err?.message && /insufficient funds|gas/i.test(err.message)) {
     return "Not enough POL to pay the Polygon network fee. Add a little POL to your Nimiq Pay Polygon wallet.";
   }
+  // A JavaScript error is a bug or an unexpected wallet answer, not something the client can act on.
+  if (e instanceof SyntaxError || e instanceof TypeError || e instanceof RangeError) {
+    console.error("[wallet]", e);
+    return "Your wallet gave an answer we couldn't read, so nothing was sent. Please try again.";
+  }
   return err?.message || "Something went wrong. Please try again.";
 }
 
