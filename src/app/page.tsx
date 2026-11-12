@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { Alert, Button, Card, Header, LinkButton, Loader, OpenInNimiqPay, PageTitle, Stat, TabBar, TextLink } from "@/components/ui";
 import { EarningsCard } from "@/components/EarningsCard";
 import { GoalProgress, currentGoal } from "@/components/Goals";
+import { PayByNumber } from "@/components/PayByNumber";
 import { ProfileForm } from "@/components/ProfileForm";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { useLedger } from "@/lib/client/ledger";
@@ -89,6 +90,8 @@ function Landing() {
       </section>
 
       <CallToAction />
+
+      <PayByNumber />
 
       <Card as="div" padding="none">
         <ul className="divide-y divide-line">
@@ -196,6 +199,12 @@ function Dashboard() {
           </LinkButton>
         </Card>
       )}
+
+      <p className="text-center text-sm">
+        <TextLink href="/pay" muted>
+          Pay an invoice with a Nimbill number
+        </TextLink>
+      </p>
     </div>
   );
 }

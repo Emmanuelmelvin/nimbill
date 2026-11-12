@@ -9,7 +9,9 @@ export function InvoiceDoc({ inv }: { inv: PublicInvoice }) {
     <Card as="article" className="space-y-5">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <Eyebrow>Invoice {inv.number}</Eyebrow>
+          <Eyebrow>
+            Invoice {inv.number} · {inv.nimbillNumber}
+          </Eyebrow>
           <p className="mt-1 text-3xl font-bold tracking-tight tabular-nums">{formatFiat(inv.total, inv.currency)}</p>
           {inv.dueDate && inv.status === "unpaid" && (
             <p className="mt-1 text-sm text-muted">Due {new Date(inv.dueDate + "T00:00:00").toLocaleDateString()}</p>

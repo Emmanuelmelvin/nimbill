@@ -100,7 +100,9 @@ function InvoiceScreen() {
             Pay it to see the whole flow: rate lock → wallet → on-chain verification → receipt. It costs about $0.05 in NIM.
           </Alert>
         )}
-        {created && ownerView && inv.status === "unpaid" && <Alert kind="success">Invoice created. Send the link to your client.</Alert>}
+        {created && ownerView && inv.status === "unpaid" && (
+          <Alert kind="success">Invoice created. Send the link or the Nimbill number to your client.</Alert>
+        )}
 
         {inv.status === "paid" && inv.payment && <PaidBanner inv={inv} fresh={justPaid} isOwner={isOwner} />}
 
@@ -199,6 +201,16 @@ function SharePanel({ inv, onCancelled }: { inv: PublicInvoice; onCancelled: (i:
           <p className="text-xs text-muted">Client scans with their phone camera</p>
         </div>
       )}
+      <div className="space-y-2 border-t border-line pt-3">
+        <div>
+          <h3 className="font-bold">Or send just the Nimbill number</h3>
+          <p className="mt-1 text-sm text-muted">
+            No link needed. {inv.clientName} opens NimBill in Nimiq Pay, pastes this number under &ldquo;Pay an invoice&rdquo; and pays.
+          </p>
+        </div>
+        <CodeBlock className="text-center text-lg font-bold tracking-wider break-normal">{inv.nimbillNumber}</CodeBlock>
+        <CopyButton text={inv.nimbillNumber} label="Copy Nimbill number" block />
+      </div>
       <Disclosure summary="More options">
         <CopyButton text={url} label="Copy plain web link" size="sm" block className="min-h-11" />
         <Button

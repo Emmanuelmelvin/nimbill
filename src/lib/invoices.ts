@@ -6,6 +6,7 @@ import type { Invoice, LineItem, Quote } from "./db/schema";
 import { Errors } from "./errors";
 import { notifyInvoicePaid } from "./notifications";
 import { metrics } from "./observability";
+import { nimbillNumber } from "./nimbill-number";
 import { getRate } from "./rates";
 import { LUNA_PER_NIM, USDT_DECIMALS } from "./currencies";
 import { decodeData, nimiq, polygon, sameNimAddress, type NimTx } from "./clients";
@@ -384,6 +385,7 @@ export function publicInvoice(inv: Invoice) {
   return {
     id: inv.id,
     number: inv.number,
+    nimbillNumber: nimbillNumber(inv.id),
     merchantAddress: inv.merchantAddress,
     merchantName: inv.merchantName,
     acceptsUsdt: !!inv.merchantEvmAddress,
