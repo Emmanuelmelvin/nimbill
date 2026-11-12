@@ -3,6 +3,10 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { cx } from "./cx";
 import { CONTROL } from "./form";
 
+/** The open list's width (w-72) and the gap it keeps from the screen edge (the page's px-4). */
+const LIST_WIDTH = 288;
+const EDGE = 16;
+
 export type DropdownOption<T extends string = string> = {
   value: T;
   /** Main text, e.g. "USD". */
@@ -45,11 +49,16 @@ export function Dropdown<T extends string>({
   const typed = useRef({ text: "", at: 0 });
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  // Open the list towards the left when the button sits near the right edge of the screen, so it
+  // never runs off-screen (which would also let a phone slide the whole page sideways).
+  const [alignRight, setAlignRight] = useState(false);
 
   const selectedIndex = options.findIndex((o) => o.value === value);
   const selected = options[selectedIndex];
 
   const show = () => {
+    const box = root.current?.getBoundingClientRect();
+    if (box) setAlignRight(box.left + LIST_WIDTH > document.documentElement.clientWidth - EDGE);
     setActive(Math.max(selectedIndex, 0));
     setOpen(true);
   };
@@ -156,7 +165,10 @@ export function Dropdown<T extends string>({
           role="listbox"
           // Keep focus on the button while clicking or scrolling the list.
           onMouseDown={(e) => e.preventDefault()}
-          className="absolute top-full left-0 z-30 mt-1 max-h-72 w-72 max-w-[calc(100vw-2.5rem)] min-w-full origin-top animate-[pop_0.12s_ease-out] overflow-y-auto overscroll-contain border border-ink bg-paper py-1"
+          className={cx(
+            "absolute top-full z-30 mt-1 max-h-72 w-72 max-w-[calc(100vw-2rem)] min-w-full origin-top animate-[pop_0.12s_ease-out] overflow-y-auto overscroll-contain border border-ink bg-paper py-1",
+            alignRight ? "right-0" : "left-0",
+          )}
         >
           {options.map((o, i) => {
             const on = i === selectedIndex;

@@ -111,12 +111,6 @@ function Dashboard() {
           </LinkButton>
         </Card>
       )}
-
-      <p className="text-center text-sm">
-        <TextLink href="/pay" muted>
-          Pay an invoice with a Nimbill number
-        </TextLink>
-      </p>
     </div>
   );
 }
