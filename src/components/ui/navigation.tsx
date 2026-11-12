@@ -156,6 +156,7 @@ type Tab = { href: string; label: string; icon: ReactNode };
 const TABS: Tab[] = [
   { href: "/", label: "Home", icon: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /> },
   { href: "/invoices", label: "Invoices", icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /> },
+  { href: "/cheques", label: "Cheques", icon: <path d="M3 6h18v12H3zM7 10h6M7 14h4M15 14h2" /> },
   { href: "/save", label: "Save", icon: <path d="M12 3v18M3 12h18M5 5h14v14H5z" /> },
   { href: "/withdraw", label: "Withdraw", icon: <path d="M12 4v12M7 11l5 5 5-5M4 20h16" /> },
 ];
@@ -171,7 +172,7 @@ export const BOARD_TABS: Tab[] = [
   { href: "/board/orders", label: "Orders", icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1" /> },
 ];
 
-const COLS: Record<number, string> = { 3: "grid-cols-3", 4: "grid-cols-4" };
+const COLS: Record<number, string> = { 3: "grid-cols-3", 4: "grid-cols-4", 5: "grid-cols-5" };
 
 /**
  * The signed-in app's main navigation: a bar along the bottom on phones (where NimBill mostly

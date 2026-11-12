@@ -17,10 +17,12 @@ import {
   Input,
   LinkButton,
   Loader,
+  ModeSwitch,
   OpenInNimiqPay,
   PageTitle,
   SegmentedControl,
   Spinner,
+  TabBar,
 } from "@/components/ui";
 import { WriterShareCard } from "@/app/c/[id]/page";
 import { linkKeyFromSecret, newChequeSecret, parseChequeInput } from "@/lib/cheque-crypto";
@@ -72,7 +74,8 @@ export default function ChequesPage() {
 
   return (
     <>
-      <Header back="/" />
+      <Header />
+      <ModeSwitch />
       <PageTitle
         title="Cheques"
         description="Money you can hand to anyone as a link, QR code or cheque code. Fully funded, so it never bounces."
@@ -92,6 +95,7 @@ export default function ChequesPage() {
         />
         {tab === "cash" ? <CashByCode /> : <WriteAndManage onSwitchToCash={() => setTab("cash")} />}
       </div>
+      <TabBar />
     </>
   );
 }
