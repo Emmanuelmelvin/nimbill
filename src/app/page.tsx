@@ -75,10 +75,10 @@ function Dashboard() {
         </Card>
       )}
 
+      <ActionStrip />
+
       {/* Remount when the currency changes so the unit toggle starts on it. */}
       <EarningsCard key={ledger.currency} points={ledger.points} fx={ledger.fx} currency={ledger.currency} goal={goal} />
-
-      <ActionStrip />
 
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Outstanding" value={money(owed.usd)} sub={plural(owed.count)} />

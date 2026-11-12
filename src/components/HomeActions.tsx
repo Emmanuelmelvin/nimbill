@@ -38,40 +38,32 @@ const ACTIONS: Action[] = [
 /** The row of five things you can do from home. */
 export function ActionStrip() {
   return (
-    <nav aria-label="Actions" className="grid grid-cols-5 border border-ink">
-      {ACTIONS.map((a, i) => {
-        const cell = cx(
-          "flex min-h-[4.5rem] flex-col items-center justify-center gap-1 px-1 py-2 text-center text-[11px] leading-tight font-semibold",
-          i > 0 && "border-l border-line",
-        );
-        const body = (
-          <>
+    <nav aria-label="Actions" className="grid grid-cols-5 gap-2">
+      {ACTIONS.map((a) => (
+        <Link
+          key={a.label}
+          href={a.href}
+          aria-label={a.soon ? `${a.label} (coming soon)` : undefined}
+          className={cx("group flex flex-col items-center gap-1.5 text-center", a.soon ? "text-muted hover:text-ink" : "text-ink")}
+        >
+          <span
+            className={cx(
+              "flex h-12 w-12 items-center justify-center rounded-full border border-ink transition-colors",
+              a.primary
+                ? "bg-ink text-paper group-hover:bg-ink-soft"
+                : a.soon
+                  ? "border-line bg-subtle text-muted group-hover:border-ink group-hover:text-ink"
+                  : "bg-paper text-ink group-hover:bg-ink group-hover:text-paper",
+            )}
+          >
             <svg aria-hidden {...ICON}>
               {a.icon}
             </svg>
-            {a.label}
-          </>
-        );
-        return (
-          <Link
-            key={a.label}
-            href={a.href}
-            aria-label={a.soon ? `${a.label} (coming soon)` : undefined}
-            className={cx(
-              cell,
-              "transition-colors",
-              a.primary
-                ? "bg-ink text-paper hover:bg-ink-soft"
-                : a.soon
-                  ? "text-muted hover:bg-subtle hover:text-ink"
-                  : "text-ink hover:bg-subtle",
-            )}
-          >
-            {body}
-            {a.soon && <span className="font-mono text-[9px] font-medium tracking-wider uppercase">Soon</span>}
-          </Link>
-        );
-      })}
+          </span>
+          <span className="text-[11px] leading-tight font-semibold">{a.label}</span>
+          {a.soon && <span className="font-mono text-[9px] font-medium tracking-wider uppercase">Soon</span>}
+        </Link>
+      ))}
     </nav>
   );
 }
