@@ -48,6 +48,7 @@ export const AGENT_STEPS: AgentStep[] = [
 
 export const AGENT_RULES = [
   "No account or API key is needed. Every request and answer is JSON.",
+  "Works from a browser on any site too (CORS is open on these endpoints). Requests from other sites never carry a NimBill sign-in.",
   "Errors come back as { error: { code, message } } with a matching HTTP status. message is safe to show to a person.",
   "Payments go wallet to wallet. NimBill never holds the money; it only checks the blockchain.",
   "Each transaction can pay only one invoice. A board accepts at most 30 new invoices every 10 minutes.",

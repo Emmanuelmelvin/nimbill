@@ -31,6 +31,6 @@ ${AGENT_RULES.map((r) => `- ${r}`).join("\n")}
 - [Payments made with NimBill](${origin}/stats): public list, each with its transaction
 `;
   return new Response(body, {
-    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600" },
+    headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=3600", "access-control-allow-origin": "*" },
   });
 }

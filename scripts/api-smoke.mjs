@@ -625,3 +625,59 @@ ok(
 );
 res = await fetch(B + `/pay/${tagB}`);
 ok(new RegExp(`type="application/json" href="[^"]*/api/pay/${tagB}"`).test(await res.text()), "pay page points agents to its JSON");
+
+// ---- CORS: the public API answers other sites; private actions don't ----
+const fromAgent = { origin: "https://agent.example" };
+const acao = (r) => r.headers.get("access-control-allow-origin");
+res = await fetch(B + `/api/pay/${tagB}/invoices`, {
+  method: "OPTIONS",
+  headers: { ...fromAgent, "access-control-request-method": "POST", "access-control-request-headers": "content-type" },
+});
+ok(
+  res.status === 204 &&
+    acao(res) === "*" &&
+    /POST/.test(res.headers.get("access-control-allow-methods")) &&
+    /content-type/i.test(res.headers.get("access-control-allow-headers")),
+  "CORS: pre-check for creating a board invoice is allowed",
+);
+res = await fetch(B + `/api/pay/${tagB}`, { headers: fromAgent });
+ok(res.status === 200 && acao(res) === "*", "CORS: other sites can read a board");
+res = await fetch(B + `/api/pay/nobody_${rnd}`, { headers: fromAgent });
+ok(res.status === 404 && acao(res) === "*", "CORS: errors are readable too, so agents see the message");
+res = await fetch(B + `/api/pay/${tagB}/invoices`, {
+  method: "POST",
+  headers: { ...fromAgent, "content-type": "application/json" },
+  body: JSON.stringify({ amount: 5, currency: "USD", description: "CORS test", payerName: "Browser agent" }),
+});
+const corsInvoice = (await res.json()).invoice;
+ok(res.status === 201 && acao(res) === "*", "CORS: other sites can create a board invoice");
+for (const path of [
+  `/api/invoices/${corsInvoice.id}`,
+  `/api/tags/${tagB}`,
+  "/api/rates?currency=USD",
+  "/llms.txt",
+  "/skill.md",
+  "/openapi.json",
+]) {
+  res = await fetch(B + path, { headers: fromAgent });
+  ok(acao(res) === "*", `CORS: ${path} is open`);
+}
+res = await fetch(B + `/api/invoices/${corsInvoice.id}/verify`, {
+  method: "POST",
+  headers: { ...fromAgent, "content-type": "application/json" },
+  body: JSON.stringify({ asset: "NIM", txHash: "ab".repeat(32) }),
+});
+ok(acao(res) === "*", "CORS: verify is open");
+res = await fetch(B + `/api/invoices/${corsInvoice.id}`, {
+  method: "OPTIONS",
+  headers: { ...fromAgent, "access-control-request-method": "DELETE" },
+});
+ok(!/DELETE/.test(res.headers.get("access-control-allow-methods") ?? ""), "CORS: cancelling an invoice is not allowed from other sites");
+res = await fetch(B + `/api/invoices/${corsInvoice.id}`, { method: "DELETE", headers: fromAgent });
+ok(acao(res) === null, "CORS: a cancel response isn't readable by other sites");
+for (const path of ["/api/me", "/api/invoices", "/api/transfers", "/api/products", "/api/board/orders"]) {
+  res = await fetch(B + path, { headers: fromAgent });
+  ok(acao(res) === null, `CORS: signed-in ${path} stays closed`);
+}
+res = await fetch(B + `/api/pay/${tagB}`, { headers: fromAgent });
+ok(res.headers.get("access-control-allow-credentials") === null, "CORS: never sends the visitor's NimBill session");

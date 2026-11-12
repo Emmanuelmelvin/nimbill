@@ -19,7 +19,7 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 - **Send money by tag.** Type a tag, check the name and address it belongs to, and send NIM (amount in NIM or any supported currency). Transfers are verified on-chain like invoices and listed under Invoices → Transfers, apart from earnings.
 - **A public pay page.** `/pay/<tag>` lets anyone pay you without an account: an amount for something, or one of your products (with a quantity). Visitors' invoices get your next `INV-` number only once paid, so unpaid ones never leave gaps; they live under Board → Orders.
 - **Products.** Name, price, description and a picture (shrunk in the browser and stored in the database, so there is no file storage to set up). Hide or delete any time.
-- **Built for AI agents.** Every board's JSON includes the exact steps to pay it. `/docs` explains the API with examples and copy-paste setups for Claude (a skill), Cursor (a rule), ChatGPT (a custom GPT action) and Grok/Gemini. Machine-readable: `/llms.txt`, `/openapi.json`, `/skill.md`.
+- **Built for AI agents.** Every board's JSON includes the exact steps to pay it. `/docs` explains the API with examples and copy-paste setups for Claude (a skill), Cursor (a rule), ChatGPT (a custom GPT action) and Grok/Gemini. Machine-readable: `/llms.txt`, `/openapi.json`, `/skill.md`. The public endpoints allow cross-site requests (CORS), so agents running in a browser can use them too; signed-in endpoints and owner actions stay closed to other sites.
 - **Cheques** are previewed at `/cheques` and not built yet: they need a way to hold funds without NimBill holding them.
 
 ## How it uses Nimiq Pay
@@ -91,7 +91,7 @@ npm run test:address    # Nimiq address derivation
 
 ## Roadmap
 
-Cheques (prove that each cheque can be its own wallet that only its link opens) · USDT transfers by tag · CORS on the public API, for agents that run in a browser · webhooks for paid invoices · recurring invoices and reminders · multi-language (via `window.nimiqPay.language`) · payouts to local bank / mobile money through licensed partners.
+Cheques (prove that each cheque can be its own wallet that only its link opens) · USDT transfers by tag · webhooks for paid invoices · recurring invoices and reminders · multi-language (via `window.nimiqPay.language`) · payouts to local bank / mobile money through licensed partners.
 
 ## License
 
