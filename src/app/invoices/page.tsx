@@ -6,6 +6,7 @@ import {
   Alert,
   AnchorButton,
   Card,
+  Dropdown,
   EmptyState,
   Field,
   LinkButton,
@@ -55,7 +56,10 @@ const isOverdue = (i: PublicInvoice, today: string) => i.status === "unpaid" && 
 
 export default function Invoices() {
   return (
-    <TabPage title="Invoices">
+    <TabPage
+      title="Invoices"
+      description="Every invoice you've sent, the clients you bill, and your tag transfers — all verified on-chain."
+    >
       <Suspense fallback={<Loader compact />}>
         <InvoicesScreen />
       </Suspense>
@@ -117,7 +121,7 @@ function InvoiceList({ invoices }: { invoices: OwnInvoice[] }) {
   const shown = invoices.filter((i) => filter === "all" || (filter === "overdue" ? isOverdue(i, today) : i.status === filter));
   return (
     <section className="space-y-3">
-      <SegmentedControl label="Filter invoices" options={FILTERS} value={filter} onChange={setFilter} block />
+      <Dropdown aria-label="Filter invoices" options={FILTERS} value={filter} onChange={setFilter} labels="name" />
       {shown.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted">Nothing here.</p>
       ) : (
