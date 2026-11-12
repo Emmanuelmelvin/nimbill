@@ -25,10 +25,17 @@ export function Logo() {
   );
 }
 
+const MODES = [
+  { href: "/", label: "Account" },
+  { href: "/board", label: "Board" },
+] as const;
+
 export function Header({ back }: { back?: string }) {
   const { merchant } = useSession();
+  const path = usePathname();
+  const board = path.startsWith("/board");
   return (
-    <header className="no-print mb-6 flex h-16 items-center justify-between gap-3 border-b border-line">
+    <header className="no-print mb-6 flex h-16 items-center justify-between gap-2 border-b border-line">
       <div className="flex items-center gap-1">
         {back && (
           <LinkButton href={back} variant="ghost" size="icon" className="-ml-3" aria-label="Back">
@@ -40,13 +47,41 @@ export function Header({ back }: { back?: string }) {
         <Logo />
       </div>
       {merchant && (
-        <LinkButton href="/settings" variant="secondary" size="sm" aria-label="Settings">
-          <span className="max-w-[9rem] truncate">{merchant.name || "Settings"}</span>
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
-            <circle cx="12" cy="12" r="3" />
-            <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
-          </svg>
-        </LinkButton>
+        <div className="flex items-center gap-2">
+          {!back && (
+            <nav aria-label="Mode" className="grid grid-cols-2 border border-ink bg-paper p-0.5">
+              {MODES.map((m) => {
+                const on = (m.href === "/board") === board;
+                return (
+                  <Link
+                    key={m.href}
+                    href={m.href}
+                    aria-current={on ? "page" : undefined}
+                    className={cx(
+                      "flex h-8 items-center justify-center px-2.5 font-mono text-[11px] font-semibold tracking-wider uppercase transition-colors",
+                      on ? "bg-ink text-paper" : "text-ink hover:bg-subtle",
+                    )}
+                  >
+                    {m.label}
+                  </Link>
+                );
+              })}
+            </nav>
+          )}
+          <LinkButton
+            href="/settings"
+            variant="secondary"
+            size={back ? "sm" : "icon"}
+            className={back ? undefined : "h-9 w-9"}
+            aria-label="Settings"
+          >
+            {back && <span className="max-w-[9rem] truncate">{merchant.name || "Settings"}</span>}
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+              <circle cx="12" cy="12" r="3" />
+              <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" />
+            </svg>
+          </LinkButton>
+        </div>
       )}
     </header>
   );
@@ -105,39 +140,9 @@ export function Disclosure({ summary, children, className }: { summary: ReactNod
   );
 }
 
-const MODES = [
-  { href: "/", label: "Invoices" },
-  { href: "/board", label: "Board" },
-] as const;
-
-/**
- * Switches the signed-in app between its two sides: invoicing (home, invoices, save, withdraw)
- * and the public board. Sits right under the header.
- */
+/** Kept as a no-op export: the Account | Board mode switcher now lives directly inside `Header`. */
 export function ModeSwitch() {
-  const path = usePathname();
-  const board = path.startsWith("/board");
-  return (
-    <nav aria-label="Mode" className="no-print -mt-6 mb-6 grid grid-cols-2 border-x border-b border-ink">
-      {MODES.map((m) => {
-        const on = (m.href === "/board") === board;
-        return (
-          <Link
-            key={m.href}
-            href={m.href}
-            aria-current={on ? "page" : undefined}
-            className={cx(
-              "flex h-11 items-center justify-center font-mono text-xs font-semibold tracking-wider uppercase transition-colors",
-              m.href === "/board" && "border-l border-ink",
-              on ? "bg-ink text-paper" : "text-ink hover:bg-subtle",
-            )}
-          >
-            {m.label}
-          </Link>
-        );
-      })}
-    </nav>
-  );
+  return null;
 }
 
 const TAB_ICON = {
