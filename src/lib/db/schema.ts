@@ -9,7 +9,21 @@ export const merchants = pgTable("merchants", {
   email: text("email"), // optional, private: where "invoice paid" emails go. Never shown publicly.
   displayCurrency: text("display_currency"), // fiat the dashboard shows totals in; null = follow the latest invoice
   invoiceCounter: integer("invoice_counter").notNull().default(0),
+  // Public handle, shown as "<tag>@nimbill" (see lib/tags.ts). Unique; null until claimed.
+  tag: text("tag").unique(),
+  tagChangedAt: timestamp("tag_changed_at", { withTimezone: true }),
+  // Public board: a line about the merchant, and whether visitors may pay any amount they type.
+  bio: text("bio"),
+  boardOpenAmounts: boolean("board_open_amounts").notNull().default(true),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Tags someone gave up. Held for a while so nobody else can grab one and receive payments
+// meant for its previous owner. The previous owner can take it back at any time.
+export const retiredTags = pgTable("retired_tags", {
+  tag: text("tag").primaryKey(),
+  address: text("address").notNull(),
+  retiredAt: timestamp("retired_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 export const invoices = pgTable("invoices", {
@@ -27,6 +41,11 @@ export const invoices = pgTable("invoices", {
   dueDate: text("due_date"), // YYYY-MM-DD
   status: text("status").$type<"unpaid" | "paid" | "cancelled">().notNull().default("unpaid"),
   isDemo: boolean("is_demo").notNull().default(false),
+  // "direct": the merchant made it. "board": a visitor made it on the merchant's public board.
+  // Board invoices are numbered "NMN-…" until paid, then get the merchant's next "INV-…" number,
+  // so unpaid ones never leave gaps in the merchant's sequence.
+  source: text("source").$type<"direct" | "board">().notNull().default("direct"),
+  productId: text("product_id"), // the product bought on the board, if any
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   // Filled once payment is verified on-chain
   paidAsset: text("paid_asset").$type<"NIM" | "USDT">(),
@@ -78,6 +97,54 @@ export const clients = pgTable("clients", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Money sent from one NimBill user to another by tag. NIM only: the transaction carries
+// `NimBill T <id>` as data, which is how it is matched and verified on-chain.
+// Kept apart from invoices, so transfers never count as earnings.
+export const transfers = pgTable("transfers", {
+  id: text("id").primaryKey(),
+  fromAddress: text("from_address").notNull(),
+  fromName: text("from_name").notNull(), // as it was when sent
+  fromTag: text("from_tag"),
+  toAddress: text("to_address").notNull(),
+  toName: text("to_name").notNull(),
+  toTag: text("to_tag").notNull(),
+  amount: text("amount").notNull(), // Luna, as string
+  currency: text("currency").notNull(), // what the sender typed the amount in: a fiat code or "NIM"
+  fiatAmount: text("fiat_amount").notNull(), // the typed amount, decimal string in `currency`
+  rate: text("rate").notNull(), // `currency` per 1 NIM used ("1" when sent in NIM)
+  note: text("note"), // private to sender and recipient, never on-chain
+  status: text("status").$type<"pending" | "confirmed">().notNull().default("pending"),
+  txHash: text("tx_hash").unique(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+});
+
+// What a merchant sells on their board. Buying one makes an invoice with the product as its line.
+export const products = pgTable("products", {
+  id: text("id").primaryKey(),
+  merchantAddress: text("merchant_address").notNull(),
+  name: text("name").notNull(),
+  description: text("description"),
+  price: text("price").notNull(), // decimal string in `currency`
+  currency: text("currency").notNull(),
+  active: boolean("active").notNull().default(true), // false = hidden from the board
+  // Changes whenever the picture changes, so its URL changes and caches never show an old one.
+  // Null = no picture.
+  imageVersion: integer("image_version"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// Product pictures, kept in the database so the app needs no separate file storage.
+// They are shrunk in the browser before upload (see lib/products.ts for the size limit).
+export const productImages = pgTable("product_images", {
+  productId: text("product_id").primaryKey(),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(), // base64
+});
+
+export type Product = typeof products.$inferSelect;
+export type Transfer = typeof transfers.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
@@ -152,4 +219,55 @@ CREATE TABLE IF NOT EXISTS clients (
 CREATE UNIQUE INDEX IF NOT EXISTS clients_merchant_name_idx ON clients (merchant_address, name_key);
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tip text NOT NULL DEFAULT '0';
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_tip text;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS tag text;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS tag_changed_at timestamptz;
+CREATE UNIQUE INDEX IF NOT EXISTS merchants_tag_idx ON merchants (tag);
+CREATE TABLE IF NOT EXISTS retired_tags (
+  tag text PRIMARY KEY,
+  address text NOT NULL,
+  retired_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS transfers (
+  id text PRIMARY KEY,
+  from_address text NOT NULL,
+  from_name text NOT NULL,
+  from_tag text,
+  to_address text NOT NULL,
+  to_name text NOT NULL,
+  to_tag text NOT NULL,
+  amount text NOT NULL,
+  currency text NOT NULL,
+  fiat_amount text NOT NULL,
+  rate text NOT NULL,
+  note text,
+  status text NOT NULL DEFAULT 'pending',
+  tx_hash text UNIQUE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  confirmed_at timestamptz
+);
+CREATE INDEX IF NOT EXISTS transfers_from_idx ON transfers (from_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS transfers_to_idx ON transfers (to_address, created_at DESC);
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS bio text;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS board_open_amounts boolean NOT NULL DEFAULT true;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS source text NOT NULL DEFAULT 'direct';
+CREATE TABLE IF NOT EXISTS products (
+  id text PRIMARY KEY,
+  merchant_address text NOT NULL,
+  name text NOT NULL,
+  description text,
+  price text NOT NULL,
+  currency text NOT NULL,
+  active boolean NOT NULL DEFAULT true,
+  image_version integer,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS products_merchant_idx ON products (merchant_address, created_at DESC);
+CREATE TABLE IF NOT EXISTS product_images (
+  product_id text PRIMARY KEY,
+  mime text NOT NULL,
+  data text NOT NULL
+);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS product_id text;
+CREATE INDEX IF NOT EXISTS invoices_board_idx ON invoices (merchant_address, source, created_at DESC);
 `;

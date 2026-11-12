@@ -1,7 +1,7 @@
 "use client";
 import type { ReactNode } from "react";
 import { useSession } from "@/lib/client/session";
-import { Header, Loader, OpenInNimiqPay, PageTitle, TabBar } from "./ui";
+import { Header, Loader, ModeSwitch, OpenInNimiqPay, PageTitle, TabBar } from "./ui";
 
 /** A signed-in screen reached from the tab bar: header, title, content, tabs. */
 export function TabPage({ title, description, children }: { title: string; description?: ReactNode; children: ReactNode }) {
@@ -15,6 +15,7 @@ export function TabPage({ title, description, children }: { title: string; descr
         <OpenInNimiqPay text="Sign in with Nimiq Pay to see this page." />
       ) : (
         <>
+          <ModeSwitch />
           <PageTitle title={title} description={description} />
           {children}
           <TabBar />

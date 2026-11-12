@@ -105,6 +105,41 @@ export function Disclosure({ summary, children, className }: { summary: ReactNod
   );
 }
 
+const MODES = [
+  { href: "/", label: "Invoices" },
+  { href: "/board", label: "Board" },
+] as const;
+
+/**
+ * Switches the signed-in app between its two sides: invoicing (home, invoices, save, withdraw)
+ * and the public board. Sits right under the header.
+ */
+export function ModeSwitch() {
+  const path = usePathname();
+  const board = path.startsWith("/board");
+  return (
+    <nav aria-label="Mode" className="no-print -mt-6 mb-6 grid grid-cols-2 border-x border-b border-ink">
+      {MODES.map((m) => {
+        const on = (m.href === "/board") === board;
+        return (
+          <Link
+            key={m.href}
+            href={m.href}
+            aria-current={on ? "page" : undefined}
+            className={cx(
+              "flex h-11 items-center justify-center font-mono text-xs font-semibold tracking-wider uppercase transition-colors",
+              m.href === "/board" && "border-l border-ink",
+              on ? "bg-ink text-paper" : "text-ink hover:bg-subtle",
+            )}
+          >
+            {m.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}
+
 const TAB_ICON = {
   width: 22,
   height: 22,
@@ -115,18 +150,34 @@ const TAB_ICON = {
   strokeLinecap: "square",
 } as const;
 
-const TABS = [
+type Tab = { href: string; label: string; icon: ReactNode };
+
+/** The invoicing side's tabs. */
+const TABS: Tab[] = [
   { href: "/", label: "Home", icon: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /> },
   { href: "/invoices", label: "Invoices", icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /> },
   { href: "/save", label: "Save", icon: <path d="M12 3v18M3 12h18M5 5h14v14H5z" /> },
   { href: "/withdraw", label: "Withdraw", icon: <path d="M12 4v12M7 11l5 5 5-5M4 20h16" /> },
-] as const;
+];
+
+/** The board side's tabs (see ModeSwitch). */
+export const BOARD_TABS: Tab[] = [
+  {
+    href: "/board",
+    label: "My link",
+    icon: <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />,
+  },
+  { href: "/board/products", label: "Products", icon: <path d="M3 7l9-4 9 4v10l-9 4-9-4zM3 7l9 4 9-4M12 11v10" /> },
+  { href: "/board/orders", label: "Orders", icon: <path d="M8 6h13M8 12h13M8 18h13M3 6h1M3 12h1M3 18h1" /> },
+];
+
+const COLS: Record<number, string> = { 3: "grid-cols-3", 4: "grid-cols-4" };
 
 /**
  * The signed-in app's main navigation: a bar along the bottom on phones (where NimBill mostly
  * runs, inside Nimiq Pay), a rail to the right of the page on wide screens.
  */
-export function TabBar() {
+export function TabBar({ tabs = TABS }: { tabs?: Tab[] }) {
   const path = usePathname();
   return (
     <>
@@ -139,9 +190,10 @@ export function TabBar() {
           "lg:inset-x-auto lg:top-24 lg:bottom-auto lg:left-[calc(50%+19.5rem)] lg:w-40 lg:border lg:pb-0",
         )}
       >
-        <ul className="mx-auto grid max-w-xl grid-cols-4 lg:grid-cols-1">
-          {TABS.map((t, i) => {
-            const on = t.href === "/" ? path === "/" : path.startsWith(t.href);
+        <ul className={cx("mx-auto grid max-w-xl lg:grid-cols-1", COLS[tabs.length])}>
+          {tabs.map((t, i) => {
+            // A tab whose path starts another tab's ("/board" and "/board/products") only matches exactly.
+            const on = tabs.some((o) => o.href !== t.href && o.href.startsWith(t.href)) ? path === t.href : path.startsWith(t.href);
             return (
               <li key={t.href} className={cx(i > 0 && "border-l border-line lg:border-t lg:border-l-0")}>
                 <Link

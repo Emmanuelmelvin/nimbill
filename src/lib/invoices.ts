@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gt, inArray, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import { getDb, schema } from "./db";
 import type { Invoice, LineItem, Quote } from "./db/schema";
@@ -37,6 +37,28 @@ export async function ensureMerchant(address: string) {
   return m;
 }
 
+/** The merchant's next "INV-0001"-style number. */
+async function nextInvoiceNumber(merchantAddress: string): Promise<string> {
+  const db = await getDb();
+  const [{ invoiceCounter }] = await db
+    .update(schema.merchants)
+    .set({ invoiceCounter: sql`${schema.merchants.invoiceCounter} + 1` })
+    .where(eq(schema.merchants.address, merchantAddress))
+    .returning({ invoiceCounter: schema.merchants.invoiceCounter });
+  return `INV-${String(invoiceCounter).padStart(4, "0")}`;
+}
+
+/** A board invoice was just paid: give it the merchant's next number. */
+async function assignBoardNumber(inv: Invoice): Promise<Invoice> {
+  const db = await getDb();
+  const [numbered] = await db
+    .update(schema.invoices)
+    .set({ number: await nextInvoiceNumber(inv.merchantAddress) })
+    .where(eq(schema.invoices.id, inv.id))
+    .returning();
+  return numbered ?? inv;
+}
+
 export async function createInvoice(input: {
   merchantAddress: string;
   merchantName: string;
@@ -48,19 +70,26 @@ export async function createInvoice(input: {
   note?: string | null;
   dueDate?: string | null;
   isDemo?: boolean;
+  /** "board": made by a visitor on the merchant's board. Numbered when paid (see assignBoardNumber). */
+  source?: "direct" | "board";
+  productId?: string | null;
 }): Promise<Invoice> {
   const db = await getDb();
   await ensureMerchant(input.merchantAddress);
-  const [{ invoiceCounter }] = await db
-    .update(schema.merchants)
-    .set({ invoiceCounter: sql`${schema.merchants.invoiceCounter} + 1` })
-    .where(eq(schema.merchants.address, input.merchantAddress))
-    .returning({ invoiceCounter: schema.merchants.invoiceCounter });
+  const id = newId();
+  const board = input.source === "board";
+  const number = input.isDemo
+    ? `DEMO-${newId(4).toUpperCase()}`
+    : board
+      ? nimbillNumber(id)
+      : await nextInvoiceNumber(input.merchantAddress);
   const [inv] = await db
     .insert(schema.invoices)
     .values({
-      id: newId(),
-      number: input.isDemo ? `DEMO-${newId(4).toUpperCase()}` : `INV-${String(invoiceCounter).padStart(4, "0")}`,
+      id,
+      number,
+      source: board ? "board" : "direct",
+      productId: input.productId ?? null,
       merchantAddress: input.merchantAddress,
       merchantName: input.merchantName,
       merchantEvmAddress: input.merchantEvmAddress ?? null,
@@ -88,7 +117,14 @@ export async function listInvoices(merchantAddress: string): Promise<Invoice[]> 
   return db
     .select()
     .from(schema.invoices)
-    .where(and(eq(schema.invoices.merchantAddress, merchantAddress), eq(schema.invoices.isDemo, false)))
+    .where(
+      and(
+        eq(schema.invoices.merchantAddress, merchantAddress),
+        eq(schema.invoices.isDemo, false),
+        // Unpaid board invoices were made by visitors and may never be paid: they live in Board → Orders.
+        or(eq(schema.invoices.source, "direct"), eq(schema.invoices.status, "paid")),
+      ),
+    )
     .orderBy(desc(schema.invoices.createdAt))
     .limit(200);
 }
@@ -203,8 +239,9 @@ async function usdValue(asset: "NIM" | "USDT", value: bigint): Promise<string | 
 async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, paidAt: Date, value: bigint): Promise<Invoice | null> {
   const db = await getDb();
   const paidUsd = await usdValue(q.asset, value);
+  let updated: Invoice | undefined;
   try {
-    const [updated] = await db
+    [updated] = await db
       .update(schema.invoices)
       .set({
         status: "paid",
@@ -219,15 +256,18 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
       })
       .where(and(eq(schema.invoices.id, inv.id), eq(schema.invoices.status, "unpaid"), isNull(schema.invoices.paidTxHash)))
       .returning();
-    // The update only matches while the invoice is still unpaid, so exactly one caller ever gets
-    // a row back here, however often verify or recovery run. That makes this the one place to
-    // announce the payment. (It only schedules the email; it cannot throw or slow this down.)
-    if (updated) notifyInvoicePaid(updated);
-    return updated ?? null;
   } catch {
     // unique(paid_tx_hash): this transaction already paid another invoice
     return null;
   }
+  // The update only matches while the invoice is still unpaid, so exactly one caller ever gets
+  // a row back here, however often verify or recovery run. That makes this the one place to
+  // announce the payment (it only schedules the email; it cannot throw or slow this down),
+  // and to number a board invoice.
+  if (!updated) return null;
+  const final = updated.source === "board" && !updated.isDemo ? await assignBoardNumber(updated) : updated;
+  notifyInvoicePaid(final);
+  return final;
 }
 
 export type VerifyResult =

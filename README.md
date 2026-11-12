@@ -15,6 +15,12 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 - **Stake what you earn.** After a NIM payment, the freelancer can stake it with a top-rated staking pool in one tap. The dashboard shows what is staked and with which pool, and lets them stake more, unstake, and move unstaked NIM back to the wallet once the waiting period ends.
 - **Try it in 30 seconds.** "Pay a sample invoice" walks anyone through the full flow for about $0.05.
 - **Public usage page** (`/stats`). Every paid invoice links to its on-chain transaction.
+- **A tag instead of an address.** Every user claims a tag like `ada@nimbill`. Lookalike-safe rules, reserved names, and a given-up tag stays held for its owner for 90 days.
+- **Send money by tag.** Type a tag, check the name and address it belongs to, and send NIM (amount in NIM or any supported currency). Transfers are verified on-chain like invoices and listed under Invoices → Transfers, apart from earnings.
+- **A public pay page.** `/pay/<tag>` lets anyone pay you without an account: an amount for something, or one of your products (with a quantity). Visitors' invoices get your next `INV-` number only once paid, so unpaid ones never leave gaps; they live under Board → Orders.
+- **Products.** Name, price, description and a picture (shrunk in the browser and stored in the database, so there is no file storage to set up). Hide or delete any time.
+- **Built for AI agents.** Every board's JSON includes the exact steps to pay it. `/docs` explains the API with examples and copy-paste setups for Claude (a skill), Cursor (a rule), ChatGPT (a custom GPT action) and Grok/Gemini. Machine-readable: `/llms.txt`, `/openapi.json`, `/skill.md`.
+- **Cheques** are previewed at `/cheques` and not built yet: they need a way to hold funds without NimBill holding them.
 
 ## How it uses Nimiq Pay
 
@@ -60,10 +66,13 @@ npm run dev -- -H 0.0.0.0
 
 Open `http://<your-computer's-LAN-IP>:3000` in Nimiq Pay → Mini Apps → Custom URL (your phone must be on the same Wi-Fi). In a desktop browser the app works too, but wallet actions show an "Open in Nimiq Pay" prompt.
 
-Tests (with the dev server running):
+Tests:
 
 ```bash
-node scripts/api-smoke.mjs   # 25 end-to-end API checks, simulating a wallet with a throwaway key
+npm run test:api        # 130+ end-to-end API checks against the running dev server, simulating wallets with throwaway keys
+npm run test:tags       # tag rules, request validation, agent docs and the OpenAPI spec
+npm run test:earnings   # earnings and goals maths
+npm run test:address    # Nimiq address derivation
 ```
 
 ## Deploy (Vercel + Neon)
@@ -82,7 +91,7 @@ node scripts/api-smoke.mjs   # 25 end-to-end API checks, simulating a wallet wit
 
 ## Roadmap
 
-Recurring invoices and reminders · client-side PDF generation · multi-language (via `window.nimiqPay.language`) · payouts to local bank / mobile money through licensed partners · merchant API and webhooks.
+Cheques (prove that each cheque can be its own wallet that only its link opens) · USDT transfers by tag · CORS on the public API, for agents that run in a browser · webhooks for paid invoices · recurring invoices and reminders · multi-language (via `window.nimiqPay.language`) · payouts to local bank / mobile money through licensed partners.
 
 ## License
 

@@ -85,6 +85,70 @@ export type GoalBodyInput = z.input<typeof GoalBody>;
 
 export const ExportQuery = z.object({ range: z.enum(["30d", "90d", "1y", "all"]).default("all") });
 
+/** Start a transfer to someone's tag. The amount is in `currency`: a fiat code, or NIM. */
+export const NewTransferBody = z.object({
+  to: z.string().trim().min(1, "Who are you sending to?").max(60),
+  amount: z.coerce.number("Enter the amount as a number").positive("Enter an amount above 0").max(1e12, "That amount is too large"),
+  currency: z.enum([...CURRENCY_CODES, "NIM"], { error: "Unsupported currency" }),
+  note: z.string().trim().max(80, "Keep the note under 80 characters").optional(),
+});
+export type NewTransferInput = z.input<typeof NewTransferBody>;
+
+export const TransferVerifyBody = z.object({ txHash: z.string().trim().max(80) });
+
+/** Most products one merchant can list. */
+export const MAX_PRODUCTS = 50;
+/** Largest product picture accepted, after the browser has shrunk it. */
+export const MAX_IMAGE_BYTES = 400_000;
+/** Pictures are shrunk to at most this many pixels on their longest side before upload. */
+export const IMAGE_MAX_SIDE = 1000;
+
+export const ProductBody = z.object({
+  name: z.string().trim().min(1, "Give the product a name").max(80, "Keep the name under 80 characters"),
+  description: z.string().trim().max(500, "Keep the description under 500 characters").optional(),
+  price: z.coerce.number("Enter the price as a number").positive("The price must be more than 0").max(1e12, "That price is too large"),
+  currency: z.enum(CURRENCY_CODES, { error: "Unsupported currency" }),
+  active: z.boolean().optional(),
+});
+export type ProductInput = z.input<typeof ProductBody>;
+/** For edits: every field optional, only what is sent changes. */
+export const ProductPatchBody = ProductBody.partial();
+
+/** A product picture as a data URL ("data:image/jpeg;base64,…"). */
+export const ProductImageBody = z.object({
+  dataUrl: z
+    .string()
+    .max(Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + 100, "That picture is too large. Try a smaller one.")
+    .regex(/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/]+=*$/, "Use a JPEG, PNG or WebP picture."),
+});
+
+/**
+ * A visitor starting a payment on a merchant's board: either buying a product, or paying an amount
+ * they type with what it's for (only when the merchant accepts open payments).
+ */
+export const BoardInvoiceBody = z
+  .object({
+    payerName: z
+      .string({ error: "Enter your name, so they know who paid" })
+      .trim()
+      .min(1, "Enter your name, so they know who paid")
+      .max(80),
+    productId: z.string().trim().max(20).optional(),
+    quantity: z.coerce.number().int("Quantity must be a whole number").min(1).max(100).optional(),
+    amount: z.coerce
+      .number("Enter the amount as a number")
+      .positive("Enter an amount above 0")
+      .max(1e12, "That amount is too large")
+      .optional(),
+    currency: z.enum(CURRENCY_CODES, { error: "Unsupported currency" }).optional(),
+    description: z.string().trim().min(1, "Say what you're paying for").max(120).optional(),
+  })
+  .refine(
+    (b) => b.productId || (b.amount !== undefined && b.currency && b.description),
+    "Pick a product, or enter an amount and what it's for",
+  );
+export type BoardInvoiceInput = z.input<typeof BoardInvoiceBody>;
+
 export const ClientBody = z.object({
   name: z.string().trim().min(1, "Enter the client's name").max(80),
   email: z.union([z.literal(""), z.email("That email does not look right")]).optional(),

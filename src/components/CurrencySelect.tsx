@@ -28,9 +28,12 @@ const COIN_OPTIONS = [
 ];
 const WITH_COINS = [...OPTIONS, ...COIN_OPTIONS];
 
+const WITH_NIM = [...OPTIONS, COIN_OPTIONS[0]];
+
 /**
  * Currency picker: flag, code and name for each currency an invoice can be priced in.
- * `coins` adds NIM and USDT (for goals, which can be set in either).
+ * `coins` adds NIM and USDT (for goals, which can be set in either); "NIM" adds only NIM
+ * (for sending, which is always in NIM).
  */
 export function CurrencySelect({
   id,
@@ -42,8 +45,9 @@ export function CurrencySelect({
   id?: string;
   value: string;
   onChange: (code: string) => void;
-  coins?: boolean;
+  coins?: boolean | "NIM";
   placeholder?: string;
 }) {
-  return <Dropdown id={id} options={coins ? WITH_COINS : OPTIONS} value={value} onChange={onChange} placeholder={placeholder} />;
+  const options = coins === "NIM" ? WITH_NIM : coins ? WITH_COINS : OPTIONS;
+  return <Dropdown id={id} options={options} value={value} onChange={onChange} placeholder={placeholder} />;
 }

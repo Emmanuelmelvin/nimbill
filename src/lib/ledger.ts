@@ -92,7 +92,8 @@ export async function getEarnings(merchantAddress: string, fx: Fx | null): Promi
         amount: inv.paidAmount ?? "0",
         client: inv.clientName,
       });
-    } else if (inv.status === "unpaid") {
+    } else if (inv.status === "unpaid" && inv.source === "direct") {
+      // Unpaid board invoices were started by visitors and may never be paid, so they aren't "owed".
       open.push({ usd: invoiceUsd(inv, fx), dueDate: inv.dueDate });
     }
   }

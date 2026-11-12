@@ -244,3 +244,384 @@ r = await call(`/api/clients/${clientId}`, { method: "DELETE" });
 ok(r.status === 200, "saved client removed");
 r = await call(`/api/clients/${clientId}`, { method: "DELETE" });
 ok(r.status === 404, "removing it again -> not found");
+
+// ---- tags ----
+async function signInNew() {
+  const key = ed25519.utils.randomSecretKey();
+  cookie = "";
+  const { body } = await call("/api/auth/challenge");
+  const res = await call("/api/auth/verify", {
+    method: "POST",
+    body: JSON.stringify({ message: body.message, publicKey: bytesToHex(ed25519.getPublicKey(key)), signature: sign(body.message, key) }),
+  });
+  return res.body.merchant.address;
+}
+const rnd = Math.random().toString(36).slice(2, 8);
+const tagA = `ada_${rnd}`;
+const myAddress = (await call("/api/auth/me")).body.merchant.address;
+
+r = await call("/api/tags/check?tag=admin");
+ok(r.status === 200 && r.body.available === false && /reserved/.test(r.body.message), "reserved tag refused: " + r.body?.message);
+r = await call("/api/tags/check?tag=1ada");
+ok(r.body.available === false, "tag must start with a letter: " + r.body?.message);
+r = await call("/api/tags/check?tag=ab");
+ok(r.body.available === false, "tag too short: " + r.body?.message);
+r = await call(`/api/tags/check?tag=${tagA}`);
+ok(r.body.available === true, `${tagA} is free`);
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ tag: `@${tagA.toUpperCase()}@NimBill` }) });
+ok(
+  r.status === 200 && r.body.merchant.tag === tagA && r.body.merchant.name === "Ada Studio",
+  `claims tag (normalized to ${r.body?.merchant?.tag}), keeps name`,
+);
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ tag: "has space" }) });
+ok(r.status === 400, "rejects a malformed tag: " + r.body?.error?.message);
+r = await call(`/api/tags/check?tag=${tagA}`);
+ok(r.body.available === true, "your own tag counts as free for you");
+
+cookie = "";
+r = await call(`/api/tags/${tagA}@nimbill`);
+ok(
+  r.status === 200 && r.body.owner.address === myAddress && r.body.owner.name === "Ada Studio" && r.body.owner.handle === `${tagA}@nimbill`,
+  "public lookup by tag returns name and address",
+);
+r = await call(`/api/tags/nobody_${rnd}`);
+ok(r.status === 404, "unknown tag -> not found");
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ tag: `x_${rnd}` }) });
+ok(r.status === 401, "anonymous cannot claim a tag");
+
+const other = await signInNew();
+await call("/api/me", { method: "POST", body: JSON.stringify({ name: "Kito Media" }) });
+r = await call(`/api/tags/check?tag=${tagA}`);
+ok(r.body.available === false, "someone else's tag shows as taken");
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ tag: tagA }) });
+ok(r.status === 409, "cannot claim someone else's tag: " + r.body?.error?.message);
+
+cookie = mine;
+const tagB = `ada_new_${rnd}`;
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ tag: tagB }) });
+ok(r.status === 200 && r.body.merchant.tag === tagB, "first change after claiming is free");
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ tag: `ada_third_${rnd}` }) });
+ok(r.status === 400 && /again on/.test(r.body.error.message), "second change waits: " + r.body?.error?.message);
+
+cookie = "";
+r = await call(`/api/tags/${tagA}`);
+ok(r.status === 404, "old tag no longer resolves");
+await signInNew().then(() => call("/api/me", { method: "POST", body: JSON.stringify({ name: "Squatter" }) }));
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ tag: tagA }) });
+ok(r.status === 409, "a given-up tag stays held for its owner: " + r.body?.error?.message);
+ok(other !== myAddress, "second wallet is a different account");
+
+// ---- transfers (amounts in NIM, so no live rate is needed) ----
+const kitoAddress = await signInNew();
+const kitoTag = `kito_${rnd}`;
+await call("/api/me", { method: "POST", body: JSON.stringify({ name: "Kito Media", tag: kitoTag }) });
+const kito = cookie;
+
+cookie = mine;
+r = await call("/api/transfers", {
+  method: "POST",
+  body: JSON.stringify({ to: `${kitoTag}@nimbill`, amount: 1.5, currency: "NIM", note: "Lunch" }),
+});
+ok(
+  r.status === 201 &&
+    r.body.payment.amount === "150000" &&
+    r.body.payment.recipient === kitoAddress &&
+    r.body.payment.memo === `NimBill T ${r.body.transfer.id}` &&
+    r.body.transfer.direction === "sent" &&
+    r.body.transfer.counterparty.handle === `${kitoTag}@nimbill`,
+  `transfer started: ${r.body?.payment?.amount} Luna to ${r.body?.transfer?.counterparty?.handle}, memo "${r.body?.payment?.memo}"`,
+);
+const transferId = r.body.transfer.id;
+r = await call("/api/transfers", { method: "POST", body: JSON.stringify({ to: kitoTag, amount: 1000, currency: "NGN" }) });
+if (r.status === 503) {
+  console.log("SKIP fiat transfer (live rates unavailable)");
+} else {
+  const fiat = (Number(r.body.payment.amount) / 1e5) * Number(r.body.payment.rate);
+  ok(
+    r.status === 201 && fiat >= 1000 && fiat < 1000 * 1.01,
+    `₦1,000 becomes ${Number(r.body.payment.amount) / 1e5} NIM (worth ₦${fiat.toFixed(2)})`,
+  );
+}
+r = await call("/api/transfers", { method: "POST", body: JSON.stringify({ to: tagB, amount: 1, currency: "NIM" }) });
+ok(r.status === 400, "cannot send to your own tag: " + r.body?.error?.message);
+r = await call("/api/transfers", { method: "POST", body: JSON.stringify({ to: `nobody_${rnd}`, amount: 1, currency: "NIM" }) });
+ok(r.status === 404, "unknown tag -> not found: " + r.body?.error?.message);
+r = await call("/api/transfers", { method: "POST", body: JSON.stringify({ to: kitoTag, amount: 0, currency: "NIM" }) });
+ok(r.status === 400, "amount must be above 0: " + r.body?.error?.message);
+r = await call("/api/transfers", { method: "POST", body: JSON.stringify({ to: kitoTag, amount: 1, currency: "DOGE" }) });
+ok(r.status === 400, "unknown currency rejected: " + r.body?.error?.message);
+r = await call(`/api/transfers/${transferId}/verify`, { method: "POST", body: JSON.stringify({ txHash: "nothex" }) });
+ok(r.body.status === "rejected", "transfer: malformed hash -> rejected");
+r = await call(`/api/transfers/${transferId}/verify`, { method: "POST", body: JSON.stringify({ txHash: "ab".repeat(32) }) });
+ok(r.body.status === "pending", "transfer: unknown hash -> pending");
+r = await call(`/api/transfers/${transferId}/verify`, {
+  method: "POST",
+  body: JSON.stringify({ txHash: "6ea82e8a926cd8e3babb8f696e0cacf0c8df18ff5f0a25cee50e5d374284739a" }),
+});
+ok(r.body.status === "rejected", "transfer: real but unrelated tx -> rejected: " + r.body?.message);
+r = await call("/api/transfers");
+ok(
+  r.status === 200 && r.body.transfers.some((t) => t.id === transferId && t.status === "pending" && t.note === "Lunch"),
+  "sender sees the pending transfer",
+);
+
+cookie = kito;
+r = await call(`/api/transfers/${transferId}/verify`, { method: "POST", body: JSON.stringify({ txHash: "ab".repeat(32) }) });
+ok(r.status === 404, "only the sender can report the hash");
+r = await call("/api/transfers");
+ok(r.status === 200 && !r.body.transfers.some((t) => t.id === transferId), "recipient doesn't see it until it's confirmed");
+cookie = "";
+r = await call("/api/transfers");
+ok(r.status === 401, "anonymous cannot list transfers");
+r = await call("/api/transfers", { method: "POST", body: JSON.stringify({ to: kitoTag, amount: 1, currency: "NIM" }) });
+ok(r.status === 401, "anonymous cannot send");
+
+// ---- board settings ----
+r = await call("/api/board");
+ok(r.status === 401, "anonymous cannot read board stats");
+cookie = mine;
+r = await call("/api/auth/me");
+ok(r.body.merchant.boardOpenAmounts === true && r.body.merchant.bio === null, "board: open amounts on and no bio by default");
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ bio: "  Brand designer, Lagos ", boardOpenAmounts: false }) });
+ok(
+  r.status === 200 &&
+    r.body.merchant.bio === "Brand designer, Lagos" &&
+    r.body.merchant.boardOpenAmounts === false &&
+    r.body.merchant.name === "Ada Studio",
+  "board: bio (trimmed) and open amounts saved, name kept",
+);
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ bio: "x".repeat(161) }) });
+ok(r.status === 400, "board: bio too long: " + r.body?.error?.message);
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ bio: "" }) });
+ok(r.status === 200 && r.body.merchant.bio === null, "board: empty bio clears it");
+r = await call("/api/board");
+ok(r.status === 200 && r.body.last30.orders === 0 && r.body.last30.usd === 0, "board: no orders yet in the last 30 days");
+
+// ---- products ----
+const PNG_1PX = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==";
+const fetchRaw = (path) => fetch(B + path, { headers: { cookie } });
+cookie = "";
+r = await call("/api/products");
+ok(r.status === 401, "anonymous cannot list products");
+cookie = mine;
+r = await call("/api/products", { method: "POST", body: JSON.stringify({ name: "Logo pack", price: 0, currency: "NGN" }) });
+ok(r.status === 400, "product price must be above 0: " + r.body?.error?.message);
+r = await call("/api/products", { method: "POST", body: JSON.stringify({ name: "", price: 10, currency: "NGN" }) });
+ok(r.status === 400, "product needs a name: " + r.body?.error?.message);
+r = await call("/api/products", { method: "POST", body: JSON.stringify({ name: "Logo pack", price: 10, currency: "DOGE" }) });
+ok(r.status === 400, "product currency must be a fiat currency: " + r.body?.error?.message);
+r = await call("/api/products", {
+  method: "POST",
+  body: JSON.stringify({ name: " Logo pack ", price: 120000, currency: "NGN", description: "3 concepts" }),
+});
+ok(
+  r.status === 201 &&
+    r.body.product.name === "Logo pack" &&
+    r.body.product.price === "120000.00" &&
+    r.body.product.active &&
+    r.body.product.imageUrl === null,
+  "product created: " + r.body?.product?.name,
+);
+const productId = r.body.product.id;
+r = await call(`/api/products/${productId}/image`, { method: "PUT", body: JSON.stringify({ dataUrl: "data:text/html;base64,PGgxPg==" }) });
+ok(r.status === 400, "rejects a non-image upload: " + r.body?.error?.message);
+r = await call(`/api/products/${productId}/image`, { method: "PUT", body: JSON.stringify({ dataUrl: PNG_1PX }) });
+ok(
+  r.status === 200 && r.body.product.imageUrl === `/api/products/${productId}/image?v=1`,
+  "picture uploaded: " + r.body?.product?.imageUrl,
+);
+cookie = "";
+res = await fetchRaw(`/api/products/${productId}/image?v=1`);
+ok(
+  res.status === 200 && res.headers.get("content-type") === "image/png" && /immutable/.test(res.headers.get("cache-control")),
+  "anyone can load a live product's picture",
+);
+cookie = mine;
+r = await call(`/api/products/${productId}`, { method: "PATCH", body: JSON.stringify({ active: false, price: 125000 }) });
+ok(
+  r.status === 200 && r.body.product.active === false && r.body.product.price === "125000.00" && r.body.product.name === "Logo pack",
+  "product hidden and repriced, name kept",
+);
+res = await fetchRaw(`/api/products/${productId}/image?v=1`);
+ok(res.status === 200, "owner still sees a hidden product's picture");
+cookie = "";
+res = await fetchRaw(`/api/products/${productId}/image?v=1`);
+ok(res.status === 404, "a hidden product's picture is private");
+cookie = kito;
+r = await call(`/api/products/${productId}`, { method: "PATCH", body: JSON.stringify({ name: "Mine now" }) });
+ok(r.status === 404, "someone else can't edit the product");
+r = await call(`/api/products/${productId}`, { method: "DELETE" });
+ok(r.status === 404, "someone else can't delete the product");
+cookie = mine;
+r = await call(`/api/products/${productId}`, { method: "PATCH", body: JSON.stringify({ active: true }) });
+r = await call("/api/board");
+ok(r.body.liveProducts === 1, "board counts live products: " + r.body?.liveProducts);
+r = await call(`/api/products/${productId}/image`, { method: "DELETE" });
+ok(r.status === 200 && r.body.product.imageUrl === null, "picture removed");
+r = await call(`/api/products/${productId}`, { method: "DELETE" });
+ok(r.status === 200, "product deleted");
+r = await call(`/api/products/${productId}`);
+ok(r.status === 404, "deleted product is gone");
+
+// ---- public board ----
+r = await call("/api/products", { method: "POST", body: JSON.stringify({ name: "Brand guide", price: 15000, currency: "NGN" }) });
+const boardProduct = r.body.product.id;
+const openBefore = (await call("/api/earnings")).body.open.length;
+cookie = "";
+r = await call(`/api/pay/nobody_${rnd}`);
+ok(r.status === 404, "unknown board -> not found");
+r = await call(`/api/pay/${tagB}@nimbill`);
+ok(
+  r.status === 200 &&
+    r.body.merchant.name === "Ada Studio" &&
+    r.body.merchant.handle === `${tagB}@nimbill` &&
+    r.body.products.length === 1 &&
+    r.body.merchant.openAmounts === false,
+  `anyone can open the board: ${r.body?.merchant?.handle}, ${r.body?.products?.length} product`,
+);
+const openAmount = { amount: 50000, currency: "NGN", description: "Logo deposit", payerName: "Tunde Bello" };
+r = await call(`/api/pay/${tagB}/invoices`, { method: "POST", body: JSON.stringify(openAmount) });
+ok(r.status === 400, "open amounts refused while switched off: " + r.body?.error?.message);
+r = await call(`/api/pay/${tagB}/invoices`, { method: "POST", body: JSON.stringify({ productId: boardProduct }) });
+ok(r.status === 400, "visitor must give a name: " + r.body?.error?.message);
+r = await call(`/api/pay/${tagB}/invoices`, {
+  method: "POST",
+  body: JSON.stringify({ productId: boardProduct, payerName: "Tunde Bello" }),
+});
+ok(
+  r.status === 201 &&
+    /^NMN-/.test(r.body.invoice.number) &&
+    r.body.invoice.total === "15000.00" &&
+    r.body.invoice.items[0].description === "Brand guide" &&
+    r.body.invoice.clientName === "Tunde Bello",
+  `visitor buys a product: ${r.body?.invoice?.number}, ${r.body?.invoice?.total} ${r.body?.invoice?.currency}`,
+);
+const boardInvoice = r.body.invoice.id;
+r = await call(`/api/pay/${tagB}/invoices`, {
+  method: "POST",
+  body: JSON.stringify({ productId: boardProduct, quantity: 3, payerName: "Tunde Bello" }),
+});
+ok(
+  r.status === 201 && r.body.invoice.total === "45000.00" && r.body.invoice.items[0].quantity === 3,
+  "visitor buys 3 of a product: " + r.body?.invoice?.total,
+);
+r = await call(`/api/pay/${tagB}/invoices`, {
+  method: "POST",
+  body: JSON.stringify({ productId: boardProduct, quantity: 0, payerName: "Tunde Bello" }),
+});
+ok(r.status === 400, "quantity must be at least 1");
+r = await call(`/api/invoices/${boardInvoice}`);
+ok(r.status === 200 && r.body.invoice.status === "unpaid", "the board invoice opens like any other invoice");
+
+cookie = mine;
+await call("/api/me", { method: "POST", body: JSON.stringify({ boardOpenAmounts: true }) });
+r = await call(`/api/pay/${tagB}/invoices`, { method: "POST", body: JSON.stringify(openAmount) });
+ok(r.status === 400, "you can't pay on your own board: " + r.body?.error?.message);
+await call(`/api/products/${boardProduct}`, { method: "PATCH", body: JSON.stringify({ active: false }) });
+
+cookie = "";
+r = await call(`/api/pay/${tagB}/invoices`, { method: "POST", body: JSON.stringify(openAmount) });
+ok(
+  r.status === 201 && r.body.invoice.total === "50000.00" && r.body.invoice.items[0].description === "Logo deposit",
+  "visitor pays an open amount",
+);
+r = await call(`/api/pay/${tagB}/invoices`, { method: "POST", body: JSON.stringify({ productId: boardProduct, payerName: "Tunde" }) });
+ok(r.status === 404, "a hidden product can't be bought: " + r.body?.error?.message);
+r = await call(`/api/pay/${tagB}`);
+ok(r.body.products.length === 0 && r.body.merchant.openAmounts === true, "hidden products leave the board");
+r = await call("/api/board/orders");
+ok(r.status === 401, "anonymous cannot list board orders");
+
+cookie = mine;
+r = await call("/api/board/orders");
+ok(
+  r.status === 200 && r.body.orders.length === 3 && r.body.orders.every((o) => o.status === "unpaid"),
+  "owner sees the three unpaid orders",
+);
+r = await call("/api/invoices");
+ok(!r.body.invoices.some((i) => i.id === boardInvoice), "unpaid board orders stay out of the invoice list");
+r = await call("/api/earnings");
+ok(r.body.open.length === openBefore, "unpaid board orders don't count as owed");
+r = await call("/api/invoices", {
+  method: "POST",
+  body: JSON.stringify({ clientName: "Acme Ltd", currency: "NGN", items: [{ description: "Retainer", quantity: 1, unitPrice: 1000 }] }),
+});
+ok(
+  r.status === 201 && r.body.invoice.number === "INV-0003",
+  "board orders didn't use up invoice numbers: next is " + r.body?.invoice?.number,
+);
+r = await call("/api/products");
+ok(r.body.products.find((p) => p.id === boardProduct)?.sold === 0, "nothing sold until it's paid");
+
+// ---- agents: follow only the board's own howToPay steps, no URLs written here ----
+cookie = "";
+r = await call(`/api/pay/${tagB}`);
+const steps = r.body.howToPay?.steps ?? [];
+ok(
+  steps.length === 5 && r.body.howToPay.assets.includes("NIM") && /\/docs$/.test(r.body.howToPay.docs),
+  "board explains how to pay: " + steps.map((s) => s.title).join(" → "),
+);
+const absolute = (url) => url.replace(/^https?:\/\/[^/]+/, "");
+r = await call(absolute(steps[1].url), {
+  method: steps[1].method,
+  body: JSON.stringify({ amount: 25, currency: "USD", description: "Agent test: 1 hour of design", payerName: "Agent for Tunde" }),
+});
+ok(r.status === 201 && steps[1].url.startsWith(B), `agent created an invoice at ${steps[1].url}`);
+const agentInvoice = r.body.invoice;
+r = await call(absolute(steps[2].url.replace("{invoiceId}", agentInvoice.id)), {
+  method: steps[2].method,
+  body: JSON.stringify(steps[2].body),
+});
+if (r.status === 503) {
+  console.log("SKIP agent quote (live rates unavailable)");
+} else {
+  ok(
+    r.status === 200 &&
+      r.body.quote.memo === `NimBill ${agentInvoice.id}` &&
+      r.body.quote.recipient === myAddress &&
+      Number(r.body.quote.amount) > 0,
+    `agent got a quote: ${Number(r.body.quote.amount) / 1e5} NIM to ${r.body.quote.recipient}`,
+  );
+}
+r = await call(absolute(steps[4].url.replace("{invoiceId}", agentInvoice.id)), {
+  method: steps[4].method,
+  body: JSON.stringify({ asset: "NIM", txHash: "ab".repeat(32) }),
+});
+ok(r.body.status === "pending", "agent polls verify: pending until the transaction lands");
+res = await fetch(B + "/llms.txt");
+const llms = await res.text();
+ok(
+  res.status === 200 &&
+    res.headers.get("content-type").startsWith("text/plain") &&
+    llms.includes("/api/pay/{tag}/invoices") &&
+    llms.startsWith("# NimBill"),
+  "llms.txt is served",
+);
+res = await fetch(B + "/docs");
+const docsHtml = await res.text();
+ok(
+  res.status === 200 &&
+    docsHtml.includes("Get paid by people, programs and AI agents") &&
+    docsHtml.includes("ChatGPT") &&
+    docsHtml.includes("Grok"),
+  "API docs page is served",
+);
+res = await fetch(B + "/docs/agents", { redirect: "manual" });
+ok([307, 308].includes(res.status) && res.headers.get("location").includes("/docs"), "old agent guide redirects to /docs");
+res = await fetch(B + "/skill.md");
+const skill = await res.text();
+ok(
+  res.status === 200 && skill.startsWith("---\nname: nimbill-pay\n") && skill.includes("/api/pay/{tag}/invoices"),
+  "skill.md is a valid skill file",
+);
+res = await fetch(B + "/openapi.json");
+const spec = await res.json();
+ok(
+  res.status === 200 &&
+    spec.openapi === "3.1.0" &&
+    spec.paths["/api/pay/{tag}/invoices"].post.operationId === "createBoardInvoice" &&
+    spec.servers[0].url === B,
+  `openapi.json lists ${Object.keys(spec.paths).length} paths`,
+);
+res = await fetch(B + `/pay/${tagB}`);
+ok(new RegExp(`type="application/json" href="[^"]*/api/pay/${tagB}"`).test(await res.text()), "pay page points agents to its JSON");

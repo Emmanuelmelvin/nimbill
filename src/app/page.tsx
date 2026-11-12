@@ -1,27 +1,25 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
-import { Alert, Button, Card, Header, LinkButton, Loader, OpenInNimiqPay, PageTitle, Stat, TabBar, TextLink } from "@/components/ui";
+import { useMemo } from "react";
+import { Alert, Card, Header, LinkButton, Loader, ModeSwitch, PageTitle, Stat, TabBar, TextLink } from "@/components/ui";
 import { EarningsCard } from "@/components/EarningsCard";
+import { ActionStrip, TagRow } from "@/components/HomeActions";
 import { GoalProgress, currentGoal } from "@/components/Goals";
-import { PayByNumber } from "@/components/PayByNumber";
+import { Landing } from "@/components/landing/Landing";
 import { ProfileForm } from "@/components/ProfileForm";
-import { api, type PublicInvoice } from "@/lib/client/api";
 import { useLedger } from "@/lib/client/ledger";
-import { useNimiq } from "@/lib/client/nimiq";
-import { useSession, useSignIn } from "@/lib/client/session";
+import { useSession } from "@/lib/client/session";
 import { localDate } from "@/lib/earnings";
 import { formatMoney } from "@/lib/money";
 
 export default function Home() {
   const { merchant, loading } = useSession();
+  // Signed out: the landing page brings its own full-width header.
+  if (!loading && !merchant) return <Landing />;
   return (
     <>
       <Header />
-      {loading ? (
+      {loading || !merchant ? (
         <Loader />
-      ) : !merchant ? (
-        <Landing />
       ) : !merchant.name ? (
         <div>
           <PageTitle title="Welcome! One quick step" description="This is how your name appears on invoices and receipts." />
@@ -31,6 +29,7 @@ export default function Home() {
         </div>
       ) : (
         <>
+          <ModeSwitch />
           <Dashboard />
           <TabBar />
         </>
@@ -39,110 +38,10 @@ export default function Home() {
   );
 }
 
-function TryDemo() {
-  const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  return (
-    <>
-      <Button
-        variant="secondary"
-        block
-        loading={busy}
-        onClick={async () => {
-          setBusy(true);
-          setError(null);
-          try {
-            const { invoice } = await api<{ invoice: PublicInvoice }>("/api/demo", { method: "POST" });
-            router.push(`/i/${invoice.id}`);
-          } catch (e) {
-            setError((e as Error).message);
-            setBusy(false);
-          }
-        }}
-      >
-        Try it: pay a sample invoice (≈ $0.05)
-      </Button>
-      {error && <Alert kind="error">{error}</Alert>}
-    </>
-  );
-}
-
-const FEATURES = [
-  ["₦", "Price in Naira, Shillings, Euros…", "Clients pay the exact amount at a live rate, locked for 5 minutes."],
-  ["✓", "Verified on the blockchain", "An invoice is marked paid only after we see the payment on-chain."],
-  ["→", "No middleman, no account for clients", "Money goes wallet-to-wallet. We never hold your funds."],
-  ["%", "Grow what you earn", "Stake your NIM earnings with one tap, right after you get paid."],
-] as const;
-
-function Landing() {
-  return (
-    <div className="space-y-8">
-      <section>
-        <h1 className="text-[2rem] leading-[1.1] font-bold tracking-tight">
-          Invoice in your currency.
-          <br />
-          <span className="text-muted">Get paid in NIM or USDT.</span>
-        </h1>
-        <p className="mt-3 text-muted">
-          For freelancers and small businesses. Send a link — your client pays from their wallet, straight into yours.
-        </p>
-      </section>
-
-      <CallToAction />
-
-      <PayByNumber />
-
-      <Card as="div" padding="none">
-        <ul className="divide-y divide-line">
-          {FEATURES.map(([icon, title, text]) => (
-            <li key={title} className="flex gap-4 p-4">
-              <span aria-hidden className="flex h-10 w-10 shrink-0 items-center justify-center border border-ink font-mono font-bold">
-                {icon}
-              </span>
-              <div>
-                <p className="font-semibold">{title}</p>
-                <p className="text-sm text-muted">{text}</p>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </Card>
-      <p className="text-center text-sm">
-        <TextLink href="/stats" muted>
-          See payments made with NimBill
-        </TextLink>
-      </p>
-    </div>
-  );
-}
-
-function CallToAction() {
-  const { state } = useNimiq();
-  const { signIn, busy, error } = useSignIn();
-  return (
-    <div className="space-y-3">
-      {state === "checking" ? (
-        <Loader compact />
-      ) : state === "ready" ? (
-        <>
-          <Button size="lg" block loading={busy} onClick={signIn}>
-            Start invoicing — sign in with Nimiq Pay
-          </Button>
-          <p className="text-center text-xs text-muted">Signing a message proves the wallet is yours. It costs nothing.</p>
-          {error && <Alert kind="error">{error}</Alert>}
-        </>
-      ) : (
-        <OpenInNimiqPay text="NimBill is a Nimiq Pay Mini App. Open it in Nimiq Pay to create invoices and pay them." />
-      )}
-      <TryDemo />
-    </div>
-  );
-}
-
 /** Signed-in home: what came in, what is still owed, and how the goal is going. */
 function Dashboard() {
   const { ledger, error } = useLedger();
+  const { merchant } = useSession();
 
   const owed = useMemo(() => {
     const today = localDate();
@@ -161,12 +60,25 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
+      {merchant?.tag && <TagRow tag={merchant.tag} />}
+
+      {/* Accounts made before tags existed: ask once, until a tag is claimed. */}
+      {merchant && !merchant.tag && (
+        <Card tone="strong" className="flex items-center justify-between gap-4">
+          <div>
+            <p className="font-semibold">Claim your NimBill tag</p>
+            <p className="text-sm text-muted">Get paid with a short name like ada@nimbill instead of a wallet address.</p>
+          </div>
+          <LinkButton href="/settings#tag" size="sm" className="shrink-0">
+            Claim tag
+          </LinkButton>
+        </Card>
+      )}
+
       {/* Remount when the currency changes so the unit toggle starts on it. */}
       <EarningsCard key={ledger.currency} points={ledger.points} fx={ledger.fx} currency={ledger.currency} goal={goal} />
 
-      <LinkButton href="/new" size="lg" block>
-        + New invoice
-      </LinkButton>
+      <ActionStrip />
 
       <div className="grid grid-cols-2 gap-3">
         <Stat label="Outstanding" value={money(owed.usd)} sub={plural(owed.count)} />

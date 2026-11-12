@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   AnchorButton,
@@ -18,6 +19,7 @@ import {
 } from "@/components/ui";
 import { EarningsCard } from "@/components/EarningsCard";
 import { TabPage } from "@/components/TabPage";
+import { TransferList } from "@/components/TransferList";
 import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
 import { formatAsset, formatFiat } from "@/lib/currencies";
 import { localDate, type EarningPoint } from "@/lib/earnings";
@@ -30,7 +32,9 @@ type Listing = { invoices: OwnInvoice[]; fx: Fx | null; currency: string };
 const VIEWS = [
   { value: "invoices", label: "Invoices" },
   { value: "clients", label: "Clients" },
+  { value: "transfers", label: "Transfers" },
 ] as const;
+type View = (typeof VIEWS)[number]["value"];
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -52,7 +56,9 @@ const isOverdue = (i: PublicInvoice, today: string) => i.status === "unpaid" && 
 export default function Invoices() {
   return (
     <TabPage title="Invoices">
-      <InvoicesScreen />
+      <Suspense fallback={<Loader compact />}>
+        <InvoicesScreen />
+      </Suspense>
     </TabPage>
   );
 }
@@ -60,7 +66,9 @@ export default function Invoices() {
 function InvoicesScreen() {
   const [data, setData] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [view, setView] = useState<"invoices" | "clients">("invoices");
+  // "/invoices?view=transfers" opens straight on transfers (linked from the send screen).
+  const params = useSearchParams();
+  const [view, setView] = useState<View>(params.get("view") === "transfers" ? "transfers" : "invoices");
 
   useEffect(() => {
     api<Listing>("/api/invoices")
@@ -76,22 +84,27 @@ function InvoicesScreen() {
 
       {error && <Alert kind="error">{error}</Alert>}
       {!data && !error && <Loader compact />}
-      {data && data.invoices.length === 0 && (
-        <EmptyState
-          title="No invoices yet"
-          description="Create your first one — it takes under a minute."
-          action={
-            <LinkButton href="/new" variant="secondary" size="sm">
-              Create an invoice
-            </LinkButton>
-          }
-        />
-      )}
-      {data && data.invoices.length > 0 && (
+      {data && (
         <>
           <SegmentedControl label="View" options={VIEWS} value={view} onChange={setView} size="md" block />
-          {view === "invoices" ? <InvoiceList invoices={data.invoices} /> : <ClientList {...data} />}
-          {data.invoices.some((i) => i.status === "paid") && <ExportCard />}
+          {view === "transfers" ? (
+            <TransferList />
+          ) : data.invoices.length === 0 ? (
+            <EmptyState
+              title="No invoices yet"
+              description="Create your first one — it takes under a minute."
+              action={
+                <LinkButton href="/new" variant="secondary" size="sm">
+                  Create an invoice
+                </LinkButton>
+              }
+            />
+          ) : view === "invoices" ? (
+            <InvoiceList invoices={data.invoices} />
+          ) : (
+            <ClientList {...data} />
+          )}
+          {view !== "transfers" && data.invoices.some((i) => i.status === "paid") && <ExportCard />}
         </>
       )}
     </div>

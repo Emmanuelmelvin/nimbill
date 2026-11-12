@@ -6,6 +6,7 @@ import { CurrencySelect } from "@/components/CurrencySelect";
 import { ProfileForm } from "@/components/ProfileForm";
 import { api, type MerchantInfo } from "@/lib/client/api";
 import { signOut, useSession } from "@/lib/client/session";
+import { formatTag } from "@/lib/tags";
 
 /** The currency totals, the earnings chart and new goals are shown in. Saves as soon as it is picked. */
 function DisplayCurrency() {
@@ -66,6 +67,15 @@ export default function Settings() {
       <PageTitle title="Settings" />
       <div className="space-y-4">
         <Card className="space-y-3">
+          {merchant.tag && (
+            <div className="flex items-center justify-between gap-3 border-b border-line pb-3">
+              <div className="min-w-0">
+                <Eyebrow>Your tag</Eyebrow>
+                <p className="mt-1 truncate font-mono text-base font-semibold">{formatTag(merchant.tag)}</p>
+              </div>
+              <CopyButton text={formatTag(merchant.tag)} size="sm" className="min-h-11 shrink-0" />
+            </div>
+          )}
           <Eyebrow>Payments go to</Eyebrow>
           <CodeBlock className="text-sm">{merchant.address}</CodeBlock>
           <CopyButton text={merchant.address} label="Copy address" size="sm" block className="min-h-11" />

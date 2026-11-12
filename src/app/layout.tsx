@@ -27,8 +27,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // Nimiq Pay injects --safe-area-inset-* styles on <html> before React hydrates; ignore that attribute mismatch.
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
-      <body className="min-h-full font-sans">
-        <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-4 pb-12">{children}</div>
+      <body className="min-h-full overflow-x-clip font-sans">
+        {/* Pages are a narrow column, except pages with full-width sections (.bleed: the landing page,
+            the docs), where the column opens up to the whole width and the page sets its own. */}
+        <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-4 pb-12 has-[.bleed]:max-w-none has-[.bleed]:px-0">
+          {children}
+        </div>
       </body>
     </html>
   );

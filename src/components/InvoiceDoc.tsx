@@ -11,7 +11,8 @@ export function InvoiceDoc({ inv }: { inv: PublicInvoice }) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <Eyebrow>
-            Invoice {inv.number} · {inv.nimbillNumber}
+            {/* An unpaid board invoice has no number of its own yet: its number is the Nimbill number. */}
+            Invoice {inv.number === inv.nimbillNumber ? inv.number : `${inv.number} · ${inv.nimbillNumber}`}
           </Eyebrow>
           <p className="mt-1 text-3xl font-bold tracking-tight tabular-nums">{formatFiat(inv.total, inv.currency)}</p>
           {inv.dueDate && inv.status === "unpaid" && (

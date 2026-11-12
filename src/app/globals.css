@@ -62,3 +62,209 @@
     opacity: 1;
   }
 }
+
+/* ── Landing page ──────────────────────────────────────────────────────────
+   The page column is narrow (max-w-xl). A page whose top element is .bleed gets the full width
+   instead (see the column in app/layout.tsx). Not 100vw: that includes the scrollbar and would
+   cut off the right edge on computers with visible scrollbars.
+   Delays come from the --d custom property set inline. */
+.bleed {
+  width: 100%;
+}
+
+.grid-bg,
+.grid-bg-dark {
+  background-size: 44px 44px;
+  mask-image: radial-gradient(ellipse 80% 70% at 50% 35%, #000 25%, transparent 75%);
+}
+.grid-bg {
+  background-image: linear-gradient(var(--color-line) 1px, transparent 1px), linear-gradient(90deg, var(--color-line) 1px, transparent 1px);
+}
+.grid-bg-dark {
+  background-image:
+    linear-gradient(rgb(255 255 255 / 0.09) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.09) 1px, transparent 1px);
+}
+
+.word-in {
+  animation: word-up 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0ms) both;
+}
+.fade-up {
+  animation: fade-up 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0ms) both;
+}
+.float {
+  animation: float 6s ease-in-out infinite;
+}
+.blink {
+  animation: blink 1.4s steps(1) infinite;
+}
+.scan {
+  animation: scan 7s linear infinite;
+}
+.marquee {
+  animation: marquee 45s linear infinite;
+}
+.marquee:hover {
+  animation-play-state: paused;
+}
+
+/* Fades in when the element (or a parent) gets data-in from useInView. */
+.reveal {
+  opacity: 0;
+  transform: translateY(20px);
+  transition:
+    opacity 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0ms),
+    transform 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0ms),
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+.reveal[data-in],
+[data-in] .reveal {
+  opacity: 1;
+  transform: none;
+}
+
+/* A line that draws itself from left to right. */
+.draw-x {
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 1.2s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+[data-in] .draw-x {
+  transform: scaleX(1);
+}
+
+/* Bars that grow up from the bottom. */
+.grow-y {
+  transform: scaleY(0);
+  transform-origin: bottom;
+  transition: transform 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) var(--d, 0ms);
+}
+[data-in] .grow-y {
+  transform: none;
+}
+
+/* Verification table: "checking…" turns into a tick, row by row. */
+.check .pending,
+.check .ok {
+  transition:
+    opacity 0.3s ease var(--d, 0ms),
+    transform 0.3s ease var(--d, 0ms);
+}
+.check .ok {
+  opacity: 0;
+  transform: translateX(-6px);
+}
+[data-in] .check .pending {
+  opacity: 0;
+}
+[data-in] .check .ok {
+  opacity: 1;
+  transform: none;
+}
+
+/* Receipt demo: rows that appear in turn, the PAID stamp and the floating chips. */
+.pop-row {
+  opacity: 0;
+  transform: translateY(6px);
+  transition:
+    opacity 0.35s ease,
+    transform 0.35s ease;
+}
+.pop-row[data-on] {
+  opacity: 1;
+  transform: none;
+}
+.stamp {
+  transform: translateX(-50%) rotate(-10deg);
+  animation: stamp 0.45s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+.chip-pop {
+  animation: pop 0.4s cubic-bezier(0.3, 1.4, 0.5, 1) both;
+}
+
+@keyframes word-up {
+  from {
+    transform: translateY(105%);
+  }
+  to {
+    transform: none;
+  }
+}
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.15;
+  }
+}
+@keyframes scan {
+  from {
+    transform: translateY(0);
+    opacity: 0;
+  }
+  10%,
+  90% {
+    opacity: 1;
+  }
+  to {
+    transform: translateY(900px);
+    opacity: 0;
+  }
+}
+@keyframes marquee {
+  to {
+    transform: translateX(-50%);
+  }
+}
+@keyframes stamp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) rotate(-22deg) scale(2.4);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) rotate(-10deg) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .word-in,
+  .fade-up,
+  .float,
+  .blink,
+  .scan,
+  .marquee,
+  .stamp,
+  .chip-pop {
+    animation: none !important;
+  }
+  .reveal,
+  .draw-x,
+  .grow-y,
+  .pop-row,
+  .check .pending,
+  .check .ok {
+    transition: none !important;
+  }
+}
