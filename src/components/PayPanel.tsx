@@ -7,6 +7,7 @@ import { getNimiq, nimiqPaymentUri, useNimiq, walletErrorMessage } from "@/lib/c
 import { polygonWallet } from "@/lib/client/wallet";
 import { formatAsset, formatFiat } from "@/lib/currencies";
 import { AppError, Errors } from "@/lib/errors";
+import { MAX_TIP } from "@/lib/schemas";
 import {
   Alert,
   AnchorButton,
@@ -16,6 +17,8 @@ import {
   CopyButton,
   Countdown,
   Eyebrow,
+  Field,
+  Input,
   Loader,
   OpenInNimiqPay,
   SegmentedControl,
@@ -24,7 +27,7 @@ import {
 } from "./ui";
 
 type Asset = "NIM" | "USDT";
-type Quote = { id: string; asset: Asset; amount: string; rate: string; expiresAt: string; recipient: string; memo: string };
+type Quote = { id: string; asset: Asset; amount: string; rate: string; tip: string; expiresAt: string; recipient: string; memo: string };
 type Phase =
   | { k: "choose" }
   | { k: "quoting" }
@@ -37,6 +40,11 @@ const ASSETS = [
   { value: "NIM", label: "NIM" },
   { value: "USDT", label: "USDT (Polygon)" },
 ] as const;
+
+// Tips are optional and go to the merchant in the same payment as the invoice.
+const TIP_PERCENTS = [5, 10, 15] as const;
+type TipChoice = "0" | `${(typeof TIP_PERCENTS)[number]}` | "custom";
+const cents = (n: number) => Math.round(n * 100) / 100;
 
 export function PayPanel({
   inv,
@@ -52,6 +60,12 @@ export function PayPanel({
   const [phase, setPhase] = useState<Phase>({ k: "choose" });
   const [error, setError] = useState<string | null>(null);
   const [external, setExternal] = useState(false);
+  const [tipChoice, setTipChoice] = useState<TipChoice>("0");
+  const [customTip, setCustomTip] = useState("");
+  const total = Number(inv.total);
+  const canTip = !inv.isDemo; // the sample invoice keeps to the basic flow
+  const tip = !canTip ? 0 : tipChoice === "custom" ? cents(Number(customTip) || 0) : cents((total * Number(tipChoice)) / 100);
+  const tipTooLarge = tip > MAX_TIP;
   const stopped = useRef(false);
   useEffect(() => {
     stopped.current = false;
@@ -65,14 +79,14 @@ export function PayPanel({
       setError(null);
       setPhase({ k: "quoting" });
       try {
-        const { quote } = await api<{ quote: Quote }>(`/api/invoices/${inv.id}/quote`, { body: { asset: a } });
+        const { quote } = await api<{ quote: Quote }>(`/api/invoices/${inv.id}/quote`, { body: { asset: a, tip } });
         setPhase({ k: "quoted", quote });
       } catch (e) {
         setError((e as Error).message);
         setPhase({ k: "choose" });
       }
     },
-    [inv.id],
+    [inv.id, tip],
   );
 
   /** Poll the server until the payment is verified on-chain (≈3 min max). */
@@ -180,9 +194,28 @@ export function PayPanel({
           {state === "checking" ? (
             <Loader compact />
           ) : inWallet || external ? (
-            <Button size="lg" block loading={phase.k === "quoting"} onClick={() => getQuote(external ? "NIM" : asset)}>
-              Get price in {external ? "NIM" : asset}
-            </Button>
+            <>
+              {canTip && (
+                <TipPicker
+                  inv={inv}
+                  choice={tipChoice}
+                  onChoice={setTipChoice}
+                  custom={customTip}
+                  onCustom={setCustomTip}
+                  tip={tip}
+                  tooLarge={tipTooLarge}
+                />
+              )}
+              <Button
+                size="lg"
+                block
+                loading={phase.k === "quoting"}
+                disabled={tipTooLarge}
+                onClick={() => getQuote(external ? "NIM" : asset)}
+              >
+                Get price in {external ? "NIM" : asset}
+              </Button>
+            </>
           ) : (
             <>
               <OpenInNimiqPay text="Pay in a few taps with the Nimiq Pay wallet." />
@@ -226,6 +259,11 @@ export function PayPanel({
               Pay with {phase.quote.asset === "NIM" ? "USDT (Polygon)" : "NIM"} instead
             </TextButton>
           )}
+          {canTip && phase.k !== "wallet" && (
+            <TextButton className="w-full" onClick={() => setPhase({ k: "choose" })}>
+              {Number(phase.quote.tip) > 0 ? "Change tip" : "Add a tip"}
+            </TextButton>
+          )}
         </QuoteBox>
       )}
 
@@ -239,6 +277,68 @@ export function PayPanel({
 
       {error && <Alert kind={/cancelled/i.test(error) ? "info" : "error"}>{error}</Alert>}
     </Card>
+  );
+}
+
+/** Lets the client add something on top of the invoice: a share of the total, or their own amount. */
+function TipPicker({
+  inv,
+  choice,
+  onChoice,
+  custom,
+  onCustom,
+  tip,
+  tooLarge,
+}: {
+  inv: PublicInvoice;
+  choice: TipChoice;
+  onChoice: (c: TipChoice) => void;
+  custom: string;
+  onCustom: (v: string) => void;
+  tip: number;
+  tooLarge: boolean;
+}) {
+  const total = Number(inv.total);
+  const options: { value: TipChoice; label: string }[] = [
+    { value: "0", label: "None" },
+    // On very small invoices a percentage rounds to nothing, so it isn't offered.
+    ...TIP_PERCENTS.filter((p) => cents((total * p) / 100) > 0).map((p) => ({ value: `${p}` as TipChoice, label: `${p}%` })),
+    { value: "custom", label: "Other" },
+  ];
+  return (
+    <div className="space-y-2 border-t border-line pt-4">
+      <div>
+        <p className="font-semibold">
+          Add a tip <span className="font-normal text-muted">(optional)</span>
+        </p>
+        <p className="text-sm text-muted">All of it goes to {inv.merchantName}, in the same payment.</p>
+      </div>
+      <SegmentedControl kind="radio" label="Tip" block options={options} value={choice} onChange={onChoice} />
+      {choice === "custom" && (
+        <Field label={`Tip amount (${inv.currency})`} htmlFor="tip" size="sm">
+          <Input
+            id="tip"
+            inputMode="decimal"
+            value={custom}
+            onChange={(e) => onCustom(e.target.value.replace(/[^0-9.]/g, ""))}
+            placeholder="0.00"
+            autoFocus
+          />
+        </Field>
+      )}
+      {tooLarge ? (
+        <p className="text-sm font-medium">That tip is too large.</p>
+      ) : (
+        tip > 0 && (
+          <p className="flex items-baseline justify-between gap-3 text-sm">
+            <span className="text-muted">
+              {formatFiat(inv.total, inv.currency)} + {formatFiat(tip, inv.currency)} tip
+            </span>
+            <span className="font-bold tabular-nums">{formatFiat(cents(total + tip), inv.currency)}</span>
+          </p>
+        )
+      )}
+    </div>
   );
 }
 
@@ -256,13 +356,15 @@ function QuoteBox({
   children: React.ReactNode;
 }) {
   const rate = Number(quote.rate);
+  const tip = Number(quote.tip);
   return (
     <div className="space-y-3">
       <Card as="div" tone="inverse" padding="sm">
         <p className="font-mono text-[11px] tracking-wider text-paper/70 uppercase">You pay</p>
         <p className="mt-1 text-3xl font-bold tabular-nums">{formatAsset(quote.amount, quote.asset)}</p>
         <p className="mt-1 text-sm text-paper/70">
-          for {formatFiat(inv.total, inv.currency)} · 1 {quote.asset} ={" "}
+          for {formatFiat(inv.total, inv.currency)}
+          {tip > 0 && ` + ${formatFiat(tip, inv.currency)} tip`} · 1 {quote.asset} ={" "}
           {rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {inv.currency}
         </p>
         <p className="mt-3 border-t border-paper/20 pt-3 text-sm">

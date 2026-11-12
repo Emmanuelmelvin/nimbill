@@ -64,6 +64,7 @@ const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 export function paidEmail(inv: Invoice): Omit<MailMessage, "to"> {
   const client = oneLine(inv.clientName);
   const amount = formatFiat(inv.total, inv.currency);
+  const tip = Number(inv.paidTip ?? 0);
   const received = inv.paidAsset && inv.paidAmount ? formatAsset(inv.paidAmount, inv.paidAsset) : "";
   const paidAt = inv.paidAt
     ? `${new Intl.DateTimeFormat("en", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(inv.paidAt)} UTC`
@@ -75,11 +76,15 @@ export function paidEmail(inv: Invoice): Omit<MailMessage, "to"> {
     ["Client", client],
     ["Amount", amount],
   ];
+  if (tip > 0) rows.push(["Tip", formatFiat(tip, inv.currency)]);
   if (received) rows.push(["Received", received]);
   if (paidAt) rows.push(["Paid", paidAt]);
 
   const subject = `${inv.number} paid: ${amount} from ${client}`;
-  const intro = `${client} paid invoice ${inv.number}.`;
+  const intro =
+    tip > 0
+      ? `${client} paid invoice ${inv.number} and added a ${formatFiat(tip, inv.currency)} tip.`
+      : `${client} paid invoice ${inv.number}.`;
   const outro = "The payment went straight to your wallet and was verified on-chain.";
   const why = "You get this email because your address is saved in NimBill Settings. Remove it there to stop these emails.";
 

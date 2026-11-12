@@ -105,12 +105,19 @@ export async function cancelInvoice(id: string, merchantAddress: string): Promis
 
 // ---------- quotes (rate lock) ----------
 
-export async function createQuote(inv: Invoice, asset: "NIM" | "USDT"): Promise<Quote> {
+/**
+ * Lock a price for paying `inv` with `asset`. `tip` is what the client chose to add on top, in the
+ * invoice currency: it is priced into the amount, so the tip reaches the merchant in the same
+ * transaction, and is recorded on the invoice when that payment is verified.
+ */
+export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0): Promise<Quote> {
   if (inv.status !== "unpaid")
     throw Errors.badRequest(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
   if (asset === "USDT" && !inv.merchantEvmAddress) throw Errors.badRequest("This merchant does not accept USDT yet.");
+  // Sample invoices show the basic flow; they take no tips.
+  const tipFiat = inv.isDemo ? 0 : Math.max(0, Math.round(tip * 100) / 100);
   const rate = await getRate(asset, inv.currency);
-  const coins = Number(inv.total) / rate;
+  const coins = (Number(inv.total) + tipFiat) / rate;
   // Round up to 0.01 of the coin so the merchant never receives less than the invoice total.
   const unit = asset === "NIM" ? LUNA_PER_NIM : 10 ** USDT_DECIMALS;
   const step = unit / 100;
@@ -126,6 +133,7 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT"): Promise<
       asset,
       amount: amount.toString(),
       rate: String(rate),
+      tip: tipFiat.toFixed(2),
       expiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     })
     .returning();
@@ -207,6 +215,7 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
         paidFrom: from,
         paidAt,
         paidUsd,
+        paidTip: Number(q.tip) > 0 ? q.tip : null,
       })
       .where(and(eq(schema.invoices.id, inv.id), eq(schema.invoices.status, "unpaid"), isNull(schema.invoices.paidTxHash)))
       .returning();
@@ -409,6 +418,8 @@ export function publicInvoice(inv: Invoice) {
             txHash: inv.paidTxHash!,
             from: inv.paidFrom!,
             paidAt: inv.paidAt!.toISOString(),
+            /** The client's tip in the invoice currency, included in `amount`. Null when there was none. */
+            tip: inv.paidTip,
           }
         : null,
   };

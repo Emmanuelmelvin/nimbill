@@ -40,7 +40,19 @@ export const MerchantEmail = z
 
 export const AssetInput = z.enum(["NIM", "USDT"]);
 
-export const QuoteBody = z.object({ asset: AssetInput });
+/** The most a client can add as a tip, in the invoice currency. */
+export const MAX_TIP = 1e9;
+
+export const QuoteBody = z.object({
+  asset: AssetInput,
+  /** Optional tip on top of the invoice total, in the invoice currency. Kept to 2 decimals. */
+  tip: z.coerce
+    .number("Enter the tip as a number")
+    .min(0, "A tip can't be negative")
+    .max(MAX_TIP, "That tip is too large")
+    .default(0)
+    .transform((n) => Math.round(n * 100) / 100),
+});
 
 export const VerifyBody = z.object({ asset: AssetInput, txHash: z.string().trim().max(80) });
 

@@ -37,6 +37,8 @@ export default function Receipt() {
   const asset = p.asset as "NIM" | "USDT";
   const explorer = asset === "NIM" ? nimExplorerTx(p.txHash) : polygonExplorerTx(p.txHash);
   const rate = Number(p.rate);
+  const tip = Number(p.tip ?? 0);
+  const paidFiat = Number(inv.total) + tip; // what the client paid in the invoice currency
 
   return (
     <>
@@ -45,8 +47,11 @@ export default function Receipt() {
         <div className="flex items-start justify-between gap-3">
           <div>
             <Eyebrow>Payment receipt</Eyebrow>
-            <h1 className="mt-1 text-2xl font-bold tabular-nums">{formatFiat(inv.total, inv.currency)}</h1>
-            <p className="text-muted">Invoice {inv.number}</p>
+            <h1 className="mt-1 text-2xl font-bold tabular-nums">{formatFiat(paidFiat, inv.currency)}</h1>
+            <p className="text-muted">
+              Invoice {inv.number}
+              {tip > 0 && ` · includes a ${formatFiat(tip, inv.currency)} tip`}
+            </p>
           </div>
           <Badge variant="solid">Paid</Badge>
         </div>
@@ -76,6 +81,18 @@ export default function Receipt() {
               <td className="pt-2 font-semibold">Total</td>
               <td className="pt-2 text-right font-bold tabular-nums">{formatFiat(inv.total, inv.currency)}</td>
             </tr>
+            {tip > 0 && (
+              <>
+                <tr>
+                  <td className="pt-2">Tip</td>
+                  <td className="pt-2 text-right tabular-nums">{formatFiat(tip, inv.currency)}</td>
+                </tr>
+                <tr>
+                  <td className="pt-2 font-semibold">Total paid</td>
+                  <td className="pt-2 text-right font-bold tabular-nums">{formatFiat(paidFiat, inv.currency)}</td>
+                </tr>
+              </>
+            )}
           </tbody>
         </table>
 

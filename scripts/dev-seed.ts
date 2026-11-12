@@ -27,10 +27,10 @@ const DAY = 86_400_000;
 const now = Date.now();
 const NIM_USD = 0.001;
 
-// [days ago, client, currency, total, paid in, value in USD]
-const paid: [number, string, string, number, "NIM" | "USDT", number][] = [
+// [days ago, client, currency, total, paid in, value in USD (tip included), tip in the invoice currency]
+const paid: [number, string, string, number, "NIM" | "USDT", number, number?][] = [
   [0.1, "Lagos Bakery", "NGN", 45_000, "USDT", 30],
-  [1, "Acme Ltd", "USD", 120, "NIM", 120],
+  [1, "Acme Ltd", "USD", 120, "NIM", 132, 12], // the client added a 10% tip
   [3, "Lagos Bakery", "NGN", 90_000, "NIM", 60],
   [6, "Kito Media", "USD", 250, "USDT", 250],
   [9, "Acme Ltd", "USD", 80, "NIM", 80],
@@ -46,14 +46,14 @@ const paid: [number, string, string, number, "NIM" | "USDT", number][] = [
 
 let n = 0;
 const id = () => `seed${String(++n).padStart(6, "0")}`;
-for (const [ago, client, currency, total, asset, usd] of paid) {
+for (const [ago, client, currency, total, asset, usd, tip = 0] of paid) {
   const invoiceId = id();
   const at = new Date(now - ago * DAY);
   const coins = asset === "NIM" ? usd / NIM_USD : usd;
   await db.query(
     `INSERT INTO invoices (id, number, merchant_address, merchant_name, client_name, items, currency, total, status, created_at,
-       paid_asset, paid_amount, paid_rate, paid_tx_hash, paid_from, paid_at, paid_usd)
-     VALUES ($1, $2, $3, 'Ada Studio', $4, $5, $6, $7, 'paid', $8, $9, $10, $11, $12, $13, $14, $15)`,
+       paid_asset, paid_amount, paid_rate, paid_tx_hash, paid_from, paid_at, paid_usd, paid_tip)
+     VALUES ($1, $2, $3, 'Ada Studio', $4, $5, $6, $7, 'paid', $8, $9, $10, $11, $12, $13, $14, $15, $16)`,
     [
       invoiceId,
       `SEED-${String(n).padStart(3, "0")}`,
@@ -65,12 +65,13 @@ for (const [ago, client, currency, total, asset, usd] of paid) {
       new Date(at.getTime() - 2 * DAY),
       asset,
       String(Math.round(coins * (asset === "NIM" ? 1e5 : 1e6))),
-      String(total / coins),
+      String((total + tip) / coins),
       (asset === "NIM" ? "" : "0x") + invoiceId.padEnd(64, "0"),
       "seed-payer",
       at,
       // Two rows have no dollar value yet, like payments from before the column existed (see backfill in lib/ledger.ts).
       n === 5 || n === 12 ? null : usd.toFixed(6),
+      tip > 0 ? tip.toFixed(2) : null,
     ],
   );
 }

@@ -24,11 +24,11 @@ const coins = (inv: Pick<Invoice, "paidAsset" | "paidAmount">) =>
 async function backfillPaidUsd(merchantAddress: string, fx: Fx): Promise<void> {
   const db = await getDb();
   const rows = await db
-    .select({ id: schema.invoices.id, total: schema.invoices.total, currency: schema.invoices.currency })
+    .select({ id: schema.invoices.id, total: schema.invoices.total, tip: schema.invoices.paidTip, currency: schema.invoices.currency })
     .from(schema.invoices)
     .where(and(eq(schema.invoices.merchantAddress, merchantAddress), eq(schema.invoices.status, "paid"), isNull(schema.invoices.paidUsd)));
   for (const r of rows) {
-    const usd = toUsd(Number(r.total), r.currency, fx);
+    const usd = toUsd(Number(r.total) + Number(r.tip ?? 0), r.currency, fx); // a tip is part of what was received
     if (usd === null) continue;
     await db
       .update(schema.invoices)

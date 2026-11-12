@@ -5,6 +5,7 @@ import { Card, Eyebrow, StatusBadge } from "./ui";
 
 /** The invoice itself, as both parties see it. */
 export function InvoiceDoc({ inv }: { inv: PublicInvoice }) {
+  const tip = Number(inv.payment?.tip ?? 0);
   return (
     <Card as="article" className="space-y-5">
       <div className="flex items-start justify-between gap-3">
@@ -60,6 +61,18 @@ export function InvoiceDoc({ inv }: { inv: PublicInvoice }) {
             <td className="pt-3 font-semibold">Total</td>
             <td className="pt-3 text-right font-bold tabular-nums">{formatFiat(inv.total, inv.currency)}</td>
           </tr>
+          {tip > 0 && (
+            <>
+              <tr>
+                <td className="pt-2">Tip</td>
+                <td className="pt-2 text-right tabular-nums">{formatFiat(tip, inv.currency)}</td>
+              </tr>
+              <tr>
+                <td className="pt-2 font-semibold">Total paid</td>
+                <td className="pt-2 text-right font-bold tabular-nums">{formatFiat(Number(inv.total) + tip, inv.currency)}</td>
+              </tr>
+            </>
+          )}
         </tfoot>
       </table>
 

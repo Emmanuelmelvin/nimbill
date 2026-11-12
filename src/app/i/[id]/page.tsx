@@ -146,7 +146,8 @@ function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolea
       </div>
       <h2 className="mt-3 text-xl font-bold">{fresh ? "Payment confirmed!" : isOwner ? "You've been paid" : "Paid"}</h2>
       <p className="mt-1 text-muted">
-        {formatAsset(p.amount, p.asset as "NIM" | "USDT")} for {formatFiat(inv.total, inv.currency)} · {new Date(p.paidAt).toLocaleString()}
+        {formatAsset(p.amount, p.asset as "NIM" | "USDT")} for {formatFiat(inv.total, inv.currency)}
+        {Number(p.tip) > 0 && ` + ${formatFiat(p.tip!, inv.currency)} tip`} · {new Date(p.paidAt).toLocaleString()}
       </p>
       <p className="mt-1 font-mono text-[11px] tracking-wider text-muted uppercase">
         Verified on the {p.asset === "NIM" ? "Nimiq" : "Polygon"} blockchain

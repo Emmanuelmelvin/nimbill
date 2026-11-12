@@ -38,6 +38,9 @@ export const invoices = pgTable("invoices", {
   // Value of the payment in US dollars when it was verified, so earnings in different
   // currencies can be added up. Null until filled (older rows are backfilled, see lib/earnings.ts).
   paidUsd: text("paid_usd"),
+  // What the client added on top of `total` as a tip, decimal string in `currency`. Null = no tip.
+  // `paidAmount` and `paidUsd` already include it.
+  paidTip: text("paid_tip"),
 });
 
 // An earnings target for a period. Progress is computed from paid invoices, never stored.
@@ -57,8 +60,9 @@ export const quotes = pgTable("quotes", {
   id: text("id").primaryKey(),
   invoiceId: text("invoice_id").notNull(),
   asset: text("asset").$type<"NIM" | "USDT">().notNull(),
-  amount: text("amount").notNull(), // smallest units
+  amount: text("amount").notNull(), // smallest units; covers the invoice total plus `tip`
   rate: text("rate").notNull(), // fiat per 1 coin
+  tip: text("tip").notNull().default("0"), // the client's tip, decimal string in the invoice currency
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
@@ -146,4 +150,6 @@ CREATE TABLE IF NOT EXISTS clients (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 CREATE UNIQUE INDEX IF NOT EXISTS clients_merchant_name_idx ON clients (merchant_address, name_key);
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS tip text NOT NULL DEFAULT '0';
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_tip text;
 `;
