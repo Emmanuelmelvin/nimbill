@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { Avatar } from "@/components/Avatar";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import { ProductImage } from "@/components/ProductImage";
 import { ProductPreview } from "@/components/ProductPreview";
@@ -73,12 +74,17 @@ function Board({ board }: { board: PublicBoard }) {
               NIM{merchant.acceptsUsdt && " · USDT"}
             </span>
           </div>
-          <p className="mt-5 text-sm text-muted">To</p>
-          <h1 className="text-2xl leading-tight font-bold tracking-tight break-words">{merchant.handle}</h1>
-          <p className="mt-1 text-sm text-muted">
-            {merchant.name}
-            {merchant.bio && ` · ${merchant.bio}`}
-          </p>
+          <div className="mt-5 flex items-center gap-4">
+            <Avatar src={merchant.avatarUrl} name={merchant.name} className="w-16 text-4xl" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs text-muted">To</p>
+              <h1 className="text-2xl leading-tight font-bold tracking-tight break-words">{merchant.handle}</h1>
+              <p className="mt-0.5 text-sm text-muted">
+                {merchant.name}
+                {merchant.bio && ` · ${merchant.bio}`}
+              </p>
+            </div>
+          </div>
           {tabs.length > 1 && (
             <div className="mt-5">
               <SegmentedControl label="What to pay" options={tabs} value={tab} onChange={setTab} block />

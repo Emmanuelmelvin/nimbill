@@ -2,7 +2,7 @@
 import { agentStepsText, agentUrl } from "../src/lib/agent-docs.ts";
 import { ENDPOINTS, openApiSpec, skillMarkdown } from "../src/lib/api-reference.ts";
 import { BoardInvoiceBody, NewTransferBody, ProductBody } from "../src/lib/schemas.ts";
-import { TagInput, formatTag, normalizeTag, suggestTag, tagProblem } from "../src/lib/tags.ts";
+import { TagInput, avatarUrl, formatTag, normalizeTag, suggestTag, tagProblem } from "../src/lib/tags.ts";
 
 let failed = 0;
 const ok = (c: unknown, m: string) => {
@@ -14,6 +14,7 @@ const ok = (c: unknown, m: string) => {
 ok(normalizeTag("  @Chidi@NimBill ") === "chidi", "normalize strips @, @nimbill, case and spaces");
 ok(normalizeTag("ada_studio") === "ada_studio", "normalize leaves a clean tag alone");
 ok(formatTag("ada") === "ada@nimbill", "format adds @nimbill");
+ok(avatarUrl("ada", 2) === "/api/avatars/ada?v=2", "avatarUrl includes the version");
 for (const [t, why] of [
   ["ab", "too short"],
   ["a".repeat(21), "too long"],

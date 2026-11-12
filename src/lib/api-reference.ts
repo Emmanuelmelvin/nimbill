@@ -46,6 +46,7 @@ export const ENDPOINTS: Endpoint[] = [
           address: "NQ16 ADMA EM3A 32VA BTBJ SA58 B0FV 909J FQE4",
           acceptsUsdt: true,
           openAmounts: true,
+          avatarUrl: "/api/avatars/ada?v=1",
         },
         products: [
           {
@@ -201,6 +202,7 @@ export const ENDPOINTS: Endpoint[] = [
           name: "Ada Studio",
           address: "NQ16 ADMA EM3A 32VA BTBJ SA58 B0FV 909J FQE4",
           acceptsUsdt: true,
+          avatarUrl: "/api/avatars/ada?v=1",
         },
       },
     },

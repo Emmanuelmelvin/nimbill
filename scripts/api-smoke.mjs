@@ -464,10 +464,27 @@ r = await call(`/api/products/${productId}`);
 ok(r.status === 404, "deleted product is gone");
 
 // ---- public board ----
+r = await call("/api/me/avatar", { method: "PUT", body: JSON.stringify({ dataUrl: "data:text/html;base64,PGgxPg==" }) });
+ok(r.status === 400, "avatar: rejects a non-image upload: " + r.body?.error?.message);
+r = await call("/api/me/avatar", { method: "PUT", body: JSON.stringify({ dataUrl: PNG_1PX }) });
+ok(r.status === 200 && r.body.merchant.avatarVersion === 1, "avatar uploaded: v=" + r.body?.merchant?.avatarVersion);
 r = await call("/api/products", { method: "POST", body: JSON.stringify({ name: "Brand guide", price: 15000, currency: "NGN" }) });
 const boardProduct = r.body.product.id;
 const openBefore = (await call("/api/earnings")).body.open.length;
 cookie = "";
+r = await call("/api/me/avatar", { method: "PUT", body: JSON.stringify({ dataUrl: PNG_1PX }) });
+ok(r.status === 401, "anonymous cannot set an avatar");
+r = await call("/api/me/avatar", { method: "DELETE" });
+ok(r.status === 401, "anonymous cannot remove an avatar");
+res = await fetchRaw(`/api/avatars/${tagB}@nimbill?v=1`);
+ok(
+  res.status === 200 && res.headers.get("content-type") === "image/png" && /immutable/.test(res.headers.get("cache-control")),
+  "anyone can load a merchant's avatar",
+);
+res = await fetchRaw(`/api/avatars/nobody_${rnd}`);
+ok(res.status === 404, "unknown tag has no avatar");
+r = await call(`/api/tags/${tagB}`);
+ok(r.body.owner.avatarUrl === `/api/avatars/${tagB}?v=1`, "tag lookup includes avatarUrl: " + r.body?.owner?.avatarUrl);
 r = await call(`/api/pay/nobody_${rnd}`);
 ok(r.status === 404, "unknown board -> not found");
 r = await call(`/api/pay/${tagB}@nimbill`);
@@ -475,6 +492,7 @@ ok(
   r.status === 200 &&
     r.body.merchant.name === "Ada Studio" &&
     r.body.merchant.handle === `${tagB}@nimbill` &&
+    r.body.merchant.avatarUrl === `/api/avatars/${tagB}?v=1` &&
     r.body.products.length === 1 &&
     r.body.merchant.openAmounts === false,
   `anyone can open the board: ${r.body?.merchant?.handle}, ${r.body?.products?.length} product`,
@@ -654,6 +672,7 @@ ok(res.status === 201 && acao(res) === "*", "CORS: other sites can create a boar
 for (const path of [
   `/api/invoices/${corsInvoice.id}`,
   `/api/tags/${tagB}`,
+  `/api/avatars/${tagB}`,
   "/api/rates?currency=USD",
   "/llms.txt",
   "/skill.md",
@@ -662,6 +681,14 @@ for (const path of [
   res = await fetch(B + path, { headers: fromAgent });
   ok(acao(res) === "*", `CORS: ${path} is open`);
 }
+cookie = mine;
+r = await call("/api/me/avatar", { method: "DELETE" });
+ok(r.status === 200 && r.body.merchant.avatarVersion === null, "avatar removed");
+cookie = "";
+res = await fetchRaw(`/api/avatars/${tagB}?v=1`);
+ok(res.status === 404, "removed avatar returns 404");
+r = await call(`/api/pay/${tagB}`);
+ok(r.body.merchant.avatarUrl === null, "board avatarUrl is null after removal");
 res = await fetch(B + `/api/invoices/${corsInvoice.id}/verify`, {
   method: "POST",
   headers: { ...fromAgent, "content-type": "application/json" },

@@ -19,6 +19,7 @@ export const GET = handle(async () => {
       tagChangedAt: null,
       bio: null,
       boardOpenAmounts: true,
+      avatarVersion: null,
     },
   });
 });

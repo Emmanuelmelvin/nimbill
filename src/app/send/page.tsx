@@ -1,6 +1,7 @@
 "use client";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
+import { Avatar } from "@/components/Avatar";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import {
   Alert,
@@ -25,7 +26,7 @@ import { AppError } from "@/lib/errors";
 import { formatTag, normalizeTag, tagProblem } from "@/lib/tags";
 import type { TransferView } from "@/lib/transfers";
 
-type Owner = { tag: string; handle: string; name: string; address: string };
+type Owner = { tag: string; handle: string; name: string; address: string; avatarUrl: string | null };
 type Payment = { recipient: string; amount: string; memo: string };
 type Phase =
   | { k: "form" }
@@ -274,11 +275,16 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
           {recipient.message && <p className="text-xs font-medium">✕ {recipient.message}</p>}
           {recipient.owner && (
             <div className="border border-ink p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="min-w-0 truncate font-semibold">{recipient.owner.name}</p>
-                <span className="shrink-0 font-mono text-[11px] font-semibold">✓ TAG FOUND</span>
+              <div className="flex items-center gap-3">
+                <Avatar src={recipient.owner.avatarUrl} name={recipient.owner.name} className="w-11 text-2xl" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="min-w-0 truncate font-semibold">{recipient.owner.name}</p>
+                    <span className="shrink-0 font-mono text-[11px] font-semibold">✓ TAG FOUND</span>
+                  </div>
+                  <p className="mt-0.5 font-mono text-xs text-muted">{shortAddress(recipient.owner.address)}</p>
+                </div>
               </div>
-              <p className="mt-1 font-mono text-xs text-muted">{shortAddress(recipient.owner.address)}</p>
               <p className="mt-2 text-xs text-muted">Check the name before you send. Payments can&apos;t be undone.</p>
             </div>
           )}

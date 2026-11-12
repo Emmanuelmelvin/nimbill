@@ -11,7 +11,7 @@ export type { BookClient, PublicInvoice };
 // `email` is the signed-in merchant's own address (settings only); it is never part of PublicInvoice.
 export type MerchantInfo = Pick<
   Merchant,
-  "address" | "name" | "evmAddress" | "email" | "displayCurrency" | "tag" | "tagChangedAt" | "bio" | "boardOpenAmounts"
+  "address" | "name" | "evmAddress" | "email" | "displayCurrency" | "tag" | "tagChangedAt" | "bio" | "boardOpenAmounts" | "avatarVersion"
 >;
 
 const CODES = new Set<ErrorCode>([

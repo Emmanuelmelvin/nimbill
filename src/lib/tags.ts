@@ -71,6 +71,9 @@ export function tagProblem(tag: string): string | null {
   return null;
 }
 
+/** Where the photo of a tag's owner is served. The version changes with every new photo. */
+export const avatarUrl = (tag: string, version: number) => `/api/avatars/${tag}?v=${version}`;
+
 /** "chidi" -> "chidi@nimbill". */
 export function formatTag(tag: string): string {
   return `${tag}@${TAG_DOMAIN}`;

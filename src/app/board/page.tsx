@@ -1,6 +1,8 @@
 "use client";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
+import { Avatar } from "@/components/Avatar";
+import { AvatarField } from "@/components/AvatarField";
 import { BoardPage } from "@/components/BoardPage";
 import {
   Alert,
@@ -21,7 +23,7 @@ import { api, type MerchantInfo } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { boardPath } from "@/lib/board";
 import { formatMoney, type Fx } from "@/lib/money";
-import { formatTag } from "@/lib/tags";
+import { avatarUrl, formatTag } from "@/lib/tags";
 
 type Summary = { last30: { orders: number; usd: number }; liveProducts: number; fx: Fx | null; currency: string };
 
@@ -65,6 +67,7 @@ function MyLink() {
     <div className="space-y-4">
       <LinkCard merchant={merchant as MerchantInfo & { tag: string }} liveProducts={summary?.liveProducts ?? null} />
       <Last30 s={summary} />
+      <AvatarField merchant={merchant} />
       <BoardSettings merchant={merchant} />
     </div>
   );
@@ -86,9 +89,16 @@ function LinkCard({ merchant, liveProducts }: { merchant: MerchantInfo & { tag: 
   return (
     <Card tone="strong" padding="none">
       <div className="flex items-center justify-between gap-3 border-b border-line p-4">
-        <div className="min-w-0">
-          <Eyebrow>Board</Eyebrow>
-          <p className="mt-0.5 truncate font-semibold">{formatTag(merchant.tag)}</p>
+        <div className="flex min-w-0 items-center gap-3">
+          <Avatar
+            src={merchant.avatarVersion ? avatarUrl(merchant.tag, merchant.avatarVersion) : null}
+            name={merchant.name}
+            className="w-10 text-2xl"
+          />
+          <div className="min-w-0">
+            <Eyebrow>Board</Eyebrow>
+            <p className="mt-0.5 truncate font-semibold">{formatTag(merchant.tag)}</p>
+          </div>
         </div>
         <span className="inline-flex shrink-0 items-center gap-1.5 border border-ink px-2 py-0.5 font-mono text-[11px] font-semibold">
           <span aria-hidden className="blink h-1.5 w-1.5 bg-ink" />

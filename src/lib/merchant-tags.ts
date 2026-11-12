@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, gt, ne } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import { Errors } from "./errors";
-import { TAG_CHANGE_COOLDOWN_DAYS, TAG_HOLD_DAYS, normalizeTag, tagProblem } from "./tags";
+import { TAG_CHANGE_COOLDOWN_DAYS, TAG_HOLD_DAYS, avatarUrl, normalizeTag, tagProblem } from "./tags";
 
 const DAY = 86_400_000;
 const TAKEN = "That tag is taken. Try another.";
@@ -78,10 +78,17 @@ export async function lookupTag(rawTag: string) {
       name: schema.merchants.name,
       address: schema.merchants.address,
       evmAddress: schema.merchants.evmAddress,
+      avatarVersion: schema.merchants.avatarVersion,
     })
     .from(schema.merchants)
     .where(and(eq(schema.merchants.tag, tag), ne(schema.merchants.name, "")));
   if (!m?.tag) return null;
-  return { tag: m.tag, name: m.name, address: m.address, acceptsUsdt: !!m.evmAddress };
+  return {
+    tag: m.tag,
+    name: m.name,
+    address: m.address,
+    acceptsUsdt: !!m.evmAddress,
+    avatarUrl: m.avatarVersion ? avatarUrl(m.tag, m.avatarVersion) : null,
+  };
 }
 export type TagOwner = NonNullable<Awaited<ReturnType<typeof lookupTag>>>;

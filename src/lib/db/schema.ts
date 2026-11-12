@@ -15,6 +15,9 @@ export const merchants = pgTable("merchants", {
   // Public board: a line about the merchant, and whether visitors may pay any amount they type.
   bio: text("bio"),
   boardOpenAmounts: boolean("board_open_amounts").notNull().default(true),
+  // Public photo shown on the board and to people sending money. Goes up with every new photo so
+  // its URL changes; null = no photo (initials are shown). The photo itself is in merchant_avatars.
+  avatarVersion: integer("avatar_version"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
@@ -139,6 +142,13 @@ export const products = pgTable("products", {
 // They are shrunk in the browser before upload (see lib/products.ts for the size limit).
 export const productImages = pgTable("product_images", {
   productId: text("product_id").primaryKey(),
+  mime: text("mime").notNull(),
+  data: text("data").notNull(), // base64
+});
+
+// Merchant photos, kept in the database like product pictures (square, shrunk in the browser).
+export const merchantAvatars = pgTable("merchant_avatars", {
+  address: text("address").primaryKey(),
   mime: text("mime").notNull(),
   data: text("data").notNull(), // base64
 });
@@ -270,4 +280,10 @@ CREATE TABLE IF NOT EXISTS product_images (
 );
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS product_id text;
 CREATE INDEX IF NOT EXISTS invoices_board_idx ON invoices (merchant_address, source, created_at DESC);
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS avatar_version integer;
+CREATE TABLE IF NOT EXISTS merchant_avatars (
+  address text PRIMARY KEY,
+  mime text NOT NULL,
+  data text NOT NULL
+);
 `;

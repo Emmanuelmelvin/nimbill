@@ -1,6 +1,7 @@
 import "server-only";
 import { and, count, desc, eq, gt, inArray, or } from "drizzle-orm";
 import type { z } from "zod";
+import { merchantAvatarUrl } from "./avatars";
 import { getDb, schema } from "./db";
 import type { Invoice } from "./db/schema";
 import { Errors } from "./errors";
@@ -37,6 +38,7 @@ export async function getPublicBoard(rawTag: string) {
       address: m.address,
       acceptsUsdt: !!m.evmAddress,
       openAmounts: m.boardOpenAmounts,
+      avatarUrl: merchantAvatarUrl(m),
     },
     products: products.map(productView),
   };
