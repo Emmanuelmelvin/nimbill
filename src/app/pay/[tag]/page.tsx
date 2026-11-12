@@ -4,6 +4,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import { ProductImage } from "@/components/ProductImage";
+import { ProductPreview } from "@/components/ProductPreview";
 import { Alert, Button, CopyButton, Field, Input, Loader, LogoMark, SegmentedControl, TextLink, cx, useHref } from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
@@ -240,7 +241,10 @@ function ProductPicker({ board, own }: { board: PublicBoard; own: boolean }) {
   const [picked, setPicked] = useState<string | null>(board.products.length === 1 ? board.products[0].id : null);
   const [quantity, setQuantity] = useState(1);
   const [payerName, setPayerName] = useState("");
+  // The product being looked at up close, if any.
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const product = board.products.find((p) => p.id === picked) ?? null;
+  const preview = board.products.find((p) => p.id === previewId) ?? null;
   const total = product ? Math.round(Number(product.price) * quantity * 100) / 100 : 0;
 
   return (
@@ -254,35 +258,85 @@ function ProductPicker({ board, own }: { board: PublicBoard; own: boolean }) {
         {board.products.map((p) => {
           const on = p.id === picked;
           return (
-            <li key={p.id}>
-              <label className={cx("flex cursor-pointer items-start gap-3 p-4 transition-colors", on ? "bg-subtle" : "hover:bg-subtle")}>
-                <input
-                  type="radio"
-                  name="product"
-                  className="sr-only"
-                  checked={on}
-                  onChange={() => {
-                    setPicked(p.id);
-                    setQuantity(1);
-                  }}
-                />
-                <ProductImage src={p.imageUrl} alt="" className="w-16" />
-                <span className="min-w-0 flex-1">
-                  <span className="block font-semibold">{p.name}</span>
-                  {p.description && <span className="mt-0.5 block text-sm text-muted">{p.description}</span>}
-                  <span className="mt-1 block font-mono text-sm font-semibold tabular-nums">{formatFiat(p.price, p.currency)}</span>
-                </span>
+            <li key={p.id} className={cx("flex items-start gap-3 p-4 transition-colors", on ? "bg-subtle" : "hover:bg-subtle")}>
+              {/* The picture opens the preview; the rest of the row picks the product. */}
+              <button
+                type="button"
+                onClick={() => setPreviewId(p.id)}
+                aria-label={`See ${p.name} up close`}
+                className="group relative shrink-0 cursor-zoom-in"
+              >
+                <ProductImage src={p.imageUrl} alt="" className="w-20 transition-colors group-hover:border-ink" />
                 <span
                   aria-hidden
-                  className={cx("mt-1 flex h-5 w-5 shrink-0 items-center justify-center border border-ink", on && "bg-ink text-paper")}
+                  className="absolute right-0 bottom-0 flex h-6 w-6 items-center justify-center border-t border-l border-ink bg-paper"
                 >
-                  {on && "✓"}
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="square"
+                  >
+                    <path d="M14 4h6v6M10 20H4v-6M20 4l-7 7M4 20l7-7" />
+                  </svg>
                 </span>
-              </label>
+              </button>
+              <div className="min-w-0 flex-1">
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    type="radio"
+                    name="product"
+                    className="sr-only"
+                    checked={on}
+                    onChange={() => {
+                      setPicked(p.id);
+                      setQuantity(1);
+                    }}
+                  />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-semibold">{p.name}</span>
+                    {p.description && <span className="mt-0.5 line-clamp-2 text-sm text-muted">{p.description}</span>}
+                    <span className="mt-1 block font-mono text-sm font-semibold tabular-nums">{formatFiat(p.price, p.currency)}</span>
+                  </span>
+                  <span
+                    aria-hidden
+                    className={cx("mt-1 flex h-5 w-5 shrink-0 items-center justify-center border border-ink", on && "bg-ink text-paper")}
+                  >
+                    {on && "✓"}
+                  </span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setPreviewId(p.id)}
+                  className="mt-1 text-xs font-medium underline decoration-1 underline-offset-4 hover:decoration-2"
+                >
+                  Details
+                </button>
+              </div>
             </li>
           );
         })}
       </ul>
+      <ProductPreview
+        // A fresh preview for each product, so its quantity and zoom start over.
+        key={previewId ?? "none"}
+        product={preview}
+        merchantName={board.merchant.name}
+        initialQuantity={preview && preview.id === picked ? quantity : 1}
+        chosen={!!preview && preview.id === picked}
+        onChoose={(n) => {
+          setPicked(previewId);
+          setQuantity(n);
+          setPreviewId(null);
+          // Next step: their name, unless it's already filled in.
+          if (!payerName.trim()) setTimeout(() => document.getElementById("buy-name")?.focus(), 50);
+        }}
+        onClose={() => setPreviewId(null)}
+        quantityControl={(value, onChange) => <QuantityStepper value={value} onChange={onChange} />}
+      />
       <div className="space-y-4 border-t border-line p-5">
         {product && <QuantityStepper value={quantity} onChange={setQuantity} />}
         <Field label="Your name" htmlFor="buy-name" hint="So they know who paid.">

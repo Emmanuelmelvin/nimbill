@@ -248,7 +248,26 @@
   }
 }
 
+/* Bottom sheets (product preview) slide up on phones and pop in on wider screens. */
+.sheet-up[open] {
+  animation: sheet-up 0.22s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+@media (min-width: 40rem) {
+  .sheet-up[open] {
+    animation: pop 0.15s ease-out;
+  }
+}
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .sheet-up[open],
   .word-in,
   .fade-up,
   .float,
