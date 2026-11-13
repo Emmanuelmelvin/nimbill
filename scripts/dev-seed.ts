@@ -101,5 +101,47 @@ for (const [client, currency, total, due] of open) {
   );
 }
 
-console.log(`Seeded ${n} invoices for ${address}`);
+// Cheques in every state the "My cheques" tab shows: written by the dev account, cashed by it,
+// and made out to it. Wallet addresses are random keys, so none of these can move real money.
+const randomAddress = () => addressFromPublicKey(ed25519.getPublicKey(ed25519.utils.randomSecretKey()));
+const other = randomAddress();
+await db.query(`DELETE FROM cheques WHERE id LIKE 'seedc%'`);
+// [id, writer, writer name, status, recipient address (tag-locked), claimed by, NIM, days ago, note]
+const cheques: [string, string, string, string, string | null, string | null, number, number, string][] = [
+  ["seedcaa222", address, "Ada Studio", "funded", null, null, 25, 1, "Birthday gift"],
+  ["seedcaa333", address, "Ada Studio", "cashed", null, other, 10, 3, "Lunch"],
+  ["seedcaa444", address, "Ada Studio", "cancelled", null, address, 40, 6, "Changed plans"],
+  ["seedcbb222", other, "Kito Media", "cashed", null, address, 15, 2, "Thanks for the logo"],
+  ["seedcbb333", other, "Kito Media", "funded", address, null, 50, 0, "Deposit"],
+];
+for (const [chequeId, writer, writerName, status, recipientAddress, claimedBy, nim, daysAgo, note] of cheques) {
+  const created = new Date(now - daysAgo * DAY);
+  const settled = status === "cashed" || status === "cancelled";
+  await db.query(
+    `INSERT INTO cheques (id, writer_address, writer_name, cheque_address, cheque_public_key, link_public_key, key_ref,
+       recipient_tag, recipient_name, recipient_address, amount, currency, fiat_amount, rate, note, status,
+       claimed_by_address, claimed_by_name, created_at, funded_at, settled_at)
+     VALUES ($1, $2, $3, $4, $5, $5, 'cheque', $6, $7, $8, $9, 'NIM', $10, '1', $11, $12, $13, $14, $15, $15, $16)`,
+    [
+      chequeId,
+      writer,
+      writerName,
+      randomAddress(),
+      "00".repeat(32),
+      recipientAddress ? "ada_studio" : null,
+      recipientAddress ? "Ada Studio" : null,
+      recipientAddress,
+      String(nim * 100_000),
+      nim.toFixed(5),
+      note,
+      status,
+      claimedBy,
+      claimedBy === address ? "Ada Studio" : claimedBy ? "Tunde" : null,
+      created,
+      settled ? new Date(created.getTime() + 3_600_000) : null,
+    ],
+  );
+}
+
+console.log(`Seeded ${n} invoices and ${cheques.length} cheques for ${address}`);
 await db.close();

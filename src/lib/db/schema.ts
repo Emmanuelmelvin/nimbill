@@ -351,4 +351,6 @@ CREATE TABLE IF NOT EXISTS cheques (
 CREATE INDEX IF NOT EXISTS cheques_writer_idx ON cheques (writer_address, created_at DESC);
 ALTER TABLE cheques ADD COLUMN IF NOT EXISTS recipient_address text;
 ALTER TABLE cheques ADD COLUMN IF NOT EXISTS key_ref text NOT NULL DEFAULT 'session';
+CREATE INDEX IF NOT EXISTS cheques_claimed_by_idx ON cheques (claimed_by_address);
+CREATE INDEX IF NOT EXISTS cheques_recipient_address_idx ON cheques (recipient_address);
 `;

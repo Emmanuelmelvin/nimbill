@@ -12,6 +12,7 @@ import {
   Card,
   CardHeader,
   CopyButton,
+  Dropdown,
   EmptyState,
   Field,
   Header,
@@ -37,7 +38,8 @@ import { AppError } from "@/lib/errors";
 import { shortAddress } from "@/lib/nimiq-address";
 import { formatTag, normalizeTag, tagProblem } from "@/lib/tags";
 
-type Tab = "write" | "cash";
+type Tab = "write" | "cash" | "mine";
+type ListFilter = "all" | "written" | "received";
 type RecipientKind = "free" | "tag";
 type Owner = { tag: string; handle: string; name: string; address: string; avatarUrl: string | null };
 type Payment = { recipient: string; amount: string; memo: string; rate: string };
@@ -49,9 +51,14 @@ type WritePhase =
   | { k: "done"; cheque: PublicCheque; secret: string };
 
 const TABS = [
-  { value: "write" as Tab, label: "Write a cheque" },
-  { value: "cash" as Tab, label: "Cash a cheque" },
+  { value: "write" as Tab, label: "Write" },
+  { value: "cash" as Tab, label: "Cash" },
+  { value: "mine" as Tab, label: "My cheques" },
 ] as const;
+
+/** URL hash for each tab, so /cheques#cash and /cheques#mine can be linked to. */
+const TAB_HASH: Record<Tab, string> = { write: "", cash: "#cash", mine: "#mine" };
+const tabFromHash = (hash: string): Tab | null => (hash === "#cash" ? "cash" : hash === "#mine" ? "mine" : null);
 
 const KINDS = [
   { value: "free" as RecipientKind, label: "Free (first to claim)" },
@@ -62,11 +69,19 @@ const amountText = (c: Pick<PublicCheque, "currency" | "fiatAmount" | "amount">)
   c.currency === "NIM" ? formatAsset(c.amount, "NIM") : formatFiat(c.fiatAmount, c.currency);
 
 export default function ChequesPage() {
-  const [tab, setTab] = useState<Tab>(() => (typeof window !== "undefined" && window.location.hash === "#cash" ? "cash" : "write"));
+  // Starts on "write" on both the server and the first browser render (so hydration matches),
+  // then the effect below switches to the tab in the URL hash.
+  const [tab, setTab] = useState<Tab>("write");
+
+  const selectTab = (next: Tab) => {
+    setTab(next);
+    window.history.replaceState(null, "", `/cheques${TAB_HASH[next]}`);
+  };
 
   useEffect(() => {
     const syncHash = () => {
-      if (window.location.hash === "#cash") setTab("cash");
+      const next = tabFromHash(window.location.hash);
+      if (next) setTab(next);
     };
     syncHash();
     window.addEventListener("hashchange", syncHash);
@@ -82,19 +97,14 @@ export default function ChequesPage() {
         description="Money you can hand to anyone as a link, QR code or cheque code. Fully funded, so it never bounces."
       />
       <div className="space-y-5">
-        <SegmentedControl
-          label="Cheque action"
-          options={TABS}
-          value={tab}
-          onChange={(next) => {
-            setTab(next);
-            if (typeof window !== "undefined") {
-              window.history.replaceState(null, "", next === "cash" ? "/cheques#cash" : "/cheques");
-            }
-          }}
-          block
-        />
-        {tab === "cash" ? <CashByCode /> : <WriteAndManage onSwitchToCash={() => setTab("cash")} />}
+        <SegmentedControl label="Cheque action" options={TABS} value={tab} onChange={selectTab} block />
+        {tab === "cash" ? (
+          <CashByCode />
+        ) : tab === "mine" ? (
+          <MyCheques onSwitchToCash={() => selectTab("cash")} />
+        ) : (
+          <WriteAndManage onShowMine={() => selectTab("mine")} />
+        )}
       </div>
       <TabBar />
     </>
@@ -196,26 +206,33 @@ function useRecipientTag(value: string, myTag: string | null, enabled: boolean) 
   return { tag, owner: found.owner, message: found.message, checking: false };
 }
 
-function WriteAndManage({ onSwitchToCash }: { onSwitchToCash: () => void }) {
+function WriteAndManage({ onShowMine }: { onShowMine: () => void }) {
   const { merchant, loading } = useSession();
-  const [refreshKey, setRefreshKey] = useState(0);
   if (loading) return <Loader compact />;
   if (!merchant) {
     return <OpenInNimiqPay text="Sign in with Nimiq Pay to write or manage cheques." />;
   }
   return (
-    <div className="space-y-6">
-      <WriteChequeForm
-        defaultCurrency={merchant.displayCurrency ?? "NIM"}
-        myTag={merchant.tag}
-        onFunded={() => setRefreshKey((k) => k + 1)}
-      />
-      <ChequeList key={refreshKey} onSwitchToCash={onSwitchToCash} />
+    <div className="space-y-4">
+      <WriteChequeForm defaultCurrency={merchant.displayCurrency ?? "NIM"} myTag={merchant.tag} />
+      <p className="text-center text-xs">
+        <button type="button" onClick={onShowMine} className="font-medium underline underline-offset-4">
+          See all your cheques →
+        </button>
+      </p>
     </div>
   );
 }
 
-function WriteChequeForm({ defaultCurrency, myTag, onFunded }: { defaultCurrency: string; myTag: string | null; onFunded: () => void }) {
+/** Every cheque you wrote, cashed, or that is made out to your @tag. */
+function MyCheques({ onSwitchToCash }: { onSwitchToCash: () => void }) {
+  const { merchant, loading } = useSession();
+  if (loading) return <Loader compact />;
+  if (!merchant) return <OpenInNimiqPay text="Sign in with Nimiq Pay to see your cheques." />;
+  return <ChequeList onSwitchToCash={onSwitchToCash} />;
+}
+
+function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; myTag: string | null }) {
   const { state } = useNimiq();
   const [kind, setKind] = useState<RecipientKind>("free");
   const [toTag, setToTag] = useState("");
@@ -263,7 +280,6 @@ function WriteChequeForm({ defaultCurrency, myTag, onFunded }: { defaultCurrency
           body: hash ? { txHash: hash } : {},
         });
         if ((r.status === "funded" || r.status === "cashed") && r.cheque) {
-          onFunded();
           return setPhase({ k: "done", cheque: r.cheque, secret });
         }
         if (r.status === "rejected") {
@@ -275,8 +291,7 @@ function WriteChequeForm({ defaultCurrency, myTag, onFunded }: { defaultCurrency
         // network blip: keep polling
       }
     }
-    setError("We haven't seen the funding transaction yet. Check Your Cheques below in a minute before funding again.");
-    onFunded();
+    setError("We haven't seen the funding transaction yet. Check My cheques in a minute before funding again.");
     setPhase({ k: "form" });
   }
 
@@ -463,9 +478,32 @@ function WriteChequeForm({ defaultCurrency, myTag, onFunded }: { defaultCurrency
   );
 }
 
+const FILTERS = [
+  { value: "all" as ListFilter, label: "All" },
+  { value: "written" as ListFilter, label: "Written" },
+  { value: "received" as ListFilter, label: "Received" },
+] as const;
+
+function statusLabel(c: PublicCheque): string {
+  const received = c.direction === "received";
+  switch (c.status) {
+    case "funded":
+      return received ? "Ready to cash" : "Funded · open";
+    case "settling":
+      return "Cashing…";
+    case "cashed":
+      return received ? "Cashed by you ✓" : "Cashed ✓";
+    case "cancelled":
+      return "Cancelled";
+    default:
+      return "Unfunded";
+  }
+}
+
 function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
   const [cheques, setCheques] = useState<PublicCheque[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<ListFilter>("all");
 
   useEffect(() => {
     api<{ cheques: PublicCheque[] }>("/api/cheques")
@@ -480,9 +518,20 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
   // somewhere safe, since without it a cheque can't be cancelled.
   const saved = allSavedChequeSecrets();
   const backup = cheques
-    .filter((c) => (c.status === "funded" || c.status === "pending") && saved[c.id])
+    .filter((c) => c.direction === "written" && (c.status === "funded" || c.status === "pending") && saved[c.id])
     .map((c) => `${c.number} · ${amountText(c)}: ${formatChequeCode(c.id, saved[c.id])}`)
     .join("\n");
+
+  const counts = {
+    all: cheques.length,
+    written: cheques.filter((c) => c.direction === "written").length,
+    received: cheques.filter((c) => c.direction === "received").length,
+  };
+  const shown = filter === "all" ? cheques : cheques.filter((c) => c.direction === filter);
+  const empty =
+    filter === "received"
+      ? { title: "No cheques received yet", description: "Cheques you cash, or that are made out to your @tag, show up here." }
+      : { title: "No cheques written yet", description: "Write a cheque to get a shareable link and QR code." };
 
   return (
     <section className="space-y-3">
@@ -492,42 +541,59 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
           Got a cheque to cash?
         </button>
       </div>
-      {backup && (
+      <Dropdown
+        aria-label="Show cheques"
+        options={FILTERS.map((f) => ({ ...f, detail: String(counts[f.value]) }))}
+        value={filter}
+        onChange={setFilter}
+        labels="name"
+      />
+      {backup && filter !== "received" && (
         <div className="flex items-center justify-between gap-3 border border-line p-3">
           <p className="text-xs text-muted">Cheque keys are only saved in this browser. Copy them somewhere safe.</p>
           <CopyButton text={backup} label="Back up keys" variant="secondary" size="sm" className="shrink-0" />
         </div>
       )}
-      {cheques.length === 0 ? (
-        <EmptyState title="No cheques written yet" description="Write a cheque above to get a shareable link and QR code." />
+      {shown.length === 0 ? (
+        <EmptyState title={empty.title} description={empty.description} />
       ) : (
         <Card as="div" padding="none">
           <ul className="divide-y divide-line">
-            {cheques.map((c) => {
-              const saved = getSavedChequeSecret(c.id);
-              const href = `/c/${c.id}${saved ? `#${saved}` : ""}`;
+            {shown.map((c) => {
+              const secret = getSavedChequeSecret(c.id);
+              const href = `/c/${c.id}${secret ? `#${secret}` : ""}`;
+              const received = c.direction === "received";
+              const title = received
+                ? `From ${c.writer.name}${c.writer.handle ? ` · ${c.writer.handle}` : ""}`
+                : c.recipient.kind === "tag"
+                  ? `To ${c.recipient.handle}`
+                  : c.status === "cashed" && c.claimedBy
+                    ? `Free cheque · cashed by ${c.claimedBy.name}`
+                    : "Free cheque · anyone";
               return (
                 <li key={c.id}>
                   <Link href={href} className="flex items-center justify-between gap-3 p-4 transition-colors hover:bg-subtle">
                     <div className="min-w-0 flex-1">
-                      <p className="truncate font-semibold">{c.recipient.kind === "tag" ? c.recipient.handle : "Free cheque · anyone"}</p>
+                      <p className="truncate font-semibold">{title}</p>
                       <p className="truncate text-xs text-muted">
-                        {c.number}
+                        <span className="font-mono">{received ? "RECEIVED" : "WRITTEN"}</span> · {c.number}
                         {c.note ? ` · ${c.note}` : ""}
+                      </p>
+                      <p className="text-[11px] text-muted">
+                        {new Date(c.settledAt ?? c.createdAt).toLocaleDateString("en-GB", {
+                          day: "numeric",
+                          month: "short",
+                          year: "numeric",
+                        })}
                       </p>
                     </div>
                     <div className="shrink-0 text-right">
-                      <p className="font-mono text-sm font-bold tabular-nums">{amountText(c)}</p>
+                      <p className="font-mono text-sm font-bold tabular-nums">
+                        {received ? "+" : ""}
+                        {amountText(c)}
+                      </p>
                       <Badge variant={c.status === "funded" ? "solid" : c.status === "cashed" ? "outline" : "muted"}>
-                        {c.status === "funded"
-                          ? "Funded · open"
-                          : c.status === "settling"
-                            ? "Cashing…"
-                            : c.status === "cashed"
-                              ? "Cashed ✓"
-                              : c.status === "cancelled"
-                                ? "Cancelled"
-                                : "Unfunded"}
+                        {statusLabel(c)}
                       </Badge>
                     </div>
                   </Link>

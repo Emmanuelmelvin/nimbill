@@ -276,22 +276,30 @@ export async function reconcileWriterCheques(writerAddress: string): Promise<voi
   await Promise.all(active.map((c) => reconcileCheque(c)));
 }
 
-export async function listCheques(writerAddress: string): Promise<Cheque[]> {
+/**
+ * Every cheque that involves `address`: ones they wrote, ones they cashed (into this wallet), and
+ * funded ones made out to their @tag. Newest first.
+ */
+export async function listCheques(address: string): Promise<Cheque[]> {
   const db = await getDb();
   return db
     .select()
     .from(schema.cheques)
     .where(
-      and(
-        eq(schema.cheques.writerAddress, writerAddress),
-        or(
-          inArray(schema.cheques.status, ["funded", "settling", "cashed", "cancelled"]),
-          gt(schema.cheques.createdAt, new Date(Date.now() - PENDING_SHOWN_MS)),
+      or(
+        and(
+          eq(schema.cheques.writerAddress, address),
+          or(
+            inArray(schema.cheques.status, ["funded", "settling", "cashed", "cancelled"]),
+            gt(schema.cheques.createdAt, new Date(Date.now() - PENDING_SHOWN_MS)),
+          ),
         ),
+        and(eq(schema.cheques.claimedByAddress, address), inArray(schema.cheques.status, ["settling", "cashed"])),
+        and(eq(schema.cheques.recipientAddress, address), inArray(schema.cheques.status, ["funded", "settling", "cashed"])),
       ),
     )
     .orderBy(desc(schema.cheques.createdAt))
-    .limit(100);
+    .limit(200);
 }
 
 /** Live balance (Luna) of a cheque wallet: what cashing or cancelling moves out. */
@@ -468,6 +476,15 @@ async function loadViewContext(rows: Cheque[]): Promise<ViewContext> {
   return { writers, tags: new Map(tagList.map((t, i) => [t, owners[i]])) };
 }
 
+function chequeDirection(c: Cheque, viewer: string | null): "written" | "received" | null {
+  if (!viewer) return null;
+  if (sameNimAddress(viewer, c.writerAddress)) return "written";
+  const toViewer =
+    (c.claimedByAddress && sameNimAddress(viewer, c.claimedByAddress) && c.status !== "cancelled") ||
+    (c.recipientAddress && sameNimAddress(viewer, c.recipientAddress));
+  return toViewer ? "received" : null;
+}
+
 function buildView(c: Cheque, ctx: ViewContext, viewerAddress: string | null) {
   const writer = ctx.writers.get(c.writerAddress);
   const tagOwner = c.recipientTag ? (ctx.tags.get(c.recipientTag) ?? null) : null;
@@ -519,6 +536,8 @@ function buildView(c: Cheque, ctx: ViewContext, viewerAddress: string | null) {
           }
         : null,
     isWriter: !!viewerAddress && sameNimAddress(viewerAddress, c.writerAddress),
+    /** How the cheque relates to the viewer: they wrote it, or it was cashed into / made out to their wallet. */
+    direction: chequeDirection(c, viewerAddress),
     createdAt: c.createdAt.toISOString(),
     fundedAt: c.fundedAt?.toISOString() ?? null,
     settledAt: c.settledAt?.toISOString() ?? null,
