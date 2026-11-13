@@ -1,7 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { PayByNumber } from "@/components/PayByNumber";
 import { Alert, Button, Eyebrow, Loader, LogoMark, OpenInNimiqPay, TextLink, buttonStyles, cx } from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
@@ -36,32 +36,151 @@ function Container({ children, className }: { children: ReactNode; className?: s
   return <div className={cx("mx-auto w-full max-w-5xl px-4 sm:px-6", className)}>{children}</div>;
 }
 
+type NavItem = { href: string; label: string; text: string };
+
+/** Everything worth a visit, grouped for the menu. The first few also sit in the bar on wide screens. */
+const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
+  {
+    title: "Product",
+    items: [
+      { href: "#how", label: "How it works", text: "Create, share, get paid in about a minute." },
+      { href: "/pay", label: "Pay an invoice", text: "Got a Nimbill number? Pay it from any wallet." },
+      { href: "/cheques", label: "Cheques", text: "Write a NIM cheque anyone can cash with a link." },
+      { href: "/stats", label: "Payments & stats", text: "Every payment, linked to its blockchain transaction." },
+    ],
+  },
+  {
+    title: "Developers",
+    items: [
+      { href: "/docs", label: "API", text: "Plain HTTP and JSON. No API key, verified on-chain." },
+      { href: "/docs/agents", label: "AI agents", text: "Let agents create and pay invoices for you." },
+      { href: "/mcp", label: "MCP server", text: "An agent wallet for Claude and other MCP clients." },
+    ],
+  },
+];
+
+/** Shown inline in the bar from md up; the menu always has everything. */
+const BAR_LINKS = [
+  { href: "#how", label: "How it works" },
+  { href: "/stats", label: "Payments" },
+  { href: "/docs", label: "API" },
+  { href: "/mcp", label: "MCP" },
+];
+
+function NavLink({ href, className, children, onClick }: { href: string; className?: string; children: ReactNode; onClick?: () => void }) {
+  // In-page anchors stay plain <a> so the browser scrolls; routes use Link.
+  return href.startsWith("#") ? (
+    <a href={href} className={className} onClick={onClick}>
+      {children}
+    </a>
+  ) : (
+    <Link href={href} className={className} onClick={onClick}>
+      {children}
+    </Link>
+  );
+}
+
 function Nav() {
+  const [open, setOpen] = useState(false);
+  const menuId = useId();
+  const root = useRef<HTMLElement>(null);
+  const close = () => setOpen(false);
+
+  // Escape or a tap outside the header closes the menu.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    const onDown = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("pointerdown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("pointerdown", onDown);
+    };
+  }, [open]);
+
   return (
-    <header className="no-print sticky top-0 z-30 border-b border-line bg-paper">
-      <Container className="flex h-16 items-center justify-between gap-2 sm:gap-3">
-        <Link href="/" className="flex shrink-0 items-center gap-2 text-ink" aria-label="NimBill home">
+    <header ref={root} className="no-print sticky top-0 z-30 border-b border-line bg-paper">
+      <Container className="flex h-16 items-center justify-between gap-2">
+        <Link href="/" className="flex shrink-0 items-center gap-2 text-ink" aria-label="NimBill home" onClick={close}>
           <LogoMark />
           <span className="text-lg font-bold tracking-tighter">NimBill</span>
         </Link>
-        <nav aria-label="Page" className="flex items-center gap-0.5 sm:gap-2">
-          <a href="#how" className="hidden px-3 py-2 text-sm text-muted hover:text-ink md:block">
-            How it works
-          </a>
-          <Link href="/stats" className="px-2 py-2 text-sm text-muted hover:text-ink sm:px-3">
-            Payments
-          </Link>
-          <Link href="/docs" className="px-2 py-2 text-sm text-muted hover:text-ink sm:px-3">
-            API
-          </Link>
-          <Link href="/mcp" className="px-2 py-2 text-sm text-muted hover:text-ink sm:px-3">
-            MCP
-          </Link>
-          <a href="#start" className={buttonStyles({ size: "sm", className: "ml-1 whitespace-nowrap sm:ml-0" })}>
+        <nav aria-label="Page" className="flex min-w-0 items-center gap-1 sm:gap-2">
+          {BAR_LINKS.map((l) => (
+            <NavLink key={l.href} href={l.href} className="hidden px-3 py-2 text-sm whitespace-nowrap text-muted hover:text-ink md:block">
+              {l.label}
+            </NavLink>
+          ))}
+          <a href="#start" onClick={close} className={buttonStyles({ size: "sm", className: "whitespace-nowrap" })}>
             Get started
           </a>
+          <button
+            type="button"
+            aria-expanded={open}
+            aria-controls={menuId}
+            aria-label={open ? "Close menu" : "Open menu"}
+            onClick={() => setOpen((o) => !o)}
+            className={cx(
+              "flex h-9 shrink-0 items-center gap-2 border px-2.5 font-mono text-[11px] font-semibold tracking-wider uppercase transition-colors",
+              open ? "border-ink bg-ink text-paper" : "border-ink text-ink hover:bg-subtle",
+            )}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="square"
+              aria-hidden
+            >
+              {open ? <path d="M6 6l12 12M18 6L6 18" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+            </svg>
+            <span className="hidden sm:inline">{open ? "Close" : "Menu"}</span>
+          </button>
         </nav>
       </Container>
+
+      {open && (
+        <>
+          {/* Dims the page under the menu; tapping it closes the menu (via the pointerdown listener). */}
+          <div aria-hidden className="fixed inset-x-0 top-16 bottom-0 -z-10 bg-ink/30" />
+          <div
+            id={menuId}
+            className="menu-in absolute inset-x-0 top-full max-h-[calc(100dvh-4rem)] overflow-y-auto border-b border-ink bg-paper"
+          >
+            <Container className="grid gap-8 py-6 sm:grid-cols-2 sm:py-8">
+              {NAV_GROUPS.map((g) => (
+                <div key={g.title}>
+                  <Eyebrow>{g.title}</Eyebrow>
+                  <ul className="mt-3 border-t border-line">
+                    {g.items.map((item) => (
+                      <li key={item.href} className="border-b border-line">
+                        <NavLink href={item.href} onClick={close} className="group flex items-center justify-between gap-4 py-3">
+                          <span className="min-w-0">
+                            <span className="block font-semibold">{item.label}</span>
+                            <span className="mt-0.5 block text-sm text-muted">{item.text}</span>
+                          </span>
+                          <span
+                            aria-hidden
+                            className="shrink-0 text-muted transition-transform group-hover:translate-x-1 group-hover:text-ink"
+                          >
+                            →
+                          </span>
+                        </NavLink>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </Container>
+          </div>
+        </>
+      )}
     </header>
   );
 }

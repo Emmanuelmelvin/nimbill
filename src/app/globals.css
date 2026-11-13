@@ -266,7 +266,23 @@
   }
 }
 
+/* The landing page's dropdown menu. */
+.menu-in {
+  animation: menu-in 0.18s ease-out;
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .menu-in,
   .sheet-up[open],
   .word-in,
   .fade-up,

@@ -5,6 +5,12 @@ import { Code, Fields, Section, Tile } from "@/components/docs/DocsParts";
 import { Badge, Eyebrow, Header, LinkButton, TextLink, buttonStyles, cx } from "@/components/ui";
 import type { Field } from "@/lib/api-reference";
 import { requestOrigin } from "@/lib/request-origin";
+// The published package's own manifest, so the name and version shown here never drift from npm.
+import mcpPackage from "../../../mcp/package.json";
+
+const PKG = mcpPackage.name;
+const NPM_URL = `https://www.npmjs.com/package/${PKG}`;
+const NODE_MIN = mcpPackage.engines.node.replace(/^>=\s*/, "");
 
 const TOC = [
   ["what-it-does", "What it does"],
@@ -369,13 +375,24 @@ export default async function McpPage() {
     mcpServers: {
       nimbill: {
         command: "npx",
-        args: ["-y", "nimbill-mcp"],
+        args: ["-y", PKG],
         env: {
           NIMBILL_URL: base,
         },
       },
     },
   };
+  // Paste into any agent that can run commands and edit its own MCP config.
+  const agentSetupPrompt = [
+    `Set up the NimBill Agent Wallet MCP server for yourself. It is published on npm as "${PKG}" (${NPM_URL}) and needs Node.js ${NODE_MIN} or newer.`,
+    ``,
+    `1. Check that \`node --version\` is ${NODE_MIN} or newer.`,
+    `2. Register an MCP server named "nimbill" in this client's MCP config that runs \`npx -y ${PKG}\` with these environment variables:`,
+    `   - NIMBILL_URL=${base}`,
+    `   - NIMBILL_WALLET_PASSPHRASE=<ask me for a passphrase; never invent one>`,
+    `3. Reload the MCP servers (or tell me if I need to restart the app).`,
+    `4. Call the wallet_status tool and show me your new NQ… address and balance.`,
+  ].join("\n");
 
   return (
     <div className="bleed">
@@ -393,7 +410,7 @@ export default async function McpPage() {
             Give your AI agent its own Nimiq wallet.
           </h1>
           <p className="mt-4 max-w-2xl text-muted sm:text-lg">
-            NimBill ships an MCP server on npm (<span className="font-mono text-ink">npx -y nimbill-mcp</span>) that gives Claude, Cursor,
+            NimBill ships an MCP server on npm (<span className="font-mono text-ink">npx -y {PKG}</span>) that gives Claude, Cursor,
             Windsurf, and Antigravity their own non-custodial Ed25519 Nimiq wallet, a <span className="font-mono text-ink">@tag</span>, and
             15 tools to pay invoices, buy from boards, send NIM by tag, and write or cash cheques on-chain.
           </p>
@@ -404,9 +421,22 @@ export default async function McpPage() {
             <a href="#tools" className={buttonStyles({ variant: "secondary", size: "md" })}>
               Explore all 15 tools
             </a>
+            <a href={NPM_URL} target="_blank" rel="noopener noreferrer" className={buttonStyles({ variant: "secondary", size: "md" })}>
+              View on npm ↗
+            </a>
             <LinkButton href="/docs" variant="secondary" size="md">
               HTTP API docs
             </LinkButton>
+          </div>
+
+          {/* The npm package at a glance: one command runs it, nothing to clone. */}
+          <div className="mt-6 grid max-w-2xl gap-0 border border-ink sm:grid-cols-[auto_minmax(0,1fr)]">
+            <div className="flex items-center gap-3 border-b border-ink bg-ink px-4 py-3 text-paper sm:border-r sm:border-b-0">
+              <span className="font-mono text-[11px] font-semibold tracking-wider uppercase">npm</span>
+              <span className="font-mono text-sm font-semibold">{PKG}</span>
+              <span className="border border-paper/40 px-1.5 py-px font-mono text-[10px]">v{mcpPackage.version}</span>
+            </div>
+            <Code copy className="border-0" label={`Node ${NODE_MIN}+ · no install needed`}>{`npx -y ${PKG}`}</Code>
           </div>
 
           <div className="mt-10 border border-ink">
@@ -490,21 +520,40 @@ export default async function McpPage() {
               index="02"
               label="How to connect"
               title="Set it up in 60 seconds."
-              intro="The MCP server runs locally over stdio using Node.js and the @noble cryptography packages already included in NimBill."
+              intro={`The MCP server is the "${PKG}" package on npm. It runs locally over stdio with Node.js ${NODE_MIN}+, and npx fetches it on first launch, so there is nothing to clone or build.`}
             >
               <div className="space-y-6">
+                <article className="border border-ink">
+                  <header className="border-b border-ink bg-ink p-4 text-paper">
+                    <h3 className="font-bold">Fastest: let your agent install it</h3>
+                  </header>
+                  <div className="space-y-3 p-4 text-sm text-muted">
+                    <p>
+                      Paste this into Claude Code, Cursor, Windsurf or Antigravity. The agent installs{" "}
+                      <TextLink href={NPM_URL} external>
+                        {PKG}
+                      </TextLink>{" "}
+                      from npm, wires it into its own config, and shows you its new wallet address. It will ask you for a passphrase to
+                      encrypt the wallet.
+                    </p>
+                    <Code label="prompt for your agent">{agentSetupPrompt}</Code>
+                    <p>Prefer to do it by hand? Pick your client below.</p>
+                  </div>
+                </article>
+
                 <HostCard logos={["claude"]} title="Claude Desktop">
                   <p>
                     Add this to your <span className="font-mono text-ink">claude_desktop_config.json</span> (macOS:{" "}
-                    <span className="font-mono text-ink">~/Library/Application Support/Claude/claude_desktop_config.json</span>, Windows:{" "}
-                    <span className="font-mono text-ink">%APPDATA%\Claude\claude_desktop_config.json</span>) and restart Claude Desktop:
+                    <span className="font-mono break-all text-ink">~/Library/Application Support/Claude/claude_desktop_config.json</span>,
+                    Windows: <span className="font-mono break-all text-ink">%APPDATA%\Claude\claude_desktop_config.json</span>) and restart
+                    Claude Desktop:
                   </p>
                   <Code label="claude_desktop_config.json">{json(stdConfig)}</Code>
                 </HostCard>
 
                 <HostCard logos={["claude"]} title="Claude Code (CLI)">
                   <p>Run this command in your terminal to register the NimBill Agent Wallet MCP server in Claude Code:</p>
-                  <Code label="terminal">{`claude mcp add nimbill -e NIMBILL_URL=${base} -- npx -y nimbill-mcp`}</Code>
+                  <Code label="terminal">{`claude mcp add nimbill -e NIMBILL_URL=${base} -- npx -y ${PKG}`}</Code>
                 </HostCard>
 
                 <HostCard logos={["cursor"]} title="Cursor">
