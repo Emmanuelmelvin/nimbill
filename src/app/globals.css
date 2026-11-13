@@ -181,6 +181,20 @@
 .chip-pop {
   animation: pop 0.4s cubic-bezier(0.3, 1.4, 0.5, 1) both;
 }
+/* Hero currency stack: each badge pops in from its left neighbour, like people joining a file. */
+.stack-in {
+  animation: stack-in 0.5s cubic-bezier(0.3, 1.4, 0.5, 1) var(--d, 0ms) both;
+}
+@keyframes stack-in {
+  from {
+    opacity: 0;
+    transform: translateX(-0.25em) scale(0.4);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 
 @keyframes word-up {
   from {
@@ -291,7 +305,8 @@
   .scan,
   .marquee,
   .stamp,
-  .chip-pop {
+  .chip-pop,
+  .stack-in {
     animation: none !important;
   }
   .reveal,

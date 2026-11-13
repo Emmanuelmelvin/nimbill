@@ -217,6 +217,49 @@ function Words({ text, start = 0 }: { text: string; start?: number }) {
   );
 }
 
+// The badges in the hero's currency stack, in order. Four, so the stack fits on the line after
+// "currency." at every width instead of splitting the headline; "+N" counts the rest.
+const STACK_CODES = ["NGN", "USD", "EUR", "GHS"] as const;
+// Fill styles taking turns, so overlapping neighbours stay easy to tell apart in black and white.
+const STACK_TONES = ["bg-ink text-paper", "bg-paper text-ink", "bg-subtle text-ink"];
+/** One glyph per badge: GH₵ → ₵, so it fits a circle. */
+const glyph = (symbol: string) => (symbol.length > 1 ? symbol.replace(/^[A-Z]+/, "") || symbol : symbol);
+
+/**
+ * The currencies you can invoice in, as overlapping round badges, like the avatars of the people
+ * in a shared design file. Sized in em, so it scales with the heading it sits in. Decorative: the
+ * heading already says it in words, so screen readers skip it.
+ */
+function CurrencyStack({ start = 0 }: { start?: number }) {
+  const shown = STACK_CODES.map((code) => CURRENCIES.find((c) => c.code === code)!);
+  return (
+    <span aria-hidden className="ml-[0.06em] inline-flex items-center align-[0.06em]">
+      {shown.map((c, i) => (
+        <span
+          key={c.code}
+          title={c.name}
+          className={cx(
+            "stack-in relative flex h-[0.66em] w-[0.66em] shrink-0 items-center justify-center rounded-full border-[0.04em] border-ink",
+            "shadow-[0_0_0_0.05em_var(--color-paper)] transition-transform duration-200 hover:z-20 hover:-translate-y-[0.08em]",
+            i > 0 && "-ml-[0.18em]",
+            STACK_TONES[i % STACK_TONES.length],
+          )}
+          style={{ ...delay(start + i * 80), zIndex: shown.length - i }}
+        >
+          <span className="text-[0.38em] leading-none font-bold tracking-normal">{glyph(c.symbol)}</span>
+        </span>
+      ))}
+      {/* "+N" for the rest, like a collaborator count. */}
+      <span
+        className="stack-in relative -ml-[0.18em] flex h-[0.66em] min-w-[0.66em] shrink-0 items-center justify-center rounded-full border-[0.04em] border-ink bg-paper px-[0.12em] shadow-[0_0_0_0.05em_var(--color-paper)]"
+        style={delay(start + shown.length * 80)}
+      >
+        <span className="font-mono text-[0.28em] leading-none font-semibold tracking-normal">+{CURRENCIES.length - shown.length}</span>
+      </span>
+    </span>
+  );
+}
+
 function Hero() {
   return (
     <section className="relative overflow-hidden border-b border-line">
@@ -231,7 +274,12 @@ function Hero() {
             <span aria-hidden className="blink h-2 w-2 bg-ink" />A Nimiq Pay Mini App
           </p>
           <h1 className="mt-6 text-[2.6rem] leading-[0.98] font-bold tracking-tighter sm:text-6xl lg:text-[4.25rem]">
-            <Words text="Invoice in your currency." start={100} />
+            <Words text="Invoice in your" start={100} />
+            {/* "currency." and its stack wrap together, so the stack never ends up on a line of its own. */}
+            <span className="whitespace-nowrap">
+              <Words text="currency." start={310} />
+              <CurrencyStack start={420} />
+            </span>
             <br />
             <span className="text-muted">
               <Words text="Get paid in NIM or USDT." start={420} />
