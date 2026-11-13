@@ -14,7 +14,7 @@ export const POST = handle(async (req: NextRequest, ctx: RouteContext<"/api/cheq
   const c = await getCheque(id);
   if (!c || !sameNimAddress(c.writerAddress, me)) throw Errors.notFound("Cheque not found.");
   const r = await verifyChequeFunding(c, txHash);
-  if (r.status === "funded" || r.status === "cashed" || r.status === "cancelled") {
+  if (r.status !== "pending" && r.status !== "rejected") {
     return json({ status: r.status, cheque: await publicChequeView(r.cheque, me) });
   }
   return json(r);

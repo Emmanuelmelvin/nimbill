@@ -2,11 +2,16 @@
   "name": "nimbill",
   "version": "0.1.0",
   "private": true,
+  "bin": {
+    "nimbill-mcp": "./mcp/index.mjs"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "mcp": "node mcp/index.mjs",
+    "test:mcp": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-mcp.mjs",
     "test:api": "node scripts/api-smoke.mjs",
     "test:address": "node --experimental-strip-types --no-warnings scripts/test-address.ts",
     "test:earnings": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-earnings.ts",

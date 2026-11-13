@@ -49,9 +49,13 @@ export default async function Docs() {
             <a href="#setup" className={buttonStyles({ variant: "secondary", size: "md" })}>
               Set up your AI
             </a>
+            <LinkButton href="/mcp" variant="secondary" size="md">
+              MCP Agent Wallet →
+            </LinkButton>
           </div>
           <ul className="mt-5 flex flex-wrap gap-2 font-mono text-[11px]">
             {[
+              ["/mcp", "/mcp"],
               ["/llms.txt", "llms.txt"],
               ["/openapi.json", "openapi.json"],
               ["/skill.md", "skill.md"],
@@ -426,6 +430,28 @@ console.log(result.status, result.invoice?.number); // "paid", "INV-0042"`}</Cod
               intro="Copy one of these once. After that, “pay ada@nimbill for the logo pack” is enough."
             >
               <div className="space-y-6">
+                <SetupCard logos={["claude", "cursor"]} title="MCP Server: give your AI agent its own Nimiq wallet">
+                  <p>
+                    The included <span className="font-mono text-ink">mcp/index.mjs</span> server gives your agent its own non-custodial
+                    Ed25519 Nimiq wallet (<span className="font-mono text-ink">~/.nimbill/agent-wallet.json</span>) and 15 tools to claim a{" "}
+                    <span className="font-mono text-ink">@tag</span>, pay invoices and boards on-chain, send NIM by tag, and write or cash
+                    cheques. See the full guide and all 15 tools on <TextLink href="/mcp">/mcp</TextLink>.
+                  </p>
+                  <Code label="mcp.json">
+                    {json({
+                      mcpServers: {
+                        nimbill: {
+                          command: "node",
+                          args: ["/path/to/nimbill/mcp/index.mjs"],
+                          env: {
+                            NIMBILL_URL: base,
+                          },
+                        },
+                      },
+                    })}
+                  </Code>
+                </SetupCard>
+
                 <SetupCard logos={["claude"]} title="Claude: install the skill">
                   <p>
                     A skill is a folder with a <span className="font-mono text-ink">SKILL.md</span> that Claude loads when a task matches

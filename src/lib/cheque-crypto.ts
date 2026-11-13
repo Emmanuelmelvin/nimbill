@@ -3,11 +3,16 @@
 //
 // Each cheque has a 2-of-2 Ed25519 key:
 //   A_cheque = A_link + A_server
-// - A_link comes from the 128-bit secret in the cheque link's #fragment (or cheque code).
+// - A_link comes from the ~118-bit secret in the cheque link's #fragment (or cheque code).
 //   The server never sees the secret, so NimBill can never move a cheque's funds on its own.
 // - A_server is derived deterministically on the server from HMAC(SESSION_SECRET, chequeId).
 //   The server only co-signs after checking the cheque's rules (e.g. locked to a @tag, or
 //   cancelled by the writer), so nobody can bypass the rules with a raw RPC call.
+//
+// Signing is a two-party Schnorr signature. Each side's nonce MUST be fresh for every signing
+// attempt: if one side ever answers twice with the same nonce but a different challenge, its key
+// share can be computed from the two answers. Both nonces therefore mix in fresh randomness, and
+// the server's nonce is also bound to the client's nonce commitment.
 
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { blake2b } from "@noble/hashes/blake2.js";
@@ -32,8 +37,16 @@ export const NIMIQ_MAINNET_ID = 24;
 
 /** Generate a fresh 24-character cheque secret in the browser. */
 export function newChequeSecret(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(SECRET_LEN));
-  return Array.from(bytes, (b) => ID_ALPHABET[b % ID_ALPHABET.length]).join("");
+  // Rejection sampling: bytes at or above the largest multiple of 30 are skipped, so every
+  // character is equally likely (a plain `b % 30` would favour the first 16 characters).
+  const limit = 256 - (256 % ID_ALPHABET.length);
+  let out = "";
+  while (out.length < SECRET_LEN) {
+    for (const b of crypto.getRandomValues(new Uint8Array(SECRET_LEN))) {
+      if (b < limit && out.length < SECRET_LEN) out += ID_ALPHABET[b % ID_ALPHABET.length];
+    }
+  }
+  return out;
 }
 
 export function normalizeChequeSecret(raw: string): string {
@@ -69,7 +82,7 @@ export function formatChequeCode(chequeId: string, secret: string): string {
  * Parse whatever a user pasted into "Cash a cheque":
  * - A cheque link: "https://…/c/k7m2p9qx4z#a2b3c4…" or "/c/k7m2p9qx4z"
  * - A full cheque code: "CHQ-K7M2P-9QX4Z-A2B3C4-D5E6F7-G8H9J2-K3M4N5"
- * - A short cheque number: "CHQ-K7M2P-9QX4Z" (enough when the cheque is locked to their @tag)
+ * - A short cheque number: "CHQ-K7M2P-9QX4Z" (opens the cheque page; cashing still needs the secret)
  */
 export function parseChequeInput(input: string): { id: string; secret: string | null } | null {
   const text = input.trim();
@@ -138,6 +151,17 @@ function concatBytes(...parts: Uint8Array[]): Uint8Array {
 export function hashToScalar(...parts: Uint8Array[]): bigint {
   const s = bytesToNumberLE(sha512(concatBytes(...parts))) % CURVE_N;
   return s === ZERO ? ONE : s;
+}
+
+/** True if `hex` is a valid, non-identity, torsion-free Ed25519 point (a safe public key or nonce). */
+export function isValidPointHex(hex: string): boolean {
+  if (!/^[0-9a-f]{64}$/i.test(hex)) return false;
+  try {
+    const p = Point.fromHex(hex.toLowerCase());
+    return !p.is0() && p.isTorsionFree();
+  } catch {
+    return false;
+  }
 }
 
 /** Derive the client's half of the cheque key from the link secret. */
@@ -242,12 +266,15 @@ export function hashBasicTxContent(tx: BasicTxFields): string {
 }
 
 /**
- * Deterministic client nonce commitment R_1 for a specific cheque claim/cancel message.
- * Because the nonce hashes the full transaction content, it is never reused across different messages.
+ * A fresh client nonce r_1 and its commitment R_1 for one signing attempt of `txContent`.
+ * Fresh randomness is mixed in on every call, so a retry never reuses a nonce (a server that
+ * answered the same nonce with two different challenges could otherwise compute the link key).
+ * Keep `nonceScalar` in memory, pass it to `completeDualSignature`, and use it once.
  */
 export function clientNonceForTx(rawSecret: string, txContent: Uint8Array): { nonceScalar: bigint; noncePublicKey: string } {
   const secret = normalizeChequeSecret(rawSecret);
-  const nonceScalar = hashToScalar(utf8ToBytes("nimbill-cheque-nonce-1:"), utf8ToBytes(secret), txContent);
+  const fresh = crypto.getRandomValues(new Uint8Array(32));
+  const nonceScalar = hashToScalar(utf8ToBytes("nimbill-cheque-nonce-1:"), utf8ToBytes(secret), txContent, fresh);
   const point = Point.BASE.multiply(nonceScalar);
   return { nonceScalar, noncePublicKey: bytesToHex(point.toBytes()) };
 }
@@ -262,10 +289,13 @@ export function serverPartialSignTx(params: {
   clientNoncePublicKey: string;
   txContent: Uint8Array;
 }): { serverNoncePublicKey: string; serverPartialSig: string } {
-  const serverSeedBytes = numberToBytesLE(params.serverScalar, 32);
-  const r2 = hashToScalar(utf8ToBytes("nimbill-cheque-nonce-2:"), serverSeedBytes, params.txContent);
-  const R2 = Point.BASE.multiply(r2);
   const R1 = Point.fromHex(params.clientNoncePublicKey);
+  // Bound to the client's commitment R_1 and to fresh randomness: two requests can never get the
+  // same r_2 with different challenges, which would reveal the server's key share.
+  const serverSeedBytes = numberToBytesLE(params.serverScalar, 32);
+  const fresh = crypto.getRandomValues(new Uint8Array(32));
+  const r2 = hashToScalar(utf8ToBytes("nimbill-cheque-nonce-2:"), serverSeedBytes, params.txContent, R1.toBytes(), fresh);
+  const R2 = Point.BASE.multiply(r2);
   const R = R1.add(R2).toBytes();
   const A = hexToBytes(params.chequePublicKey);
   const k = bytesToNumberLE(sha512(concatBytes(R, A, params.txContent))) % CURVE_N;
@@ -279,23 +309,27 @@ export function serverPartialSignTx(params: {
 /**
  * Client side: combine the link secret's partial signature s_1 with the server's s_2,
  * verify the resulting 64-byte Ed25519 signature, and return the 139-byte raw Nimiq transaction.
+ * `tx` must be the transaction the caller built itself, never fields echoed back by the server.
  */
 export function completeDualSignature(params: {
   secret: string;
   tx: BasicTxFields;
+  /** `nonceScalar` from the `clientNonceForTx` call whose commitment was sent to the server. */
+  nonceScalar: bigint;
   serverNoncePublicKey: string;
   serverPartialSig: string;
 }): { rawTx: string; txHash: string; signature: string } {
   const txContent = serializeBasicTxContent(params.tx);
   const { scalar: a1 } = linkKeyFromSecret(params.secret);
-  const { nonceScalar: r1, noncePublicKey: r1Hex } = clientNonceForTx(params.secret, txContent);
-  const R1 = Point.fromHex(r1Hex);
+  const r1 = params.nonceScalar;
+  const R1 = Point.BASE.multiply(r1);
   const R2 = Point.fromHex(params.serverNoncePublicKey);
   const R = R1.add(R2).toBytes();
   const A = hexToBytes(params.tx.senderPublicKey);
   const k = bytesToNumberLE(sha512(concatBytes(R, A, txContent))) % CURVE_N;
   const s1 = (r1 + k * a1) % CURVE_N;
   const s2 = bytesToNumberLE(hexToBytes(params.serverPartialSig));
+  if (s2 >= CURVE_N) throw new Error("Invalid server partial signature");
   const s = (s1 + s2) % CURVE_N;
   const sigBytes = concatBytes(R, numberToBytesLE(s, 32));
 

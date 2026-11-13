@@ -733,12 +733,12 @@ r = await call("/api/cheques", {
 ok(r.status === 404, "cheques: refuses writing a cheque to an unclaimed tag");
 r = await call("/api/cheques", {
   method: "POST",
-  body: JSON.stringify({ amount: 25, currency: "NIM", linkPublicKey: linkPubHex, recipientTag: otherTag, note: "For Tunde" }),
+  body: JSON.stringify({ amount: 25, currency: "NIM", linkPublicKey: linkPubHex, recipientTag: kitoTag, note: "For Tunde" }),
 });
 ok(
   r.status === 201 &&
     r.body.cheque.recipient.kind === "tag" &&
-    r.body.cheque.recipient.tag === otherTag &&
+    r.body.cheque.recipient.tag === kitoTag &&
     r.body.cheque.amount === "2500000" &&
     /^NQ\d\d( [0-9A-Z]{4}){8}$/.test(r.body.cheque.chequeAddress),
   "cheques: creates a tag-locked cheque with combined 2-of-2 address " + r.body?.cheque?.chequeAddress,
@@ -750,7 +750,7 @@ r = await call("/api/cheques", {
   method: "POST",
   body: JSON.stringify({ amount: 10, currency: "NIM", linkPublicKey: freeLinkPubHex, recipientTag: null, note: "First to claim" }),
 });
-ok(r.status === 201 && r.body.cheque.recipient.kind === "anyone" && r.body.cheque.status === "pending", "cheques: creates a free cheque");
+ok(r.status === 201 && r.body.cheque.recipient.kind === "free" && r.body.cheque.status === "pending", "cheques: creates a free cheque");
 const freeCheque = r.body.cheque;
 
 r = await call("/api/cheques");
@@ -762,11 +762,13 @@ ok(
   r.status === 200 && r.body.cheque.number === tagCheque.number && typeof r.body.currentBlock === "number",
   "cheques: public GET returns cheque details and current block height",
 );
+cookie = mine; // only the writer can report the funding transaction
 r = await call(`/api/cheques/${freeCheque.id}/verify`, {
   method: "POST",
   body: JSON.stringify({ txHash: "cd".repeat(32) }),
 });
 ok(r.status === 200 && r.body.status === "pending", "cheques: verify returns pending for unmined txHash");
+cookie = "";
 r = await call(`/api/cheques/${freeCheque.id}/claim`, {
   method: "POST",
   body: JSON.stringify({
@@ -774,6 +776,7 @@ r = await call(`/api/cheques/${freeCheque.id}/claim`, {
     action: "cash",
     recipientAddress: myAddress,
     validityStartHeight: 100,
+    value: "1000000",
     clientNoncePublicKey: freeLinkPubHex,
   }),
 });
@@ -781,3 +784,27 @@ ok(
   r.status === 400 && /hasn't been funded/i.test(r.body.error.message),
   "cheques: refuses to co-sign a claim before the cheque is funded on-chain",
 );
+r = await call(`/api/cheques/${freeCheque.id}/claim`, {
+  method: "POST",
+  body: JSON.stringify({
+    step: "prepare",
+    action: "cash",
+    recipientAddress: myAddress,
+    validityStartHeight: 100,
+    value: "1000000",
+    clientNoncePublicKey: "00".repeat(32),
+  }),
+});
+ok(r.status === 400, "cheques: rejects an invalid nonce point with 400, not 500");
+cookie = mine;
+r = await call("/api/cheques", {
+  method: "POST",
+  body: JSON.stringify({ amount: 5, currency: "NIM", linkPublicKey: "ff".repeat(32), recipientTag: null }),
+});
+ok(r.status === 400, "cheques: rejects an invalid link public key with 400");
+r = await call("/api/cheques", {
+  method: "POST",
+  body: JSON.stringify({ amount: 1e12, currency: "NIM", linkPublicKey: freeLinkPubHex, recipientTag: null }),
+});
+ok(r.status === 400 && /too large/i.test(r.body.error.message), "cheques: refuses amounts too large to represent exactly");
+cookie = "";

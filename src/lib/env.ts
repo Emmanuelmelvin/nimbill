@@ -18,6 +18,9 @@ const Schema = z.object({
 
   // Security / storage
   SESSION_SECRET: optional(z.string().min(32, "SESSION_SECRET must be at least 32 characters")),
+  // Derives the server's half of every cheque key. Kept apart from SESSION_SECRET so rotating
+  // sessions never locks funded cheques. Never rotate or lose it while cheques are open.
+  CHEQUE_KEY_SECRET: optional(z.string().min(32, "CHEQUE_KEY_SECRET must be at least 32 characters")),
   DATABASE_URL: optional(z.url("DATABASE_URL must be a postgres connection URL")),
 
   // Demo invoice

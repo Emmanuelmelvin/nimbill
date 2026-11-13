@@ -85,6 +85,17 @@ export const nimiq = {
     }
   },
 
+  /** Balance of an address in Luna (0 for an address that has never received anything). */
+  async getBalance(address: string): Promise<number> {
+    try {
+      const acc = await call("getAccountByAddress", [address], z.object({ balance: z.number() }).loose());
+      return acc.balance;
+    } catch (e) {
+      if (isNotFound(e)) return 0;
+      throw e;
+    }
+  },
+
   /** Height of the latest block. */
   getBlockNumber(): Promise<number> {
     return call("getBlockNumber", [], z.number());

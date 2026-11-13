@@ -2,7 +2,7 @@ import "server-only";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { utf8ToBytes } from "@noble/hashes/utils.js";
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import type { z } from "zod";
 import { merchantAvatarUrl } from "./avatars";
 import {
@@ -18,11 +18,11 @@ import {
 import { decodeData, nimiq, sameNimAddress, type NimTx } from "./clients";
 import { LUNA_PER_NIM } from "./currencies";
 import { getDb, schema } from "./db";
-import type { Cheque } from "./db/schema";
+import type { Cheque, Merchant } from "./db/schema";
 import { env, isProd } from "./env";
 import { Errors } from "./errors";
 import { newId } from "./invoices";
-import { lookupTag } from "./merchant-tags";
+import { lookupTag, type TagOwner } from "./merchant-tags";
 import { normalizeAddress } from "./nimiq-address";
 import { getRate } from "./rates";
 import type { ChequeClaimBody, NewChequeBody } from "./schemas";
@@ -33,17 +33,40 @@ const HOUR = 3_600_000;
 const PENDING_SHOWN_MS = 24 * HOUR;
 /** Most cheques one wallet can start in an hour. */
 const MAX_STARTED_PER_HOUR = 30;
+/**
+ * A broadcast cash/cancel transaction that still isn't in a block after this long has expired
+ * (Nimiq transactions are valid for about two hours), so the cheque goes back to "funded".
+ */
+const SETTLE_TIMEOUT_MS = 3 * HOUR;
+
+type ChequeStatus = Cheque["status"];
+const isFinal = (s: ChequeStatus) => s === "cashed" || s === "cancelled";
 
 /** The data attached to the NIM funding transaction. Max 64 bytes. */
 export const chequeMemo = (id: string) => `NimBill C ${id}`;
 
-/** Deterministic server half of the 2-of-2 cheque key for `chequeId`. */
-function serverChequeKey(chequeId: string) {
-  if (isProd && !env.SESSION_SECRET) {
-    throw Errors.config("SESSION_SECRET (32+ chars) must be set in production.");
+const DEV_CHEQUE_KEY = "nimbill-local-dev-cheque-key-v1";
+
+/** Which secret new cheques derive their server key from. */
+function newChequeKeyRef(): "cheque" {
+  if (isProd && !env.CHEQUE_KEY_SECRET) {
+    throw Errors.config("CHEQUE_KEY_SECRET (32+ chars) must be set in production to write cheques.");
   }
-  const secretKey = utf8ToBytes(env.SESSION_SECRET || "nimbill-local-dev-cheque-key-v1");
-  const seed = hmac(sha256, secretKey, utf8ToBytes(`cheque-server-key-v1:${chequeId}`));
+  return "cheque";
+}
+
+/** Deterministic server half of the 2-of-2 cheque key for `chequeId`. */
+function serverChequeKey(chequeId: string, keyRef: string) {
+  let secret: string | undefined;
+  if (keyRef === "cheque") secret = env.CHEQUE_KEY_SECRET;
+  else if (keyRef === "session")
+    secret = env.SESSION_SECRET; // cheques written before CHEQUE_KEY_SECRET
+  else throw Errors.config(`Unknown cheque key reference "${keyRef}".`);
+  if (!secret) {
+    if (isProd) throw Errors.config(`The secret for cheque key "${keyRef}" is not set.`);
+    secret = DEV_CHEQUE_KEY;
+  }
+  const seed = hmac(sha256, utf8ToBytes(secret), utf8ToBytes(`cheque-server-key-v1:${chequeId}`));
   return keyFromSeedBytes("nimbill-cheque-server-scalar-v1:", seed);
 }
 
@@ -65,16 +88,13 @@ export async function createCheque(
     throw Errors.rateLimited("You've started a lot of cheques in the last hour. Try again later.");
   }
 
-  let recipientTag: string | null = null;
-  let recipientName: string | null = null;
+  let recipient: TagOwner | null = null;
   if (input.recipientTag) {
-    const owner = await lookupTag(input.recipientTag);
-    if (!owner) throw Errors.notFound("No one has that tag. Check the spelling.");
-    if (sameNimAddress(owner.address, writerAddress)) {
+    recipient = await lookupTag(input.recipientTag);
+    if (!recipient) throw Errors.notFound("No one has that tag. Check the spelling.");
+    if (sameNimAddress(recipient.address, writerAddress)) {
       throw Errors.badRequest("That's your own tag. Pick someone else, or make it a free cheque.");
     }
-    recipientTag = owner.tag;
-    recipientName = owner.name;
   }
 
   const [me] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, writerAddress));
@@ -85,10 +105,12 @@ export async function createCheque(
     input.currency === "NIM"
       ? Math.round(input.amount * LUNA_PER_NIM)
       : Math.max(step, Math.ceil(((input.amount / rate) * LUNA_PER_NIM) / step) * step);
-  if (luna < 1) throw Errors.validation("The amount is too small for a cheque.");
+  if (!Number.isFinite(luna) || luna < 1) throw Errors.validation("The amount is too small for a cheque.");
+  if (!Number.isSafeInteger(luna)) throw Errors.validation("That amount is too large for a cheque.");
 
   const id = newId();
-  const srv = serverChequeKey(id);
+  const keyRef = newChequeKeyRef();
+  const srv = serverChequeKey(id, keyRef);
   const linkPub = input.linkPublicKey.toLowerCase();
   const combined = combinePublicKeys(linkPub, srv.publicKey);
 
@@ -102,8 +124,10 @@ export async function createCheque(
       chequeAddress: combined.address,
       chequePublicKey: combined.publicKey,
       linkPublicKey: linkPub,
-      recipientTag,
-      recipientName,
+      keyRef,
+      recipientTag: recipient?.tag ?? null,
+      recipientName: recipient?.name ?? null,
+      recipientAddress: recipient?.address ?? null,
       amount: String(luna),
       currency: input.currency,
       fiatAmount: input.amount.toFixed(input.currency === "NIM" ? 5 : 2),
@@ -146,15 +170,13 @@ async function markFunded(c: Cheque, tx: NimTx): Promise<Cheque | null> {
 }
 
 export type ChequeVerifyResult =
-  | { status: "funded" | "cashed" | "cancelled"; cheque: Cheque }
+  | { status: "funded" | "settling" | "cashed" | "cancelled"; cheque: Cheque }
   | { status: "pending"; message: string }
   | { status: "rejected"; message: string };
 
 /** Verify the funding transaction sent from the writer's wallet to `chequeAddress`. */
 export async function verifyChequeFunding(c: Cheque, txHash?: string): Promise<ChequeVerifyResult> {
-  if (c.status === "funded" || c.status === "cashed" || c.status === "cancelled") {
-    return { status: c.status, cheque: c };
-  }
+  if (c.status !== "pending") return { status: c.status, cheque: c };
   if (txHash) {
     if (!/^[0-9a-f]{64}$/i.test(txHash)) return { status: "rejected", message: "Invalid transaction hash." };
     const tx = await nimiq.getTransaction(txHash.toLowerCase());
@@ -167,15 +189,13 @@ export async function verifyChequeFunding(c: Cheque, txHash?: string): Promise<C
   }
 
   const reconciled = await reconcileCheque(c);
-  if (reconciled.status === "funded" || reconciled.status === "cashed" || reconciled.status === "cancelled") {
-    return { status: reconciled.status, cheque: reconciled };
-  }
+  if (reconciled.status !== "pending") return { status: reconciled.status, cheque: reconciled };
   return { status: "pending", message: "Waiting for the funding transaction on the blockchain…" };
 }
 
 /** Check the cheque wallet's on-chain transactions to catch up with funding or settlement. */
 export async function reconcileCheque(c: Cheque): Promise<Cheque> {
-  if (c.status === "cashed" || c.status === "cancelled") return c;
+  if (isFinal(c.status)) return c;
   let txs: NimTx[];
   try {
     txs = await nimiq.getTransactionsByAddress(c.chequeAddress, 20);
@@ -191,32 +211,52 @@ export async function reconcileCheque(c: Cheque): Promise<Cheque> {
     }
   }
 
-  if (current.status === "funded") {
-    const outTx = txs.find((tx) => tx.executionResult && sameNimAddress(tx.from, current.chequeAddress));
-    if (outTx) {
-      const isCancel = sameNimAddress(outTx.to, current.writerAddress);
-      const db = await getDb();
-      const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, outTx.to));
-      const [updated] = await db
-        .update(schema.cheques)
-        .set({
-          status: isCancel ? "cancelled" : "cashed",
-          settleTxHash: outTx.hash.toLowerCase(),
-          settledAt: new Date(outTx.timestamp),
-          claimedByAddress: outTx.to,
-          claimedByName: recipientMerchant?.name || current.claimedByName || (isCancel ? current.writerName : "Someone"),
-          claimedByTag: recipientMerchant?.tag ?? current.claimedByTag ?? null,
-        })
-        .where(eq(schema.cheques.id, current.id))
-        .returning();
-      if (updated) current = updated;
-    }
+  if (current.status !== "funded" && current.status !== "settling") return current;
+  const db = await getDb();
+
+  const outTx = txs.find((tx) => tx.executionResult && sameNimAddress(tx.from, current.chequeAddress));
+  if (outTx) {
+    const isCancel = sameNimAddress(outTx.to, current.writerAddress);
+    const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, outTx.to));
+    const ownBroadcast = current.settleTxHash === outTx.hash.toLowerCase();
+    const [updated] = await db
+      .update(schema.cheques)
+      .set({
+        status: isCancel ? "cancelled" : "cashed",
+        settleTxHash: outTx.hash.toLowerCase(),
+        settledAt: new Date(outTx.timestamp),
+        claimedByAddress: outTx.to,
+        claimedByName:
+          recipientMerchant?.name || (ownBroadcast ? current.claimedByName : null) || (isCancel ? current.writerName : "Someone"),
+        claimedByTag: recipientMerchant?.tag ?? (ownBroadcast ? current.claimedByTag : null) ?? null,
+      })
+      .where(and(eq(schema.cheques.id, current.id), inArray(schema.cheques.status, ["funded", "settling"])))
+      .returning();
+    return updated ?? (await getCheque(current.id)) ?? current;
   }
 
+  // A broadcast that never made it into a block has expired: the cheque can be cashed again.
+  if (current.status === "settling" && current.settledAt && Date.now() - current.settledAt.getTime() > SETTLE_TIMEOUT_MS) {
+    const [reverted] = await db
+      .update(schema.cheques)
+      .set(UNSETTLED)
+      .where(and(eq(schema.cheques.id, current.id), eq(schema.cheques.status, "settling")))
+      .returning();
+    if (reverted) return reverted;
+  }
   return current;
 }
 
-/** Reconcile recent pending or funded cheques written by `writerAddress`. */
+const UNSETTLED = {
+  status: "funded" as const,
+  settleTxHash: null,
+  settledAt: null,
+  claimedByAddress: null,
+  claimedByName: null,
+  claimedByTag: null,
+};
+
+/** Reconcile recent pending, funded or settling cheques written by `writerAddress`. */
 export async function reconcileWriterCheques(writerAddress: string): Promise<void> {
   const db = await getDb();
   const active = await db
@@ -227,14 +267,12 @@ export async function reconcileWriterCheques(writerAddress: string): Promise<voi
         eq(schema.cheques.writerAddress, writerAddress),
         or(
           and(eq(schema.cheques.status, "pending"), gt(schema.cheques.createdAt, new Date(Date.now() - PENDING_SHOWN_MS))),
-          eq(schema.cheques.status, "funded"),
+          inArray(schema.cheques.status, ["funded", "settling"]),
         ),
       ),
     )
     .limit(10);
-  for (const c of active) {
-    await reconcileCheque(c);
-  }
+  await Promise.all(active.map((c) => reconcileCheque(c)));
 }
 
 export async function listCheques(writerAddress: string): Promise<Cheque[]> {
@@ -246,9 +284,7 @@ export async function listCheques(writerAddress: string): Promise<Cheque[]> {
       and(
         eq(schema.cheques.writerAddress, writerAddress),
         or(
-          eq(schema.cheques.status, "funded"),
-          eq(schema.cheques.status, "cashed"),
-          eq(schema.cheques.status, "cancelled"),
+          inArray(schema.cheques.status, ["funded", "settling", "cashed", "cancelled"]),
           gt(schema.cheques.createdAt, new Date(Date.now() - PENDING_SHOWN_MS)),
         ),
       ),
@@ -257,15 +293,26 @@ export async function listCheques(writerAddress: string): Promise<Cheque[]> {
     .limit(100);
 }
 
+/** Live balance (Luna) of a cheque wallet: what cashing or cancelling moves out. */
+export async function chequeBalance(c: Cheque): Promise<string | null> {
+  if (c.status !== "funded") return null;
+  try {
+    return String(await nimiq.getBalance(c.chequeAddress));
+  } catch {
+    return null;
+  }
+}
+
 /** Validate that `recipientAddress` and `action` obey the cheque's rules before co-signing or broadcasting. */
 async function validateClaimRules(
   c: Cheque,
   action: "cash" | "cancel",
   rawRecipientAddress: string,
   sessionAddress: string | null,
-): Promise<{ recipient: string; recipientTagOwner: { tag: string; name: string; address: string } | null }> {
+): Promise<{ recipient: string; recipientTagOwner: { tag: string; name: string } | null }> {
   if (c.status === "cashed") throw Errors.badRequest("This cheque has already been cashed.");
   if (c.status === "cancelled") throw Errors.badRequest("This cheque was cancelled by its writer.");
+  if (c.status === "settling") throw Errors.conflict("This cheque is being cashed right now. Check back in a minute.");
   if (c.status !== "funded") throw Errors.badRequest("This cheque hasn't been funded on the blockchain yet.");
 
   const recipient = normalizeAddress(rawRecipientAddress);
@@ -283,14 +330,20 @@ async function validateClaimRules(
 
   // action === "cash"
   if (c.recipientTag) {
-    const owner = await lookupTag(c.recipientTag);
-    if (!owner) {
-      throw Errors.badRequest(`This cheque is made out to ${formatTag(c.recipientTag)}, which is no longer registered.`);
+    // The wallet is fixed when the cheque is written. Only cheques from before that change fall
+    // back to whoever owns the tag today.
+    let locked = c.recipientAddress;
+    if (!locked) {
+      const owner = await lookupTag(c.recipientTag);
+      if (!owner) {
+        throw Errors.badRequest(`This cheque is made out to ${formatTag(c.recipientTag)}, which is no longer registered.`);
+      }
+      locked = owner.address;
     }
-    if (!sameNimAddress(recipient, owner.address)) {
+    if (!sameNimAddress(recipient, locked)) {
       throw Errors.forbidden(`This cheque is made out to ${formatTag(c.recipientTag)} and can only be cashed to their wallet.`);
     }
-    return { recipient: owner.address, recipientTagOwner: owner };
+    return { recipient: normalizeAddress(locked)!, recipientTagOwner: { tag: c.recipientTag, name: c.recipientName || "" } };
   }
 
   if (sameNimAddress(recipient, c.writerAddress)) {
@@ -300,24 +353,41 @@ async function validateClaimRules(
   return { recipient, recipientTagOwner: null };
 }
 
+/**
+ * The transaction must move the cheque's whole balance (so an overfunded cheque doesn't strand
+ * the extra NIM), and at least the written amount.
+ */
+async function checkClaimValue(c: Cheque, rawValue: string): Promise<bigint> {
+  const value = BigInt(rawValue);
+  if (value < BigInt(c.amount)) throw Errors.validation("The amount must be the cheque's full balance.");
+  const balance = BigInt(await nimiq.getBalance(c.chequeAddress));
+  if (value !== balance) {
+    throw Errors.conflict("The cheque's balance changed. Reload the cheque and try again.", {
+      details: { expected: balance.toString(), got: rawValue },
+    });
+  }
+  return value;
+}
+
 /** Handle the two-step non-custodial claim / cancel protocol (`prepare` -> `broadcast`). */
 export async function handleChequeClaim(id: string, input: z.output<typeof ChequeClaimBody>, sessionAddress: string | null) {
   let c = await getCheque(id);
   if (!c) throw Errors.notFound("No cheque found with that link or code.");
-  if (c.status === "pending") c = await reconcileCheque(c);
+  if (c.status === "pending" || c.status === "settling") c = await reconcileCheque(c);
 
   const { recipient, recipientTagOwner } = await validateClaimRules(c, input.action, input.recipientAddress, sessionAddress);
+  const value = await checkClaimValue(c, input.value);
 
   const txFields: BasicTxFields = {
     senderPublicKey: c.chequePublicKey,
     recipient,
-    value: c.amount,
+    value,
     fee: 0,
     validityStartHeight: input.validityStartHeight,
   };
 
   if (input.step === "prepare") {
-    const srv = serverChequeKey(c.id);
+    const srv = serverChequeKey(c.id, c.keyRef);
     const txContent = serializeBasicTxContent(txFields);
     const partial = serverPartialSignTx({
       serverScalar: srv.scalar,
@@ -329,6 +399,7 @@ export async function handleChequeClaim(id: string, input: z.output<typeof Chequ
       step: "prepared" as const,
       recipient,
       validityStartHeight: input.validityStartHeight,
+      value: value.toString(),
       serverNoncePublicKey: partial.serverNoncePublicKey,
       serverPartialSig: partial.serverPartialSig,
       txHash: hashBasicTxContent(txFields),
@@ -336,12 +407,11 @@ export async function handleChequeClaim(id: string, input: z.output<typeof Chequ
   }
 
   // step === "broadcast"
-  const check = verifyRawBasicTx(input.rawTx.toLowerCase(), txFields);
+  const rawTx = input.rawTx.toLowerCase();
+  const check = verifyRawBasicTx(rawTx, txFields);
   if (!check.valid) {
     throw Errors.validation("Invalid cheque signature. Make sure you opened the full cheque link or entered the complete cheque code.");
   }
-
-  const txHash = await nimiq.sendRawTransaction(input.rawTx.toLowerCase());
 
   const db = await getDb();
   const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, recipient));
@@ -349,11 +419,13 @@ export async function handleChequeClaim(id: string, input: z.output<typeof Chequ
     input.action === "cancel" ? c.writerName : recipientTagOwner?.name || recipientMerchant?.name || input.claimerName?.trim() || "Someone";
   const claimedByTag = input.action === "cancel" ? c.writerTag : (recipientTagOwner?.tag ?? recipientMerchant?.tag ?? null);
 
-  const [updated] = await db
+  // Reserve the cheque first, so two claimers can't both be told they cashed it. It only becomes
+  // "cashed" or "cancelled" once the transaction is seen in a block (see reconcileCheque).
+  const [reserved] = await db
     .update(schema.cheques)
     .set({
-      status: input.action === "cancel" ? "cancelled" : "cashed",
-      settleTxHash: txHash.toLowerCase(),
+      status: "settling",
+      settleTxHash: check.txHash,
       settledAt: new Date(),
       claimedByAddress: recipient,
       claimedByName,
@@ -361,28 +433,54 @@ export async function handleChequeClaim(id: string, input: z.output<typeof Chequ
     })
     .where(and(eq(schema.cheques.id, c.id), eq(schema.cheques.status, "funded")))
     .returning();
+  if (!reserved) throw Errors.conflict("Someone else is cashing this cheque right now.");
 
-  const finalCheque = updated ?? (await getCheque(c.id))!;
+  let txHash: string;
+  try {
+    txHash = (await nimiq.sendRawTransaction(rawTx)).toLowerCase();
+  } catch (e) {
+    await db
+      .update(schema.cheques)
+      .set(UNSETTLED)
+      .where(and(eq(schema.cheques.id, c.id), eq(schema.cheques.settleTxHash, check.txHash)));
+    throw e;
+  }
+
   return {
     step: "broadcast" as const,
-    txHash: txHash.toLowerCase(),
-    cheque: await publicChequeView(finalCheque, sessionAddress),
+    txHash,
+    cheque: await publicChequeView(reserved, sessionAddress),
   };
 }
 
-/** Shape of a cheque shown to its writer or on the public `/c/[id]` page. */
-export async function publicChequeView(c: Cheque, viewerAddress: string | null = null) {
+type ViewContext = { writers: Map<string, Merchant | undefined>; tags: Map<string, TagOwner | null> };
+
+async function loadViewContext(rows: Cheque[]): Promise<ViewContext> {
   const db = await getDb();
-  const [writer] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, c.writerAddress));
-  const recipientOwner = c.recipientTag ? await lookupTag(c.recipientTag) : null;
+  const writerAddrs = [...new Set(rows.map((c) => c.writerAddress))];
+  const merchants = writerAddrs.length
+    ? await db.select().from(schema.merchants).where(inArray(schema.merchants.address, writerAddrs))
+    : [];
+  const writers = new Map(writerAddrs.map((a) => [a, merchants.find((m) => m.address === a)]));
+  const tagList = [...new Set(rows.map((c) => c.recipientTag).filter((t): t is string => !!t))];
+  const owners = await Promise.all(tagList.map((t) => lookupTag(t)));
+  return { writers, tags: new Map(tagList.map((t, i) => [t, owners[i]])) };
+}
+
+function buildView(c: Cheque, ctx: ViewContext, viewerAddress: string | null) {
+  const writer = ctx.writers.get(c.writerAddress);
+  const tagOwner = c.recipientTag ? (ctx.tags.get(c.recipientTag) ?? null) : null;
+  // Show the current owner's name and photo only while the tag still points at the locked wallet.
+  const sameOwner = tagOwner && (!c.recipientAddress || sameNimAddress(tagOwner.address, c.recipientAddress));
+  const writerTag = writer?.tag ?? c.writerTag ?? null;
 
   return {
     id: c.id,
     number: chequeNumber(c.id),
     writer: {
       name: writer?.name || c.writerName || "Someone",
-      tag: writer?.tag ?? c.writerTag ?? null,
-      handle: (writer?.tag ?? c.writerTag) ? formatTag((writer?.tag ?? c.writerTag)!) : null,
+      tag: writerTag,
+      handle: writerTag ? formatTag(writerTag) : null,
       avatarUrl: writer ? merchantAvatarUrl(writer) : null,
     },
     chequeAddress: c.chequeAddress,
@@ -392,9 +490,9 @@ export async function publicChequeView(c: Cheque, viewerAddress: string | null =
           kind: "tag" as const,
           tag: c.recipientTag,
           handle: formatTag(c.recipientTag),
-          name: recipientOwner?.name || c.recipientName || formatTag(c.recipientTag),
-          address: recipientOwner?.address ?? null,
-          avatarUrl: recipientOwner?.avatarUrl ?? null,
+          name: (sameOwner ? tagOwner?.name : null) || c.recipientName || formatTag(c.recipientTag),
+          address: c.recipientAddress ?? tagOwner?.address ?? null,
+          avatarUrl: sameOwner ? (tagOwner?.avatarUrl ?? null) : null,
         }
       : {
           kind: "free" as const,
@@ -413,7 +511,7 @@ export async function publicChequeView(c: Cheque, viewerAddress: string | null =
     fundTxHash: c.fundTxHash,
     settleTxHash: c.settleTxHash,
     claimedBy:
-      c.status === "cashed" || c.status === "cancelled"
+      c.status === "settling" || isFinal(c.status)
         ? {
             name: c.claimedByName || "Someone",
             handle: c.claimedByTag ? formatTag(c.claimedByTag) : null,
@@ -425,4 +523,15 @@ export async function publicChequeView(c: Cheque, viewerAddress: string | null =
     settledAt: c.settledAt?.toISOString() ?? null,
   };
 }
-export type PublicCheque = Awaited<ReturnType<typeof publicChequeView>>;
+
+/** Shape of a cheque shown to its writer or on the public `/c/[id]` page. */
+export async function publicChequeView(c: Cheque, viewerAddress: string | null = null) {
+  return buildView(c, await loadViewContext([c]), viewerAddress);
+}
+export type PublicCheque = ReturnType<typeof buildView>;
+
+/** Views for many cheques with one merchant query and one lookup per distinct tag. */
+export async function publicChequeViews(rows: Cheque[], viewerAddress: string | null = null): Promise<PublicCheque[]> {
+  const ctx = await loadViewContext(rows);
+  return rows.map((c) => buildView(c, ctx, viewerAddress));
+}

@@ -166,12 +166,19 @@ export const cheques = pgTable("cheques", {
   linkPublicKey: text("link_public_key").notNull(),
   recipientTag: text("recipient_tag"), // null = free cheque (first to claim gets it)
   recipientName: text("recipient_name"),
+  // Wallet the tag pointed to when the cheque was written. A tag-locked cheque can only be cashed
+  // here, so a tag that is later released and re-registered can't redirect it. Null on old rows.
+  recipientAddress: text("recipient_address"),
+  // Which secret derives the server's half of the key: "cheque" = CHEQUE_KEY_SECRET,
+  // "session" = SESSION_SECRET (cheques written before CHEQUE_KEY_SECRET existed).
+  keyRef: text("key_ref").notNull().default("session"),
   amount: text("amount").notNull(), // Luna, as string
   currency: text("currency").notNull(), // a fiat code or "NIM"
   fiatAmount: text("fiat_amount").notNull(), // typed amount, decimal string in `currency`
   rate: text("rate").notNull(), // `currency` per 1 NIM ("1" when written in NIM)
   note: text("note"),
-  status: text("status").$type<"pending" | "funded" | "cashed" | "cancelled">().notNull().default("pending"),
+  // settling = a cash/cancel transaction was broadcast and is waiting to be included in a block.
+  status: text("status").$type<"pending" | "funded" | "settling" | "cashed" | "cancelled">().notNull().default("pending"),
   fundTxHash: text("fund_tx_hash").unique(),
   settleTxHash: text("settle_tx_hash").unique(),
   claimedByAddress: text("claimed_by_address"),
@@ -342,4 +349,6 @@ CREATE TABLE IF NOT EXISTS cheques (
   settled_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS cheques_writer_idx ON cheques (writer_address, created_at DESC);
+ALTER TABLE cheques ADD COLUMN IF NOT EXISTS recipient_address text;
+ALTER TABLE cheques ADD COLUMN IF NOT EXISTS key_ref text NOT NULL DEFAULT 'session';
 `;

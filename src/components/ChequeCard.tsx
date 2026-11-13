@@ -7,6 +7,7 @@ import { shortAddress } from "@/lib/nimiq-address";
 const STATUS_LABEL: Record<PublicCheque["status"], { text: string; variant: BadgeVariant }> = {
   pending: { text: "UNFUNDED", variant: "muted" },
   funded: { text: "FUNDED", variant: "solid" },
+  settling: { text: "CASHING…", variant: "outline" },
   cashed: { text: "CASHED ✓", variant: "outline" },
   cancelled: { text: "CANCELLED", variant: "muted" },
 };

@@ -118,7 +118,7 @@ const txFields = {
 };
 const txContent = serializeBasicTxContent(txFields);
 ok(txContent.length === 67, "serializeBasicTxContent is 67 bytes");
-const { noncePublicKey } = clientNonceForTx(sampleSecret, txContent);
+const { nonceScalar, noncePublicKey } = clientNonceForTx(sampleSecret, txContent);
 const { serverNoncePublicKey, serverPartialSig } = serverPartialSignTx({
   serverScalar: serverKey.scalar,
   chequePublicKey: chequeWallet.publicKey,
@@ -128,6 +128,7 @@ const { serverNoncePublicKey, serverPartialSig } = serverPartialSignTx({
 const signed = completeDualSignature({
   secret: sampleSecret,
   tx: txFields,
+  nonceScalar,
   serverNoncePublicKey,
   serverPartialSig,
 });
@@ -165,9 +166,21 @@ ok(
     action: "cash",
     recipientAddress: chequeWallet.address,
     validityStartHeight: 100,
+    value: "100000",
     clientNoncePublicKey: noncePublicKey,
   }).success,
   "ChequeClaimBody validates prepare step",
+);
+ok(
+  !ChequeClaimBody.safeParse({
+    step: "prepare",
+    action: "cash",
+    recipientAddress: chequeWallet.address,
+    validityStartHeight: 100,
+    value: "100000",
+    clientNoncePublicKey: "00".repeat(32),
+  }).success,
+  "ChequeClaimBody rejects a nonce that is not a valid curve point",
 );
 
 if (failed) {

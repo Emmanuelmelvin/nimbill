@@ -54,6 +54,9 @@ function Nav() {
           <Link href="/docs" className="px-2 py-2 text-sm text-muted hover:text-ink sm:px-3">
             API
           </Link>
+          <Link href="/mcp" className="px-2 py-2 text-sm text-muted hover:text-ink sm:px-3">
+            MCP
+          </Link>
           <a href="#start" className={buttonStyles({ size: "sm", className: "ml-1 whitespace-nowrap sm:ml-0" })}>
             Get started
           </a>
@@ -568,6 +571,11 @@ function Footer() {
           <li>
             <TextLink href="/docs" muted>
               API and AI agents
+            </TextLink>
+          </li>
+          <li>
+            <TextLink href="/mcp" muted>
+              MCP Agent Wallet
             </TextLink>
           </li>
           <li>

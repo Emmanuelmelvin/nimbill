@@ -37,7 +37,6 @@ type TagOwner = { tag: string; handle: string; name: string; address: string; av
 export default function ClaimChequePage() {
   const { id } = useParams<{ id: string }>();
   const [cheque, setCheque] = useState<PublicCheque | null>(null);
-  const [currentBlock, setCurrentBlock] = useState<number>(0);
   const [secret, setSecret] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
     const hashSecret = normalizeChequeSecret(window.location.hash);
@@ -60,15 +59,28 @@ export default function ClaimChequePage() {
     };
     window.addEventListener("hashchange", onHash);
 
-    api<{ cheque: PublicCheque; currentBlock: number }>(`/api/cheques/${encodeURIComponent(id)}`)
+    api<{ cheque: PublicCheque }>(`/api/cheques/${encodeURIComponent(id)}`)
       .then((r) => {
         setCheque(r.cheque);
-        setCurrentBlock(r.currentBlock);
       })
       .catch((e) => setError({ notFound: AppError.is(e) && e.code === "NOT_FOUND", message: (e as Error).message }));
 
     return () => window.removeEventListener("hashchange", onHash);
   }, [id]);
+
+  // While a cash/cancel transaction is waiting for a block, check back until it's confirmed.
+  const settling = cheque?.status === "settling";
+  useEffect(() => {
+    if (!settling) return;
+    const t = setInterval(() => {
+      api<{ cheque: PublicCheque }>(`/api/cheques/${encodeURIComponent(id)}`)
+        .then((r) => {
+          setCheque(r.cheque);
+        })
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [settling, id]);
 
   return (
     <div className="pt-6">
@@ -88,7 +100,6 @@ export default function ClaimChequePage() {
         ) : cheque ? (
           <ChequeScreen
             cheque={cheque}
-            currentBlock={currentBlock}
             secret={secret}
             onSecret={(s) => {
               saveChequeSecret(cheque.id, s);
@@ -106,13 +117,11 @@ export default function ClaimChequePage() {
 
 function ChequeScreen({
   cheque,
-  currentBlock,
   secret,
   onSecret,
   onUpdated,
 }: {
   cheque: PublicCheque;
-  currentBlock: number;
   secret: string | null;
   onSecret: (s: string) => void;
   onUpdated: (c: PublicCheque) => void;
@@ -180,10 +189,8 @@ function ChequeScreen({
         secret,
         action,
         chequePublicKey: cheque.chequePublicKey,
-        amount: cheque.amount,
         recipientAddress: target,
         claimerName: claimerName.trim() || me?.name || tagLookup?.owner?.name || undefined,
-        currentBlock,
       });
       onUpdated(res.cheque);
     } catch (e) {
@@ -221,6 +228,20 @@ function ChequeScreen({
         <Card tone="subtle" className="space-y-2 text-center">
           <p className="font-semibold">This cheque was cancelled</p>
           <p className="text-sm text-muted">The funds were returned to {cheque.writer.name}&apos;s wallet.</p>
+          {cheque.settleTxHash && (
+            <AnchorButton href={nimExplorerTx(cheque.settleTxHash)} target="_blank" rel="noreferrer" variant="secondary" size="sm">
+              View on the blockchain ↗
+            </AnchorButton>
+          )}
+        </Card>
+      )}
+
+      {cheque.status === "settling" && (
+        <Card tone="subtle" className="space-y-2 text-center" aria-live="polite">
+          <p className="font-semibold">Confirming on the blockchain…</p>
+          <p className="text-sm text-muted">
+            The transaction was sent{cheque.claimedBy ? ` to ${cheque.claimedBy.name}` : ""}. This usually takes a few seconds.
+          </p>
           {cheque.settleTxHash && (
             <AnchorButton href={nimExplorerTx(cheque.settleTxHash)} target="_blank" rel="noreferrer" variant="secondary" size="sm">
               View on the blockchain ↗
@@ -398,6 +419,9 @@ export function WriterShareCard({ cheque, secret }: { cheque: PublicCheque; secr
           {cheque.recipient.kind === "tag"
             ? `Only ${cheque.recipient.handle} can cash it.`
             : "Treat this link like cash — the first person to open it can claim the money."}
+        </p>
+        <p className="mt-1 text-xs font-medium">
+          This link and code are the only key to the cheque. NimBill can&apos;t recover them, so keep a copy (you need it to cancel).
         </p>
       </div>
       <CodeBlock className="text-xs">{url}</CodeBlock>

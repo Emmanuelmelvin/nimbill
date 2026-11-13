@@ -1,6 +1,7 @@
 // Request schemas shared by API routes and the browser forms that send them,
 // so both sides check the same rules with the same messages.
 import { z } from "zod";
+import { isValidPointHex } from "./cheque-crypto";
 import { CURRENCY_CODES } from "./currencies";
 import { UNIT_CODES } from "./money";
 
@@ -158,7 +159,7 @@ export const ClientBody = z.object({
 export const NewChequeBody = z.object({
   amount: z.coerce.number("Enter the amount as a number").positive("Enter an amount above 0").max(1e12, "That amount is too large"),
   currency: z.enum([...CURRENCY_CODES, "NIM"], { error: "Unsupported currency" }),
-  linkPublicKey: z.string().regex(/^[0-9a-f]{64}$/i, "Invalid cheque public key"),
+  linkPublicKey: z.string().refine(isValidPointHex, "Invalid cheque public key"),
   recipientTag: z.string().trim().max(60).nullish(),
   note: z.string().trim().max(80, "Keep the note under 80 characters").optional(),
 });
@@ -166,21 +167,24 @@ export type NewChequeInput = z.input<typeof NewChequeBody>;
 
 export const ChequeVerifyBody = z.object({ txHash: z.string().trim().max(80).optional() });
 
+const ClaimCommon = {
+  action: z.enum(["cash", "cancel"]),
+  recipientAddress: z.string().trim().min(1, "Enter the Nimiq address to receive the funds").max(60),
+  claimerName: z.string().trim().max(80).optional(),
+  validityStartHeight: z.coerce.number().int().positive().max(0xffffffff),
+  /** Luna moved out of the cheque: its whole on-chain balance (`balance` from GET /api/cheques/[id]). */
+  value: z.string().regex(/^[1-9][0-9]{0,18}$/, "Invalid amount"),
+};
+
 export const ChequeClaimBody = z.discriminatedUnion("step", [
   z.object({
     step: z.literal("prepare"),
-    action: z.enum(["cash", "cancel"]),
-    recipientAddress: z.string().trim().min(1, "Enter the Nimiq address to receive the funds").max(60),
-    claimerName: z.string().trim().max(80).optional(),
-    validityStartHeight: z.coerce.number().int().positive(),
-    clientNoncePublicKey: z.string().regex(/^[0-9a-f]{64}$/i, "Invalid nonce public key"),
+    ...ClaimCommon,
+    clientNoncePublicKey: z.string().refine(isValidPointHex, "Invalid nonce public key"),
   }),
   z.object({
     step: z.literal("broadcast"),
-    action: z.enum(["cash", "cancel"]),
-    recipientAddress: z.string().trim().min(1).max(60),
-    claimerName: z.string().trim().max(80).optional(),
-    validityStartHeight: z.coerce.number().int().positive(),
+    ...ClaimCommon,
     rawTx: z.string().regex(/^[0-9a-f]{278}$/i, "Invalid signed transaction"),
   }),
 ]);

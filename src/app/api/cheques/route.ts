@@ -1,6 +1,6 @@
 import { handle, json } from "@/lib/api";
 import { requireSessionAddress } from "@/lib/auth";
-import { chequeMemo, createCheque, listCheques, publicChequeView, reconcileWriterCheques } from "@/lib/cheques";
+import { chequeMemo, createCheque, listCheques, publicChequeView, publicChequeViews, reconcileWriterCheques } from "@/lib/cheques";
 import { NewChequeBody } from "@/lib/schemas";
 
 // Cheques written by the signed-in user. Also checks the blockchain for recent funding or cashing.
@@ -8,8 +8,7 @@ export const GET = handle(async () => {
   const address = await requireSessionAddress();
   await reconcileWriterCheques(address);
   const rows = await listCheques(address);
-  const cheques = await Promise.all(rows.map((c) => publicChequeView(c, address)));
-  return json({ cheques });
+  return json({ cheques: await publicChequeViews(rows, address) });
 });
 
 // Start writing a cheque. The browser sends only `linkPublicKey` (never the secret);

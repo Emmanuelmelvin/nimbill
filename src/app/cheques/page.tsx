@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   CardHeader,
+  CopyButton,
   EmptyState,
   Field,
   Header,
@@ -25,10 +26,10 @@ import {
   TabBar,
 } from "@/components/ui";
 import { WriterShareCard } from "@/app/c/[id]/page";
-import { linkKeyFromSecret, newChequeSecret, parseChequeInput } from "@/lib/cheque-crypto";
+import { formatChequeCode, linkKeyFromSecret, newChequeSecret, parseChequeInput } from "@/lib/cheque-crypto";
 import type { PublicCheque } from "@/lib/cheques";
 import { api } from "@/lib/client/api";
-import { getSavedChequeSecret, saveChequeSecret } from "@/lib/client/cheque-secrets";
+import { allSavedChequeSecrets, getSavedChequeSecret, saveChequeSecret } from "@/lib/client/cheque-secrets";
 import { getNimiq, useNimiq, walletErrorMessage } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { formatAsset, formatFiat, LUNA_PER_NIM } from "@/lib/currencies";
@@ -475,6 +476,14 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
   if (error) return <Alert kind="error">{error}</Alert>;
   if (!cheques) return <Loader compact />;
 
+  // The link secret only lives in this browser. Let the writer copy every open cheque's code
+  // somewhere safe, since without it a cheque can't be cancelled.
+  const saved = allSavedChequeSecrets();
+  const backup = cheques
+    .filter((c) => (c.status === "funded" || c.status === "pending") && saved[c.id])
+    .map((c) => `${c.number} · ${amountText(c)}: ${formatChequeCode(c.id, saved[c.id])}`)
+    .join("\n");
+
   return (
     <section className="space-y-3">
       <div className="flex items-center justify-between gap-2">
@@ -483,6 +492,12 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
           Got a cheque to cash?
         </button>
       </div>
+      {backup && (
+        <div className="flex items-center justify-between gap-3 border border-line p-3">
+          <p className="text-xs text-muted">Cheque keys are only saved in this browser. Copy them somewhere safe.</p>
+          <CopyButton text={backup} label="Back up keys" variant="secondary" size="sm" className="shrink-0" />
+        </div>
+      )}
       {cheques.length === 0 ? (
         <EmptyState title="No cheques written yet" description="Write a cheque above to get a shareable link and QR code." />
       ) : (
@@ -506,11 +521,13 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
                       <Badge variant={c.status === "funded" ? "solid" : c.status === "cashed" ? "outline" : "muted"}>
                         {c.status === "funded"
                           ? "Funded · open"
-                          : c.status === "cashed"
-                            ? "Cashed ✓"
-                            : c.status === "cancelled"
-                              ? "Cancelled"
-                              : "Unfunded"}
+                          : c.status === "settling"
+                            ? "Cashing…"
+                            : c.status === "cashed"
+                              ? "Cashed ✓"
+                              : c.status === "cancelled"
+                                ? "Cancelled"
+                                : "Unfunded"}
                       </Badge>
                     </div>
                   </Link>
