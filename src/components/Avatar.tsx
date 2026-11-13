@@ -7,14 +7,14 @@ function initials(name: string): string {
 }
 
 /**
- * A merchant's photo, square with a border to match the rest of NimBill. Without a photo it shows
- * their initials on black, so every board still has a face.
+ * A merchant's photo in a circle with a border. Without a photo it shows their initials on black,
+ * so every board still has a face.
  */
 export function Avatar({ src, name, className }: { src: string | null | undefined; name: string; className?: string }) {
   return (
     <span
       className={cx(
-        "flex aspect-square shrink-0 items-center justify-center overflow-hidden border border-ink bg-ink font-mono font-bold text-paper",
+        "flex aspect-square shrink-0 items-center justify-center overflow-hidden rounded-full border border-ink bg-ink font-mono font-bold text-paper",
         className,
       )}
     >
