@@ -3,6 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { InvoiceDoc } from "@/components/InvoiceDoc";
+import { RemindActions, ViewedStatus, daysOverdue } from "@/components/InvoiceReminder";
 import { PayPanel } from "@/components/PayPanel";
 import { StakeCard } from "@/components/StakeCard";
 import {
@@ -42,16 +43,21 @@ function InvoiceScreen() {
   const { merchant } = useSession();
   const [inv, setInv] = useState<PublicInvoice | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [viewedAt, setViewedAt] = useState<string | null>(null);
+  const [clientEmail, setClientEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [justPaid, setJustPaid] = useState(false);
   const [preview, setPreview] = useState(false);
 
   const load = useCallback(() => {
-    api<{ invoice: PublicInvoice; isOwner: boolean }>(`/api/invoices/${id}`)
+    // view=1: this is the invoice page, so a visit by anyone but the owner marks it "Viewed".
+    api<{ invoice: PublicInvoice; isOwner: boolean; viewedAt: string | null; clientEmail: string | null }>(`/api/invoices/${id}?view=1`)
       .then((r) => {
         setError(null);
         setInv(r.invoice);
         setIsOwner(r.isOwner);
+        setViewedAt(r.viewedAt);
+        setClientEmail(r.clientEmail);
       })
       .catch((e) => setError(e.message));
   }, [id]);
@@ -108,7 +114,9 @@ function InvoiceScreen() {
 
         <InvoiceDoc inv={inv} />
 
-        {inv.status === "unpaid" && ownerView && <SharePanel inv={inv} onCancelled={setInv} />}
+        {inv.status === "unpaid" && ownerView && (
+          <SharePanel inv={inv} viewedAt={viewedAt} clientEmail={clientEmail} onCancelled={setInv} />
+        )}
         {inv.status === "unpaid" && !ownerView && <PayPanel inv={inv} onPaid={onPaid} selfPreview={isOwner} />}
         {isOwner && inv.status === "unpaid" && (
           <TextButton className="w-full" onClick={() => setPreview((p) => !p)}>
@@ -164,7 +172,18 @@ function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolea
   );
 }
 
-function SharePanel({ inv, onCancelled }: { inv: PublicInvoice; onCancelled: (i: PublicInvoice) => void }) {
+function SharePanel({
+  inv,
+  viewedAt,
+  clientEmail,
+  onCancelled,
+}: {
+  inv: PublicInvoice;
+  viewedAt: string | null;
+  clientEmail: string | null;
+  onCancelled: (i: PublicInvoice) => void;
+}) {
+  const late = daysOverdue(inv);
   const origin = useOrigin();
   const canShare = useCanShare();
   const url = origin ? `${origin}/i/${inv.id}` : "";
@@ -180,6 +199,17 @@ function SharePanel({ inv, onCancelled }: { inv: PublicInvoice; onCancelled: (i:
         title="Get paid"
         description={`Send this link to ${inv.clientName}. It opens the invoice in Nimiq Pay, where they can pay in a few taps.`}
       />
+      <ViewedStatus viewedAt={viewedAt} />
+      {/* Overdue: the reminder comes first, it's the one thing to do now. */}
+      {late > 0 && (
+        <div className="space-y-2 border border-ink p-3">
+          <div>
+            <h3 className="font-bold">Overdue by {late === 1 ? "1 day" : `${late} days`}</h3>
+            <p className="mt-1 text-sm text-muted">Send {inv.clientName} a friendly reminder with the payment link.</p>
+          </div>
+          <RemindActions inv={inv} clientEmail={clientEmail} />
+        </div>
+      )}
       <CodeBlock>{nimiqPayUrl || "…"}</CodeBlock>
       <div className="grid grid-cols-2 gap-2">
         {canShare ? (
@@ -213,6 +243,12 @@ function SharePanel({ inv, onCancelled }: { inv: PublicInvoice; onCancelled: (i:
         <CopyButton text={inv.nimbillNumber} label="Copy Nimbill number" block />
       </div>
       <Disclosure summary="More options">
+        {late === 0 && (
+          <div className="space-y-2 pb-1">
+            <p className="text-sm font-semibold">Send a reminder</p>
+            <RemindActions inv={inv} clientEmail={clientEmail} size="sm" />
+          </div>
+        )}
         <CopyButton text={url} label="Copy plain web link" size="sm" block className="min-h-11" />
         <Button
           variant="danger"

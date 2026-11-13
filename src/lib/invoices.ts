@@ -139,6 +139,21 @@ export async function cancelInvoice(id: string, merchantAddress: string): Promis
   return rows.length > 0;
 }
 
+/**
+ * Record the first time the client opened an unpaid invoice. Only the first view sticks, so
+ * repeat visits and races cost one no-op update at most. Returns the invoice as it is now.
+ */
+export async function markViewed(inv: Invoice): Promise<Invoice> {
+  if (inv.viewedAt || inv.status !== "unpaid" || inv.isDemo) return inv;
+  const db = await getDb();
+  const [row] = await db
+    .update(schema.invoices)
+    .set({ viewedAt: new Date() })
+    .where(and(eq(schema.invoices.id, inv.id), isNull(schema.invoices.viewedAt), eq(schema.invoices.status, "unpaid")))
+    .returning();
+  return row ?? inv;
+}
+
 // ---------- quotes (rate lock) ----------
 
 /**

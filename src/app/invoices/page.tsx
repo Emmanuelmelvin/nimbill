@@ -19,6 +19,7 @@ import {
   TextLink,
 } from "@/components/ui";
 import { EarningsCard } from "@/components/EarningsCard";
+import { RemindActions, ViewedStatus } from "@/components/InvoiceReminder";
 import { TabPage } from "@/components/TabPage";
 import { TransferList } from "@/components/TransferList";
 import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
@@ -26,8 +27,8 @@ import { formatAsset, formatFiat } from "@/lib/currencies";
 import { localDate, type EarningPoint } from "@/lib/earnings";
 import { formatMoney, type Fx } from "@/lib/money";
 
-/** An invoice as its owner sees it: with the private client email and a dollar value for adding up. */
-type OwnInvoice = PublicInvoice & { clientEmail: string | null; usd: number | null };
+/** An invoice as its owner sees it: with the private client email, when the client first opened it, and a dollar value for adding up. */
+type OwnInvoice = PublicInvoice & { clientEmail: string | null; viewedAt: string | null; usd: number | null };
 type Listing = { invoices: OwnInvoice[]; fx: Fx | null; currency: string };
 
 const VIEWS = [
@@ -135,6 +136,7 @@ function InvoiceList({ invoices }: { invoices: OwnInvoice[] }) {
                     <p className="font-mono text-xs text-muted">
                       {inv.number} · {new Date(inv.createdAt).toLocaleDateString()}
                     </p>
+                    {inv.status === "unpaid" && <ViewedStatus viewedAt={inv.viewedAt} className="mt-1" />}
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1 text-right">
                     <p className="font-bold tabular-nums">{formatFiat(inv.total, inv.currency)}</p>
@@ -145,6 +147,13 @@ function InvoiceList({ invoices }: { invoices: OwnInvoice[] }) {
                     )}
                   </div>
                 </Link>
+                {/* Outside the row's link: buttons can't sit inside an <a>. */}
+                {isOverdue(inv, today) && (
+                  <div className="flex items-center gap-3 px-4 pb-4">
+                    <p className="shrink-0 font-mono text-[11px] tracking-wider text-muted uppercase">Remind</p>
+                    <RemindActions inv={inv} clientEmail={inv.clientEmail} size="sm" className="min-w-0 flex-1" />
+                  </div>
+                )}
               </li>
             ))}
           </ul>

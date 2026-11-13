@@ -63,6 +63,9 @@ export const invoices = pgTable("invoices", {
   // What the client added on top of `total` as a tip, decimal string in `currency`. Null = no tip.
   // `paidAmount` and `paidUsd` already include it.
   paidTip: text("paid_tip"),
+  // When someone other than the merchant first opened the invoice page while it was unpaid.
+  // Private to the merchant ("Sent → Viewed → Paid"); null = not opened yet.
+  viewedAt: timestamp("viewed_at", { withTimezone: true }),
 });
 
 // An earnings target for a period. Progress is computed from paid invoices, never stored.
@@ -353,4 +356,5 @@ ALTER TABLE cheques ADD COLUMN IF NOT EXISTS recipient_address text;
 ALTER TABLE cheques ADD COLUMN IF NOT EXISTS key_ref text NOT NULL DEFAULT 'session';
 CREATE INDEX IF NOT EXISTS cheques_claimed_by_idx ON cheques (claimed_by_address);
 CREATE INDEX IF NOT EXISTS cheques_recipient_address_idx ON cheques (recipient_address);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS viewed_at timestamptz;
 `;

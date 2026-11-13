@@ -18,7 +18,13 @@ export const GET = handle(async () => {
   const invoices = await listInvoices(address);
   return json({
     // `usd` lets the browser add up invoices in different currencies (clients view).
-    invoices: invoices.map((i) => ({ ...publicInvoice(i), clientEmail: i.clientEmail, usd: invoiceUsd(i, fx) })),
+    // `viewedAt`: when the client first opened it (private, like `clientEmail`).
+    invoices: invoices.map((i) => ({
+      ...publicInvoice(i),
+      clientEmail: i.clientEmail,
+      viewedAt: i.viewedAt?.toISOString() ?? null,
+      usd: invoiceUsd(i, fx),
+    })),
     fx,
     currency,
   });
