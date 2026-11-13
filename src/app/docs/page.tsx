@@ -432,7 +432,7 @@ console.log(result.status, result.invoice?.number); // "paid", "INV-0042"`}</Cod
               <div className="space-y-6">
                 <SetupCard logos={["claude", "cursor"]} title="MCP Server: give your AI agent its own Nimiq wallet">
                   <p>
-                    The included <span className="font-mono text-ink">mcp/index.mjs</span> server gives your agent its own non-custodial
+                    The <span className="font-mono text-ink">nimbill-mcp</span> server (on npm) gives your agent its own non-custodial
                     Ed25519 Nimiq wallet (<span className="font-mono text-ink">~/.nimbill/agent-wallet.json</span>) and 15 tools to claim a{" "}
                     <span className="font-mono text-ink">@tag</span>, pay invoices and boards on-chain, send NIM by tag, and write or cash
                     cheques. See the full guide and all 15 tools on <TextLink href="/mcp">/mcp</TextLink>.
@@ -441,8 +441,8 @@ console.log(result.status, result.invoice?.number); // "paid", "INV-0042"`}</Cod
                     {json({
                       mcpServers: {
                         nimbill: {
-                          command: "node",
-                          args: ["/path/to/nimbill/mcp/index.mjs"],
+                          command: "npx",
+                          args: ["-y", "nimbill-mcp"],
                           env: {
                             NIMBILL_URL: base,
                           },

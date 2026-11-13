@@ -1,0 +1,45 @@
+{
+  "name": "nimbill-mcp",
+  "version": "1.1.0",
+  "description": "NimBill Agent Wallet MCP server: gives any AI agent its own non-custodial Nimiq wallet, @tag, on-chain payments, invoices and cheques.",
+  "type": "module",
+  "bin": {
+    "nimbill-mcp": "index.mjs"
+  },
+  "main": "index.mjs",
+  "files": [
+    "index.mjs",
+    "client.mjs",
+    "tools.mjs",
+    "wallet.mjs",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "dependencies": {
+    "@noble/curves": "^2.4.0",
+    "@noble/hashes": "^2.4.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "nimiq",
+    "nim",
+    "wallet",
+    "ai-agent",
+    "invoices",
+    "payments"
+  ],
+  "homepage": "https://nimbill.mblob.me/mcp",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Emmanuelmelvin/nimbill.git",
+    "directory": "mcp"
+  },
+  "bugs": {
+    "url": "https://github.com/Emmanuelmelvin/nimbill/issues"
+  },
+  "license": "MIT"
+}

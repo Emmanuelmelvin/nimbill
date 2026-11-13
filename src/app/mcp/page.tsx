@@ -368,8 +368,8 @@ export default async function McpPage() {
   const stdConfig = {
     mcpServers: {
       nimbill: {
-        command: "node",
-        args: ["/absolute/path/to/nimbill/mcp/index.mjs"],
+        command: "npx",
+        args: ["-y", "nimbill-mcp"],
         env: {
           NIMBILL_URL: base,
         },
@@ -393,7 +393,7 @@ export default async function McpPage() {
             Give your AI agent its own Nimiq wallet.
           </h1>
           <p className="mt-4 max-w-2xl text-muted sm:text-lg">
-            NimBill ships with a built-in MCP server (<span className="font-mono text-ink">mcp/index.mjs</span>) that gives Claude, Cursor,
+            NimBill ships an MCP server on npm (<span className="font-mono text-ink">npx -y nimbill-mcp</span>) that gives Claude, Cursor,
             Windsurf, and Antigravity their own non-custodial Ed25519 Nimiq wallet, a <span className="font-mono text-ink">@tag</span>, and
             15 tools to pay invoices, buy from boards, send NIM by tag, and write or cash cheques on-chain.
           </p>
@@ -504,7 +504,7 @@ export default async function McpPage() {
 
                 <HostCard logos={["claude"]} title="Claude Code (CLI)">
                   <p>Run this command in your terminal to register the NimBill Agent Wallet MCP server in Claude Code:</p>
-                  <Code label="terminal">{`claude mcp add nimbill -e NIMBILL_URL=${base} -- node /absolute/path/to/nimbill/mcp/index.mjs`}</Code>
+                  <Code label="terminal">{`claude mcp add nimbill -e NIMBILL_URL=${base} -- npx -y nimbill-mcp`}</Code>
                 </HostCard>
 
                 <HostCard logos={["cursor"]} title="Cursor">

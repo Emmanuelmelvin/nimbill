@@ -14,21 +14,30 @@ Give any AI agent (Claude Desktop, Claude Code, Cursor, Windsurf, Google Antigra
 
 ### 1. Run via MCP in Claude Desktop / Cursor / Antigravity
 
-Add this to your MCP configuration (`claude_desktop_config.json`, `.cursor/mcp.json`, or Antigravity MCP settings):
+Add this to your MCP configuration (`claude_desktop_config.json`, `.cursor/mcp.json`, or Antigravity MCP settings). Requires Node.js 18.17+:
 
 ```json
 {
   "mcpServers": {
     "nimbill": {
-      "command": "node",
-      "args": ["/absolute/path/to/nimbill/mcp/index.mjs"],
+      "command": "npx",
+      "args": ["-y", "nimbill-mcp"],
       "env": {
-        "NIMBILL_URL": "https://nimbill.mblob.me"
+        "NIMBILL_URL": "https://nimbill.mblob.me",
+        "NIMBILL_WALLET_PASSPHRASE": "choose-a-strong-passphrase"
       }
     }
   }
 }
 ```
+
+Claude Code:
+
+```bash
+claude mcp add nimbill -e NIMBILL_URL=https://nimbill.mblob.me -- npx -y nimbill-mcp
+```
+
+Running from a clone of this repo instead? Use `"command": "node"` with `"args": ["/absolute/path/to/nimbill/mcp/index.mjs"]`.
 
 ### Environment Variables (Optional)
 
