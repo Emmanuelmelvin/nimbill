@@ -86,13 +86,32 @@ export type GoalBodyInput = z.input<typeof GoalBody>;
 
 export const ExportQuery = z.object({ range: z.enum(["30d", "90d", "1y", "all"]).default("all") });
 
-/** Start a transfer to someone's tag. The amount is in `currency`: a fiat code, or NIM. */
-export const NewTransferBody = z.object({
-  to: z.string().trim().min(1, "Who are you sending to?").max(60),
-  amount: z.coerce.number("Enter the amount as a number").positive("Enter an amount above 0").max(1e12, "That amount is too large"),
-  currency: z.enum([...CURRENCY_CODES, "NIM"], { error: "Unsupported currency" }),
-  note: z.string().trim().max(80, "Keep the note under 80 characters").optional(),
-});
+/**
+ * Start a transfer to someone's tag. `asset` is the coin sent (NIM unless given). The amount is in
+ * `currency`: a fiat code, or the coin itself. USDT needs the sender's Polygon address (`fromEvmAddress`),
+ * because a USDT transfer has no memo and the server matches it by both wallets and the exact amount.
+ */
+export const NewTransferBody = z
+  .object({
+    to: z.string().trim().min(1, "Who are you sending to?").max(60),
+    asset: z.enum(["NIM", "USDT"], { error: "Send NIM or USDT" }).default("NIM"),
+    amount: z.coerce.number("Enter the amount as a number").positive("Enter an amount above 0").max(1e12, "That amount is too large"),
+    currency: z.enum([...CURRENCY_CODES, "NIM", "USDT"], { error: "Unsupported currency" }),
+    fromEvmAddress: z
+      .string()
+      .trim()
+      .regex(/^0x[0-9a-fA-F]{40}$/, "That isn't a Polygon address")
+      .optional(),
+    note: z.string().trim().max(80, "Keep the note under 80 characters").optional(),
+  })
+  .refine((b) => (b.currency !== "NIM" && b.currency !== "USDT") || b.currency === b.asset, {
+    message: "Type the amount in a currency or in the coin you're sending",
+    path: ["currency"],
+  })
+  .refine((b) => b.asset !== "USDT" || !!b.fromEvmAddress, {
+    message: "Sending USDT needs your wallet's Polygon address",
+    path: ["fromEvmAddress"],
+  });
 export type NewTransferInput = z.input<typeof NewTransferBody>;
 
 export const TransferVerifyBody = z.object({ txHash: z.string().trim().max(80) });

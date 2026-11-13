@@ -103,7 +103,12 @@ ok(
 const fiatCheck = (Number(q.amount) / 1e5) * Number(q.rate);
 ok(fiatCheck >= 65001 && fiatCheck < 65001 * 1.001, `quote covers total (${fiatCheck.toFixed(2)} NGN)`);
 r = await call(`/api/invoices/${inv.id}/quote`, { method: "POST", body: JSON.stringify({ asset: "USDT" }) });
-ok(r.status === 200 && r.body.quote.recipient.startsWith("0x"), `USDT quote: ${Number(r.body.quote.amount) / 1e6} USDT`);
+ok(
+  r.status === 200 && r.body.quote?.recipient.startsWith("0x"),
+  r.body.quote
+    ? `USDT quote: ${Number(r.body.quote.amount) / 1e6} USDT`
+    : `USDT quote failed: ${r.status} ${JSON.stringify(r.body?.error)}`,
+);
 r = await call(`/api/invoices/${inv.id}/verify`, { method: "POST", body: JSON.stringify({ asset: "NIM", txHash: "ab".repeat(32) }) });
 ok(r.body.status === "pending", "unknown NIM tx -> pending: " + r.body.message);
 r = await call(`/api/invoices/${inv.id}/verify`, {
@@ -375,6 +380,62 @@ r = await call("/api/transfers");
 ok(r.status === 401, "anonymous cannot list transfers");
 r = await call("/api/transfers", { method: "POST", body: JSON.stringify({ to: kitoTag, amount: 1, currency: "NIM" }) });
 ok(r.status === 401, "anonymous cannot send");
+
+// ---- USDT transfers (Polygon has no memo: a unique exact amount, matched against both wallets) ----
+const senderEvm = "0x1111111111111111111111111111111111111111";
+const kitoEvm = "0x2222222222222222222222222222222222222222";
+const usdtTransfer = (body) =>
+  call("/api/transfers", { method: "POST", body: JSON.stringify({ to: kitoTag, asset: "USDT", currency: "USDT", ...body }) });
+cookie = mine;
+r = await usdtTransfer({ amount: 2, fromEvmAddress: senderEvm });
+ok(
+  r.status === 400 && /doesn't accept USDT/.test(r.body?.error?.message),
+  "USDT to a tag with no Polygon wallet: " + r.body?.error?.message,
+);
+cookie = kito;
+r = await call("/api/me", { method: "POST", body: JSON.stringify({ name: "Kito Media", evmAddress: kitoEvm }) });
+ok(r.status === 200 && r.body.merchant.evmAddress === kitoEvm, "recipient adds a Polygon wallet");
+r = await call(`/api/tags/${kitoTag}`);
+ok(
+  r.status === 200 && r.body.owner.acceptsUsdt === true && !("evmAddress" in r.body.owner),
+  "tag lookup says USDT is accepted, without the address",
+);
+cookie = mine;
+r = await usdtTransfer({ amount: 2 });
+ok(r.status === 400, "USDT needs the sender's Polygon address: " + r.body?.error?.message);
+r = await usdtTransfer({ amount: 2, fromEvmAddress: kitoEvm });
+ok(r.status === 400, "can't send USDT from the recipient's own wallet: " + r.body?.error?.message);
+r = await call("/api/transfers", {
+  method: "POST",
+  body: JSON.stringify({ to: kitoTag, asset: "NIM", amount: 2, currency: "USDT" }),
+});
+ok(r.status === 400, "an amount typed in USDT must be sent as USDT: " + r.body?.error?.message);
+r = await usdtTransfer({ amount: 2, fromEvmAddress: senderEvm, note: "Design work" });
+const usdtA = r.body?.payment;
+ok(
+  r.status === 201 &&
+    usdtA.asset === "USDT" &&
+    usdtA.recipient === kitoEvm &&
+    usdtA.memo === null &&
+    Number(usdtA.amount) > 2_000_000 &&
+    Number(usdtA.amount) < 2_010_000 &&
+    r.body.transfer.asset === "USDT",
+  `USDT transfer started: exactly ${Number(usdtA?.amount) / 1e6} USDT to ${usdtA?.recipient}`,
+);
+const usdtTransferId = r.body.transfer.id;
+r = await usdtTransfer({ amount: 2, fromEvmAddress: senderEvm });
+ok(r.status === 201 && r.body.payment.amount !== usdtA.amount, "a second USDT transfer to the same wallet gets a different exact amount");
+r = await call(`/api/transfers/${usdtTransferId}/verify`, { method: "POST", body: JSON.stringify({ txHash: "ab".repeat(32) }) });
+ok(r.body.status === "rejected", "USDT transfer: a Nimiq-style hash is rejected");
+r = await call(`/api/transfers/${usdtTransferId}/verify`, { method: "POST", body: JSON.stringify({ txHash: "0x" + "ab".repeat(32) }) });
+if (r.status >= 500) console.log("SKIP USDT unknown hash (Polygon RPC unavailable)");
+else ok(r.body.status === "pending", "USDT transfer: unknown hash -> pending: " + r.body?.message);
+r = await call("/api/transfers");
+ok(
+  r.status === 200 && r.body.transfers.some((t) => t.id === usdtTransferId && t.asset === "USDT" && t.status === "pending"),
+  "sender sees the pending USDT transfer",
+);
+cookie = "";
 
 // ---- board settings ----
 r = await call("/api/board");

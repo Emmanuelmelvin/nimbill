@@ -3,6 +3,7 @@ import { getHostFiat } from "@nimiq/mini-app-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Alert, Button, Card, Checkbox, Dropdown, Field, Header, Input, Label, OpenInNimiqPay, PageTitle, Textarea } from "@/components/ui";
+import { CurrencyLabel } from "@/components/CurrencyIcon";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
@@ -231,7 +232,7 @@ export default function NewInvoice() {
                 </div>
                 <div>
                   <Label size="sm" htmlFor={`price-${i}`}>
-                    Price ({currency})
+                    Price (<CurrencyLabel code={currency} className="gap-1" />)
                   </Label>
                   <Input
                     id={`price-${i}`}

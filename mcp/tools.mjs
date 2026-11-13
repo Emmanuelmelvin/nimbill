@@ -525,25 +525,28 @@ export async function executeTool(name, args = {}, client) {
       const created = await client.request("/api/transfers", {
         method: "POST",
         auth: true,
-        body: { to: args.to, amount: args.amount, currency: args.currency, note: args.note },
+        // The agent wallet only signs Nimiq transactions, so its transfers are always NIM.
+        body: { to: args.to, asset: "NIM", amount: args.amount, currency: args.currency, note: args.note },
       });
       const t = created.transfer;
+      // What to send (recipient, Luna, memo) is in `payment`, not on the transfer itself.
+      const pay = created.payment;
 
       if (args.dryRun) {
         const signed = buildAndSignNimiqTx({
           secretKey: wallet.secretKey,
-          recipient: t.recipient.address,
-          valueLuna: t.amount,
+          recipient: pay.recipient,
+          valueLuna: pay.amount,
           validityStartHeight: await getCurrentBlockHeight(),
-          memo: t.memo,
+          memo: pay.memo,
         });
-        return { status: "dry_run", transfer: t, txHash: signed.txHash, rawTx: signed.rawTx, amountNim: nim(t.amount) };
+        return { status: "dry_run", transfer: t, txHash: signed.txHash, rawTx: signed.rawTx, amountNim: nim(pay.amount) };
       }
 
       const signed = await sendFromAgent(client, {
-        recipient: t.recipient.address,
-        luna: t.amount,
-        memo: t.memo,
+        recipient: pay.recipient,
+        luna: pay.amount,
+        memo: pay.memo,
         what: `Transfer to ${args.to}`,
       });
       const verify = await verifyAfterBroadcast(client, `/api/transfers/${encodeURIComponent(t.id)}/verify`, {

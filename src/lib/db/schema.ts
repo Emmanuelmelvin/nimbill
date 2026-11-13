@@ -114,10 +114,17 @@ export const transfers = pgTable("transfers", {
   toAddress: text("to_address").notNull(),
   toName: text("to_name").notNull(),
   toTag: text("to_tag").notNull(),
-  amount: text("amount").notNull(), // Luna, as string
-  currency: text("currency").notNull(), // what the sender typed the amount in: a fiat code or "NIM"
+  // The coin sent. NIM is matched by its memo. USDT (Polygon) can't carry a memo, so its `amount`
+  // is made unique per recipient wallet (see usdt-amounts.ts) and checked against both wallets.
+  asset: text("asset").$type<"NIM" | "USDT">().notNull().default("NIM"),
+  amount: text("amount").notNull(), // smallest unit of `asset`, as string: Luna, or USDT with 6 decimals
+  currency: text("currency").notNull(), // what the sender typed the amount in: a fiat code, "NIM" or "USDT"
   fiatAmount: text("fiat_amount").notNull(), // the typed amount, decimal string in `currency`
-  rate: text("rate").notNull(), // `currency` per 1 NIM used ("1" when sent in NIM)
+  rate: text("rate").notNull(), // `currency` per 1 `asset` used ("1" when typed in the coin itself)
+  // USDT only: both Polygon wallets at send time. The recipient's is kept so changing it later
+  // can't redirect or confuse the match; the sender's ties the on-chain transfer to them.
+  toEvmAddress: text("to_evm_address"),
+  fromEvmAddress: text("from_evm_address"),
   note: text("note"), // private to sender and recipient, never on-chain
   status: text("status").$type<"pending" | "confirmed">().notNull().default("pending"),
   txHash: text("tx_hash").unique(),
@@ -357,4 +364,8 @@ ALTER TABLE cheques ADD COLUMN IF NOT EXISTS key_ref text NOT NULL DEFAULT 'sess
 CREATE INDEX IF NOT EXISTS cheques_claimed_by_idx ON cheques (claimed_by_address);
 CREATE INDEX IF NOT EXISTS cheques_recipient_address_idx ON cheques (recipient_address);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS viewed_at timestamptz;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS asset text NOT NULL DEFAULT 'NIM';
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS to_evm_address text;
+ALTER TABLE transfers ADD COLUMN IF NOT EXISTS from_evm_address text;
+CREATE INDEX IF NOT EXISTS transfers_to_evm_idx ON transfers (lower(to_evm_address), created_at DESC);
 `;

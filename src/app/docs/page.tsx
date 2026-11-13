@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import Link from "next/link";
 import { AI_LOGOS, AiLogo } from "@/components/AiLogos";
+import { CoinIcon } from "@/components/CoinIcon";
 import { Code, Fields, MethodBadge, Section, Tile } from "@/components/docs/DocsParts";
 import { Eyebrow, Header, LinkButton, TextLink, buttonStyles, cx } from "@/components/ui";
 import { AGENT_RULES } from "@/lib/agent-docs";
@@ -330,7 +331,7 @@ console.log(result.status, result.invoice?.number); // "paid", "INV-0042"`}</Cod
               intro="The quote has everything a wallet needs. The rules differ a little between the two coins."
             >
               <div className="grid gap-4 sm:grid-cols-2">
-                <Tile icon="N" title="NIM (Nimiq)">
+                <Tile icon={<CoinIcon coin="NIM" className="h-6 w-6" />} title="NIM (Nimiq)">
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     <li>
                       Amounts are in Luna: <span className="font-mono">1 NIM = 100000</span>. Use integers, never floats.
@@ -347,7 +348,7 @@ console.log(result.status, result.invoice?.number); // "paid", "INV-0042"`}</Cod
                     </li>
                   </ul>
                 </Tile>
-                <Tile icon="T" title="USDT (Polygon)">
+                <Tile icon={<CoinIcon coin="USDT" className="h-6 w-6" />} title="USDT (Polygon)">
                   <ul className="mt-2 list-disc space-y-1 pl-4">
                     <li>An ERC-20 transfer on Polygon to quote.recipient, with 6 decimals.</li>
                     <li>

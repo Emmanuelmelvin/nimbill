@@ -1,39 +1,28 @@
 "use client";
-import { AR, AU, BR, CA, CH, CM, CR, EU, GB, GH, ID, IN, KE, MX, NG, PH, TR, US, ZA } from "country-flag-icons/react/3x2";
+import { CurrencyIcon } from "@/components/CurrencyIcon";
 import { Dropdown } from "@/components/ui";
 import { CURRENCIES } from "@/lib/currencies";
 
-// SVG flags rather than emoji: Windows has no flag emoji, it shows "US" as two letters.
-const FLAGS = { AR, AU, BR, CA, CH, CM, CR, EU, GB, GH, ID, IN, KE, MX, NG, PH, TR, US, ZA };
+const OPTIONS = CURRENCIES.map((c) => ({
+  value: c.code as string,
+  label: c.code,
+  detail: c.name,
+  icon: <CurrencyIcon code={c.code} />,
+}));
 
-const OPTIONS = CURRENCIES.map((c) => {
-  const Flag = FLAGS[c.flag];
-  return {
-    value: c.code as string,
-    label: c.code,
-    detail: c.name,
-    // The hairline keeps white flag edges visible on the white page.
-    icon: <Flag aria-hidden className="h-4 w-6 shrink-0 outline outline-1 outline-line" />,
-  };
-});
-
-const coinIcon = (letter: string) => (
-  <span aria-hidden className="flex h-4 w-6 shrink-0 items-center justify-center bg-ink font-mono text-[10px] font-bold text-paper">
-    {letter}
-  </span>
-);
 const COIN_OPTIONS = [
-  { value: "NIM", label: "NIM", detail: "Nimiq", icon: coinIcon("N") },
-  { value: "USDT", label: "USDT", detail: "Tether", icon: coinIcon("T") },
+  { value: "NIM", label: "NIM", detail: "Nimiq", icon: <CurrencyIcon code="NIM" /> },
+  { value: "USDT", label: "USDT", detail: "Tether", icon: <CurrencyIcon code="USDT" /> },
 ];
 const WITH_COINS = [...OPTIONS, ...COIN_OPTIONS];
 
 const WITH_NIM = [...OPTIONS, COIN_OPTIONS[0]];
+const WITH_USDT = [...OPTIONS, COIN_OPTIONS[1]];
 
 /**
  * Currency picker: flag, code and name for each currency an invoice can be priced in.
- * `coins` adds NIM and USDT (for goals, which can be set in either); "NIM" adds only NIM
- * (for sending, which is always in NIM).
+ * `coins` adds NIM and USDT (for goals, which can be set in either); "NIM" or "USDT" adds only
+ * that coin (for sending, where the amount is typed in a currency or in the coin being sent).
  */
 export function CurrencySelect({
   id,
@@ -45,9 +34,9 @@ export function CurrencySelect({
   id?: string;
   value: string;
   onChange: (code: string) => void;
-  coins?: boolean | "NIM";
+  coins?: boolean | "NIM" | "USDT";
   placeholder?: string;
 }) {
-  const options = coins === "NIM" ? WITH_NIM : coins ? WITH_COINS : OPTIONS;
+  const options = coins === "NIM" ? WITH_NIM : coins === "USDT" ? WITH_USDT : coins ? WITH_COINS : OPTIONS;
   return <Dropdown id={id} options={options} value={value} onChange={onChange} placeholder={placeholder} />;
 }

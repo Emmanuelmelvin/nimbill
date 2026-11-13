@@ -2,6 +2,7 @@
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useRef, useState } from "react";
 import { Avatar } from "@/components/Avatar";
+import { CoinIcon } from "@/components/CoinIcon";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import {
   Alert,
@@ -13,21 +14,34 @@ import {
   Input,
   LinkButton,
   Loader,
+  Dropdown,
   OpenInNimiqPay,
   PageTitle,
   Spinner,
   TextLink,
 } from "@/components/ui";
+import type { Hex } from "viem";
 import { api } from "@/lib/client/api";
-import { getNimiq, nimExplorerTx, useNimiq, walletErrorMessage } from "@/lib/client/nimiq";
+import { getNimiq, nimExplorerTx, polygonExplorerTx, useNimiq, walletErrorMessage } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
-import { formatAsset, formatFiat, LUNA_PER_NIM } from "@/lib/currencies";
-import { AppError } from "@/lib/errors";
+import { polygonWallet } from "@/lib/client/wallet";
+import { formatAsset, formatFiat, LUNA_PER_NIM, USDT_DECIMALS } from "@/lib/currencies";
+import { AppError, Errors } from "@/lib/errors";
 import { formatTag, normalizeTag, tagProblem } from "@/lib/tags";
 import type { TransferView } from "@/lib/transfers";
 
-type Owner = { tag: string; handle: string; name: string; address: string; avatarUrl: string | null };
-type Payment = { recipient: string; amount: string; memo: string };
+type Asset = "NIM" | "USDT";
+type Owner = { tag: string; handle: string; name: string; address: string; acceptsUsdt: boolean; avatarUrl: string | null };
+type Payment = { asset: Asset; recipient: string; amount: string; memo: string | null };
+
+const ASSETS = [
+  { value: "NIM", label: "NIM", detail: "Nimiq", icon: <CoinIcon coin="NIM" /> },
+  { value: "USDT", label: "USDT", detail: "Tether on Polygon", icon: <CoinIcon coin="USDT" /> },
+] as const;
+const UNIT: Record<Asset, number> = { NIM: LUNA_PER_NIM, USDT: 10 ** USDT_DECIMALS };
+const isCoin = (c: string) => c === "NIM" || c === "USDT";
+const explorerTx = (t: Pick<TransferView, "asset" | "txHash">) =>
+  t.txHash ? (t.asset === "USDT" ? polygonExplorerTx(t.txHash) : nimExplorerTx(t.txHash)) : null;
 type Phase =
   | { k: "form" }
   | { k: "creating" }
@@ -41,8 +55,9 @@ const shortAddress = (a: string) => {
   return parts.length > 4 ? `${parts.slice(0, 3).join(" ")} … ${parts[parts.length - 1]}` : a;
 };
 
-const amountText = (t: Pick<TransferView, "currency" | "fiatAmount" | "amount">) =>
-  t.currency === "NIM" ? formatAsset(t.amount, "NIM") : formatFiat(t.fiatAmount, t.currency);
+/** What the sender typed: the fiat amount, or the exact coin amount when typed in the coin. */
+const amountText = (t: Pick<TransferView, "asset" | "currency" | "fiatAmount" | "amount">) =>
+  isCoin(t.currency) ? formatAsset(t.amount, t.asset) : formatFiat(t.fiatAmount, t.currency);
 
 export default function SendPage() {
   return (
@@ -104,12 +119,17 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
   const { state } = useNimiq();
   const [to, setTo] = useState(initialTo);
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState(defaultCurrency);
+  const [chosenAsset, setChosenAsset] = useState<Asset>("NIM");
+  const [chosenCurrency, setCurrency] = useState(defaultCurrency === "USDT" ? "NIM" : defaultCurrency);
   const [note, setNote] = useState("");
   const [phase, setPhase] = useState<Phase>({ k: "form" });
   const [error, setError] = useState<string | null>(null);
-  const [rate, setRate] = useState<{ currency: string; nim: number } | null>(null);
+  const [rate, setRate] = useState<{ currency: string; NIM: number; USDT: number } | null>(null);
   const recipient = useRecipient(to, myTag);
+  // USDT only goes to someone who added a Polygon wallet. Otherwise it's NIM, whatever was picked.
+  const asset: Asset = chosenAsset === "USDT" && recipient.owner?.acceptsUsdt ? "USDT" : "NIM";
+  // An amount typed in a coin is typed in the coin being sent.
+  const currency = isCoin(chosenCurrency) ? asset : chosenCurrency;
   const stopped = useRef(false);
   useEffect(() => {
     stopped.current = false;
@@ -118,12 +138,12 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
     };
   }, []);
 
-  // The live price, to show roughly how much NIM a fiat amount is before anything is sent.
+  // The live price, to show roughly how much of the coin a fiat amount is before anything is sent.
   useEffect(() => {
-    if (currency === "NIM") return;
+    if (isCoin(currency)) return;
     let alive = true;
-    api<{ rates: { NIM: number } }>(`/api/rates?currency=${currency}`)
-      .then((r) => alive && setRate({ currency, nim: r.rates.NIM }))
+    api<{ rates: { NIM: number; USDT: number } }>(`/api/rates?currency=${currency}`)
+      .then((r) => alive && setRate({ currency, NIM: r.rates.NIM, USDT: r.rates.USDT }))
       .catch(() => alive && setRate(null));
     return () => {
       alive = false;
@@ -132,10 +152,16 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
 
   const value = Number(amount);
   const validAmount = amount.trim() !== "" && value > 0 && Number.isFinite(value);
-  const nimEstimate =
-    currency === "NIM" ? (validAmount ? value : null) : validAmount && rate?.currency === currency ? value / rate.nim : null;
+  const coinEstimate = isCoin(currency)
+    ? validAmount
+      ? value
+      : null
+    : validAmount && rate?.currency === currency
+      ? value / rate[asset]
+      : null;
   const canSend = !!recipient.owner && validAmount && phase.k === "form";
-  const typed = validAmount ? (currency === "NIM" ? `${value.toLocaleString("en")} NIM` : formatFiat(value, currency)) : "";
+  const typed = validAmount ? (isCoin(currency) ? `${value.toLocaleString("en")} ${asset}` : formatFiat(value, currency)) : "";
+  const sentAs = asset === "USDT" ? "Sent as USDT on Polygon" : "Sent as NIM";
 
   /** Ask the server again until the transaction is in a block (≈3 minutes at most). */
   async function watch(transfer: TransferView, hash: string | null) {
@@ -167,15 +193,20 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
     setPhase({ k: "form" });
   }
 
+  function create(extra: { fromEvmAddress?: string } = {}) {
+    return api<{ transfer: TransferView; payment: Payment }>("/api/transfers", {
+      body: { to: recipient.owner!.tag, asset, amount: value, currency, note: note.trim() || undefined, ...extra },
+    });
+  }
+
   async function send() {
     if (!recipient.owner) return;
     setError(null);
+    if (asset === "USDT") return sendUsdt();
     setPhase({ k: "creating" });
     let created: { transfer: TransferView; payment: Payment };
     try {
-      created = await api<{ transfer: TransferView; payment: Payment }>("/api/transfers", {
-        body: { to: recipient.owner.tag, amount: value, currency, note: note.trim() || undefined },
-      });
+      created = await create();
     } catch (e) {
       setError((e as Error).message);
       return setPhase({ k: "form" });
@@ -186,11 +217,40 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
       const hash = await nimiq.sendBasicTransactionWithData({
         recipient: created.payment.recipient,
         value: Number(created.payment.amount),
-        data: created.payment.memo,
+        data: created.payment.memo ?? "",
       });
       await watch(created.transfer, hash);
     } catch (e) {
       if ((e as { type?: string })?.type === "TRANSACTION_OUTCOME_UNKNOWN") return watch(created.transfer, null);
+      setError(walletErrorMessage(e) ?? "Cancelled. Nothing was sent.");
+      setPhase({ k: "form" });
+    }
+  }
+
+  /**
+   * USDT goes through Nimiq Pay's Polygon wallet. Its address is needed before the transfer is
+   * created: with no memo on USDT, the server matches the transaction by both wallets and the exact amount.
+   */
+  async function sendUsdt() {
+    setPhase({ k: "creating" });
+    let created: { transfer: TransferView; payment: Payment };
+    try {
+      if (!polygonWallet.available()) throw Errors.wallet("Sending USDT needs Nimiq Pay. Open NimBill in Nimiq Pay, or send NIM.");
+      const from = await polygonWallet.requestAccount();
+      await polygonWallet.switchToPolygon();
+      created = await create({ fromEvmAddress: from });
+      setPhase({ k: "wallet", ...created });
+      const units = BigInt(created.payment.amount);
+      // Clear messages up front instead of a failed transaction. A balance the wallet couldn't
+      // report (null) doesn't block the send: the wallet checks again.
+      const [usdtBal, polBal] = await Promise.all([polygonWallet.usdtBalance(from), polygonWallet.gasBalance(from)]);
+      if (usdtBal !== null && usdtBal < units)
+        throw Errors.wallet(`Not enough USDT on Polygon. You need ${formatAsset(created.payment.amount, "USDT")}.`);
+      if (polBal !== null && polBal === BigInt(0))
+        throw Errors.wallet("You need a little POL on Polygon for the network fee (a few cents). Add some POL and try again, or send NIM.");
+      const hash = await polygonWallet.sendUsdt(from, created.payment.recipient as Hex, units);
+      await watch(created.transfer, hash);
+    } catch (e) {
       setError(walletErrorMessage(e) ?? "Cancelled. Nothing was sent.");
       setPhase({ k: "form" });
     }
@@ -203,14 +263,14 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
         <Card tone="inverse" className="text-center">
           <p className="font-mono text-[11px] tracking-wider text-paper/70 uppercase">Sent</p>
           <p className="mt-2 text-3xl font-bold tabular-nums">{amountText(t)}</p>
-          {t.currency !== "NIM" && <p className="mt-1 font-mono text-sm text-paper/70">{formatAsset(t.amount, "NIM")}</p>}
+          {!isCoin(t.currency) && <p className="mt-1 font-mono text-sm text-paper/70">{formatAsset(t.amount, t.asset)}</p>}
           <p className="mt-4 border-t border-paper/20 pt-4 text-sm">
             to <span className="font-semibold">{t.counterparty.name}</span> · <span className="font-mono">{t.counterparty.handle}</span>
           </p>
           {t.note && <p className="mt-1 text-sm text-paper/70">“{t.note}”</p>}
         </Card>
         {t.txHash && (
-          <AnchorButton href={nimExplorerTx(t.txHash)} target="_blank" rel="noreferrer" variant="secondary" block>
+          <AnchorButton href={explorerTx(t)!} target="_blank" rel="noreferrer" variant="secondary" block>
             View on the blockchain
           </AnchorButton>
         )}
@@ -240,7 +300,10 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
         <Spinner size="lg" />
         <p className="font-semibold">{phase.message}</p>
         <p className="text-sm text-muted">
-          Sending {amountText(phase.transfer)} to {phase.transfer.counterparty.handle}. This usually takes a few seconds.
+          Sending {amountText(phase.transfer)} to {phase.transfer.counterparty.handle}.{" "}
+          {phase.transfer.asset === "USDT"
+            ? "Polygon needs a few confirmations, usually under a minute."
+            : "This usually takes a few seconds."}
         </p>
       </Card>
     );
@@ -291,6 +354,24 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
         </Card>
 
         <Card className="space-y-4">
+          <Field
+            label="Send in"
+            htmlFor="asset"
+            hint={
+              recipient.owner && !recipient.owner.acceptsUsdt
+                ? `${recipient.owner.handle} hasn't added a Polygon wallet, so only NIM can be sent.`
+                : undefined
+            }
+          >
+            <Dropdown<Asset>
+              id="asset"
+              options={ASSETS}
+              value={asset}
+              onChange={setChosenAsset}
+              // USDT only goes to someone who added a Polygon wallet.
+              disabled={!recipient.owner?.acceptsUsdt}
+            />
+          </Field>
           <div className="grid grid-cols-[1fr_auto] items-end gap-2">
             <Field label="Amount" htmlFor="amount">
               <Input
@@ -304,17 +385,19 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
               />
             </Field>
             <div className="w-36">
-              <CurrencySelect value={currency} onChange={setCurrency} coins="NIM" />
+              <CurrencySelect value={currency} onChange={setCurrency} coins={asset} />
             </div>
           </div>
           <p className="text-xs text-muted">
-            {currency === "NIM"
-              ? "Sent as NIM."
-              : nimEstimate !== null
-                ? `≈ ${formatAsset(Math.ceil(nimEstimate * 100) * (LUNA_PER_NIM / 100), "NIM")} at the live rate. Sent as NIM.`
+            {isCoin(currency)
+              ? `${sentAs}.`
+              : coinEstimate !== null
+                ? `≈ ${formatAsset(Math.ceil(coinEstimate * 100) * (UNIT[asset] / 100), asset)} at the live rate. ${sentAs}.`
                 : rate === null && validAmount
-                  ? "Live rates are unavailable right now. Pick NIM to send without a rate."
-                  : "Sent as NIM at the live rate."}
+                  ? `Live rates are unavailable right now. Pick ${asset} to send without a rate.`
+                  : `${sentAs} at the live rate.`}
+            {asset === "USDT" &&
+              " The exact amount ends in a few extra digits that identify your transfer. The network fee is paid in POL."}
           </p>
           <Field label="Note" htmlFor="note" optional hint="Only you and the recipient see it.">
             <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Lunch on Friday" maxLength={80} />

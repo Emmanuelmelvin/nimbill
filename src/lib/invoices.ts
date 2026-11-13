@@ -10,10 +10,11 @@ import { nimbillNumber } from "./nimbill-number";
 import { getRate } from "./rates";
 import { LUNA_PER_NIM, USDT_DECIMALS } from "./currencies";
 import { decodeData, nimiq, polygon, sameNimAddress, type NimTx } from "./clients";
+import { PRICE_LOCK_GRACE_MS, PRICE_LOCK_MS, txHashUsed, uniqueUsdtAmount } from "./usdt-amounts";
 
-export const QUOTE_TTL_MS = 5 * 60 * 1000;
+export const QUOTE_TTL_MS = PRICE_LOCK_MS;
 // A payment broadcast just before a quote expires still counts if it lands within this window.
-const QUOTE_GRACE_MS = 3 * 60 * 1000;
+const QUOTE_GRACE_MS = PRICE_LOCK_GRACE_MS;
 
 const ID_ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
 export function newId(len = 10): string {
@@ -191,37 +192,6 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0):
   return q;
 }
 
-/**
- * NIM payments carry the invoice reference in their data, but a USDT (ERC-20) transfer has no
- * room for one. So each USDT quote adds a tag of 0.000001–0.009999 USDT on top of the price
- * (already rounded up to the cent) that no other payable quote to the same wallet uses. The
- * exact amount received then points to one invoice, and the merchant still gets at least the total.
- */
-const USDT_TAG_MAX = 9_999;
-async function uniqueUsdtAmount(evmAddress: string, base: bigint): Promise<bigint> {
-  const db = await getDb();
-  // Quotes whose payment window (expiry + grace) overlaps the new quote's window.
-  const active = await db
-    .select({ amount: schema.quotes.amount })
-    .from(schema.quotes)
-    .innerJoin(schema.invoices, eq(schema.quotes.invoiceId, schema.invoices.id))
-    .where(
-      and(
-        eq(schema.quotes.asset, "USDT"),
-        sql`lower(${schema.invoices.merchantEvmAddress}) = ${evmAddress.toLowerCase()}`,
-        gt(schema.quotes.expiresAt, new Date(Date.now() - QUOTE_GRACE_MS - 60_000)),
-      ),
-    );
-  const taken = new Set(active.map((a) => a.amount));
-  const rand = new Uint32Array(64);
-  crypto.getRandomValues(rand);
-  for (const r of rand) {
-    const amount = base + BigInt(1 + (r % USDT_TAG_MAX));
-    if (!taken.has(amount.toString())) return amount;
-  }
-  throw Errors.rateLimited("Lots of USDT payments are in progress for this merchant right now. Please try again in a minute.");
-}
-
 async function quotesFor(invoiceIds: string[]): Promise<Quote[]> {
   if (!invoiceIds.length) return [];
   const db = await getDb();
@@ -252,6 +222,8 @@ async function usdValue(asset: "NIM" | "USDT", value: bigint): Promise<string | 
 }
 
 async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, paidAt: Date, value: bigint): Promise<Invoice | null> {
+  // Already counted as a tag transfer (or another invoice): it can't pay this invoice too.
+  if (await txHashUsed(txHash)) return null;
   const db = await getDb();
   const paidUsd = await usdValue(q.asset, value);
   let updated: Invoice | undefined;

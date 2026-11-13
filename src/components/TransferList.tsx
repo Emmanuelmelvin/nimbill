@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client/api";
-import { nimExplorerTx } from "@/lib/client/nimiq";
+import { nimExplorerTx, polygonExplorerTx } from "@/lib/client/nimiq";
 import { formatAsset, formatFiat } from "@/lib/currencies";
 import type { TransferView } from "@/lib/transfers";
 import { Alert, Badge, Card, EmptyState, LinkButton, Loader, cx } from "./ui";
@@ -37,7 +37,10 @@ export function TransferList() {
             <ul className="divide-y divide-line">
               {transfers.map((t) => {
                 const sent = t.direction === "sent";
-                const fiat = t.currency !== "NIM" ? formatFiat(t.fiatAmount, t.currency) : null;
+                // Typed in a currency: show that first, with the coin underneath. Typed in the coin: just the coin.
+                const fiat = t.currency !== "NIM" && t.currency !== "USDT" ? formatFiat(t.fiatAmount, t.currency) : null;
+                const coin = formatAsset(t.amount, t.asset);
+                const explorer = t.txHash ? (t.asset === "USDT" ? polygonExplorerTx(t.txHash) : nimExplorerTx(t.txHash)) : null;
                 const row = (
                   <>
                     <span
@@ -63,21 +66,21 @@ export function TransferList() {
                       <p className="font-bold tabular-nums">
                         {/* Thin space: "−₦" otherwise reads as a struck-through N. */}
                         {sent ? "− " : "+ "}
-                        {fiat ?? formatAsset(t.amount, "NIM")}
+                        {fiat ?? coin}
                       </p>
                       {t.status === "pending" ? (
                         <Badge variant="muted">Pending</Badge>
                       ) : (
-                        fiat && <p className="font-mono text-xs text-muted">{formatAsset(t.amount, "NIM")}</p>
+                        fiat && <p className="font-mono text-xs text-muted">{coin}</p>
                       )}
                     </div>
                   </>
                 );
                 return (
                   <li key={t.id}>
-                    {t.txHash ? (
+                    {explorer ? (
                       <a
-                        href={nimExplorerTx(t.txHash)}
+                        href={explorer}
                         target="_blank"
                         rel="noreferrer"
                         className="flex items-center gap-3 p-4 transition-colors hover:bg-subtle"

@@ -8,8 +8,9 @@ export function InvoiceDoc({ inv }: { inv: PublicInvoice }) {
   const tip = Number(inv.payment?.tip ?? 0);
   return (
     <Card as="article" className="space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+      {/* Wraps on narrow phones: a long total plus the status badge don't fit side by side at 320px. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
+        <div className="min-w-0">
           <Eyebrow>
             {/* An unpaid board invoice has no number of its own yet: its number is the Nimbill number. */}
             Invoice {inv.number === inv.nimbillNumber ? inv.number : `${inv.number} · ${inv.nimbillNumber}`}

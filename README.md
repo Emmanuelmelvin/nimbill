@@ -56,7 +56,7 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 - **A tag instead of an address.** Every user claims a tag like `ada@nimbill`. Lookalike-safe rules and reserved names, and a given-up tag stays held for its owner for 90 days.
 - **A public pay page.** `/pay/<tag>` lets anyone pay you without an account: an amount for something, or one of your products (with a quantity). Visitors' invoices get your next `INV-` number only once paid, so unpaid ones never leave gaps. They appear under Board → Orders.
 - **Products.** Name, price, description and a picture. Pictures are shrunk in the browser and stored in the database, so there is no file storage to set up.
-- **Send money by tag.** Type a tag, check the name and address it belongs to, and send NIM (amount in NIM or any supported currency). Transfers are verified on-chain like invoices.
+- **Send money by tag.** Type a tag, check the name and address it belongs to, and send NIM, or USDT on Polygon to anyone who added a Polygon wallet (amount in the coin or any supported currency). Transfers are verified on-chain like invoices. USDT has no memo, so each USDT transfer gets a unique exact amount and is matched by both wallets, that amount and when it was sent; no open invoice to the same wallet uses that amount, and one transaction never counts as both a transfer and an invoice payment.
 - **Cheques** (`/cheques`, `/c/<id>`). Write a cheque in NIM or any supported currency, either locked to one `@tag` or open to the first person with the link, QR code or `CHQ-…` code. [How cheques stay non-custodial ↓](#non-custodial-cheques)
 - **Receipts that hold up.** The rate used, both addresses and a link to the transaction. Download as PDF.
 - **Public usage page** (`/stats`). Every paid invoice links to its on-chain transaction.
@@ -158,7 +158,7 @@ npm run test:mcp        # the MCP agent wallet's tools
 
 ## Roadmap
 
-USDT transfers by tag · webhooks for paid invoices · recurring invoices · multi-language (via `window.nimiqPay.language`) · payouts to local bank / mobile money through licensed partners.
+Webhooks for paid invoices · recurring invoices · multi-language (via `window.nimiqPay.language`) · payouts to local bank / mobile money through licensed partners.
 
 ## About the screenshots
 

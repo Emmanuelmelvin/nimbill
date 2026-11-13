@@ -15,6 +15,7 @@ import {
   type RangeKey,
 } from "@/lib/earnings";
 import { formatMoney, toUsd, type Fx, type Unit } from "@/lib/money";
+import { CurrencyLabel } from "./CurrencyIcon";
 import { Card, Eyebrow, SegmentedControl, cx } from "./ui";
 
 const BAR_GAP: Record<RangeKey, string> = { today: "gap-px", "7d": "gap-2", "30d": "gap-px", "90d": "gap-1", "1y": "gap-1", all: "gap-1" };
@@ -53,9 +54,9 @@ export function EarningsCard({
 
   // Without live rates everything is shown in dollars, so the toggle would do nothing.
   const units = [
-    { value: currency, label: currency },
-    { value: "NIM", label: "NIM" },
-    { value: "USDT", label: "USDT" },
+    { value: currency, label: <CurrencyLabel code={currency} /> },
+    { value: "NIM", label: <CurrencyLabel code="NIM" /> },
+    { value: "USDT", label: <CurrencyLabel code="USDT" /> },
   ];
 
   // What one bar has to reach, on average, for the goal to be met on time.
@@ -162,8 +163,9 @@ export function EarningsCard({
               {(["NIM", "USDT"] as const).map((a) => (
                 <li key={a} className="flex items-baseline justify-between gap-2">
                   <span className="flex items-center gap-2">
+                    {/* The square is the bar's legend; the logo says which coin it is. */}
                     <span aria-hidden className={cx("h-2.5 w-2.5 border border-ink", a === "NIM" ? "bg-ink" : "bg-line")} />
-                    {a}
+                    <CurrencyLabel code={a} />
                   </span>
                   <span className="font-mono text-xs tabular-nums">
                     {split[a].count ? formatAsset(split[a].units, a) : "—"}

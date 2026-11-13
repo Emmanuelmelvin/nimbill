@@ -8,6 +8,7 @@ import { polygonWallet } from "@/lib/client/wallet";
 import { formatAsset, formatFiat } from "@/lib/currencies";
 import { AppError, Errors } from "@/lib/errors";
 import { MAX_TIP } from "@/lib/schemas";
+import { CurrencyLabel } from "./CurrencyIcon";
 import {
   Alert,
   AnchorButton,
@@ -37,8 +38,8 @@ type Phase =
   | { k: "verifying"; quote: Quote; hash: string | null; message: string };
 
 const ASSETS = [
-  { value: "NIM", label: "NIM" },
-  { value: "USDT", label: "USDT (Polygon)" },
+  { value: "NIM", label: <CurrencyLabel code="NIM" /> },
+  { value: "USDT", label: <CurrencyLabel code="USDT">USDT (Polygon)</CurrencyLabel> },
 ] as const;
 
 // Tips are optional and go to the merchant in the same payment as the invoice.
@@ -225,7 +226,7 @@ export function PayPanel({
             </>
           )}
           <p className="text-center text-xs text-muted">
-            The price is converted from {inv.currency} at the live rate and locked for 5 minutes.
+            The price is converted from <CurrencyLabel code={inv.currency} className="gap-1" /> at the live rate and locked for 5 minutes.
           </p>
         </>
       ) : null}
@@ -315,7 +316,15 @@ function TipPicker({
       </div>
       <SegmentedControl kind="radio" label="Tip" block options={options} value={choice} onChange={onChoice} />
       {choice === "custom" && (
-        <Field label={`Tip amount (${inv.currency})`} htmlFor="tip" size="sm">
+        <Field
+          label={
+            <>
+              Tip amount (<CurrencyLabel code={inv.currency} className="gap-1" />)
+            </>
+          }
+          htmlFor="tip"
+          size="sm"
+        >
           <Input
             id="tip"
             inputMode="decimal"
