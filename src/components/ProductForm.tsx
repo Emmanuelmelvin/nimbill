@@ -8,7 +8,7 @@ import { formatFiat } from "@/lib/currencies";
 import type { ProductView } from "@/lib/products";
 import { CurrencySelect } from "./CurrencySelect";
 import { ProductImage } from "./ProductImage";
-import { Alert, Button, Card, Checkbox, Field, Input, Textarea } from "./ui";
+import { Alert, Button, Card, Checkbox, CoinText, Field, Input, Textarea } from "./ui";
 
 // The picture as it will be after saving: unchanged, a new one (data URL), or removed.
 type Picture = { k: "keep" } | { k: "new"; dataUrl: string } | { k: "remove" };
@@ -129,7 +129,9 @@ export function ProductForm({ product }: { product?: ProductView }) {
           </div>
         </div>
         {valid && (
-          <p className="-mt-2 text-xs text-muted">Buyers pay {formatFiat(priceValue, currency)} in NIM or USDT at the live rate.</p>
+          <p className="-mt-2 text-xs text-muted">
+            <CoinText>Buyers pay {formatFiat(priceValue, currency)} in NIM or USDT at the live rate.</CoinText>
+          </p>
         )}
         <Field label="Description" htmlFor="product-description" optional>
           <Textarea

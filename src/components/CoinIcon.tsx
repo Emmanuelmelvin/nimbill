@@ -1,16 +1,19 @@
 import { useId } from "react";
-import { cx } from "./ui";
+// Not "./ui": the UI kit itself shows coin logos (ui/coins.tsx), so importing its index would be circular.
+import { cx } from "./ui/cx";
 
 /**
  * The NIM (Nimiq's gold hexagon) and USDT (Tether's teal "T") logos, inline so they need no
  * files or network. By default sized like the currency flags (a 3:2 box) so they line up in the
- * same lists; `className` replaces that size (e.g. "h-6 w-6").
+ * same lists; `className` replaces that size (e.g. "h-6 w-6"). `inline` makes it sit in a line of
+ * text at the text's own size, as in "Sent as [logo] NIM".
  */
-export function CoinIcon({ coin, className }: { coin: "NIM" | "USDT"; className?: string }) {
+export function CoinIcon({ coin, className, inline }: { coin: "NIM" | "USDT"; className?: string; inline?: boolean }) {
   // Each NIM logo needs its own gradient id: two on one page would otherwise share (and lose) it.
   const gradient = useId();
+  const size = inline ? "mr-[0.25em] h-[0.95em] w-[0.95em] align-[-0.12em]" : "h-4 w-6";
   return (
-    <span aria-hidden className={cx("flex shrink-0 items-center justify-center", className ?? "h-4 w-6")}>
+    <span aria-hidden className={cx(inline ? "inline-flex" : "flex", "shrink-0 items-center justify-center", className ?? size)}>
       {coin === "NIM" ? (
         <svg viewBox="0 0 27 24" className="h-full w-auto">
           <defs>

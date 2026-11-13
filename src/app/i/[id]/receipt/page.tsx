@@ -1,10 +1,10 @@
 "use client";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Card, DescriptionList, Eyebrow, Header, Loader, TextLink } from "@/components/ui";
+import { Alert, Badge, Button, Card, CoinAmount, DescriptionList, Eyebrow, Header, Loader, TextLink } from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { nimExplorerTx, polygonExplorerTx } from "@/lib/client/nimiq";
-import { formatAsset, formatFiat } from "@/lib/currencies";
+import { formatFiat } from "@/lib/currencies";
 
 /** A printable payment receipt with on-chain proof. "Download PDF" uses the browser's print-to-PDF. */
 export default function Receipt() {
@@ -100,7 +100,14 @@ export default function Receipt() {
           <Eyebrow>Settlement</Eyebrow>
           <DescriptionList
             rows={[
-              { term: "Amount", detail: <span className="font-medium">{formatAsset(p.amount, asset)}</span> },
+              {
+                term: "Amount",
+                detail: (
+                  <span className="font-medium">
+                    <CoinAmount units={p.amount} asset={asset} />
+                  </span>
+                ),
+              },
               {
                 term: "Rate used",
                 detail: `1 ${asset} = ${rate < 0.01 ? rate.toPrecision(4) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${inv.currency}`,

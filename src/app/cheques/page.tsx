@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   CardHeader,
+  CoinText,
   CopyButton,
   Dropdown,
   EmptyState,
@@ -368,7 +369,9 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
         <Spinner size="lg" />
         <p className="font-semibold">{phase.message}</p>
         <p className="text-sm text-muted">
-          Funding cheque {phase.cheque.number} with {amountText(phase.cheque)}.
+          <CoinText>
+            Funding cheque {phase.cheque.number} with {amountText(phase.cheque)}.
+          </CoinText>
         </p>
       </Card>
     );
@@ -443,13 +446,15 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
           </div>
         </div>
         <p className="text-xs text-muted">
-          {currency === "NIM"
-            ? "Funded in NIM."
-            : nimEstimate !== null
-              ? `≈ ${formatAsset(Math.ceil(nimEstimate * 100) * (LUNA_PER_NIM / 100), "NIM")} at the live rate. Locked inside the cheque as NIM.`
-              : rate === null && validAmount
-                ? "Live rates are unavailable right now. Pick NIM to write a cheque without a rate."
-                : "Converted to NIM at the live rate when funded."}
+          <CoinText>
+            {currency === "NIM"
+              ? "Funded in NIM."
+              : nimEstimate !== null
+                ? `≈ ${formatAsset(Math.ceil(nimEstimate * 100) * (LUNA_PER_NIM / 100), "NIM")} at the live rate. Locked inside the cheque as NIM.`
+                : rate === null && validAmount
+                  ? "Live rates are unavailable right now. Pick NIM to write a cheque without a rate."
+                  : "Converted to NIM at the live rate when funded."}
+          </CoinText>
         </p>
         <Field label="For" htmlFor="cheque-note" optional hint="Shown on the face of the cheque.">
           <Input id="cheque-note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Happy birthday!" maxLength={80} />
@@ -589,8 +594,10 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="font-mono text-sm font-bold tabular-nums">
-                        {received ? "+" : ""}
-                        {amountText(c)}
+                        <CoinText>
+                          {received ? "+" : ""}
+                          {amountText(c)}
+                        </CoinText>
                       </p>
                       <Badge variant={c.status === "funded" ? "solid" : c.status === "cashed" ? "outline" : "muted"}>
                         {statusLabel(c)}

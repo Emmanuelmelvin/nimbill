@@ -1,4 +1,5 @@
 import type { HTMLAttributes, ReactNode } from "react";
+import { withCoins } from "./coins";
 import { cx } from "./cx";
 
 export type CardTone = "default" | "strong" | "subtle" | "inverse";
@@ -55,8 +56,8 @@ export function CardHeader({
         </span>
       )}
       <div className="min-w-0 flex-1">
-        <h2 className="text-lg leading-tight font-bold">{title}</h2>
-        {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+        <h2 className="text-lg leading-tight font-bold">{withCoins(title)}</h2>
+        {description && <p className="mt-1 text-sm text-muted">{withCoins(description)}</p>}
       </div>
       {action}
     </div>

@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { Alert, Badge, Card, CardHeader, Header, Loader, PageTitle, Stat } from "@/components/ui";
+import { Alert, Badge, Card, CardHeader, CoinAmount, Header, Loader, PageTitle, Stat } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { nimExplorerTx, polygonExplorerTx } from "@/lib/client/nimiq";
 import { formatAsset, formatFiat } from "@/lib/currencies";
@@ -67,7 +67,7 @@ export default function StatsPage() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    {formatAsset(r.amount, r.asset)} ↗
+                    <CoinAmount units={r.amount} asset={r.asset} /> ↗
                   </a>
                 </li>
               ))}

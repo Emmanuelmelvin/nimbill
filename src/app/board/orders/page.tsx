@@ -2,9 +2,9 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { BoardPage } from "@/components/BoardPage";
-import { Alert, EmptyState, LinkButton, Loader, SegmentedControl } from "@/components/ui";
+import { Alert, CoinAmount, EmptyState, LinkButton, Loader, SegmentedControl } from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
-import { formatAsset, formatFiat } from "@/lib/currencies";
+import { formatFiat } from "@/lib/currencies";
 import { formatMoney, type Fx } from "@/lib/money";
 
 type Order = PublicInvoice & { usd: number | null };
@@ -97,7 +97,7 @@ function OrderList() {
                     <span className="block font-mono text-xs font-semibold tabular-nums">{formatFiat(o.total, o.currency)}</span>
                     {o.payment && (
                       <span className="block font-mono text-[10px] text-muted">
-                        {formatAsset(o.payment.amount, o.payment.asset as "NIM" | "USDT")}
+                        <CoinAmount units={o.payment.amount} asset={o.payment.asset as "NIM" | "USDT"} />
                       </span>
                     )}
                   </td>

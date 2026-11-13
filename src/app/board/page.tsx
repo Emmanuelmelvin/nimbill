@@ -10,6 +10,7 @@ import {
   Card,
   Checkbox,
   CodeBlock,
+  CoinText,
   CopyButton,
   Eyebrow,
   Field,
@@ -133,7 +134,7 @@ function LinkCard({ merchant, liveProducts }: { merchant: MerchantInfo & { tag: 
       <ul className="flex flex-wrap gap-2 border-t border-line p-4">
         {chips.map((c) => (
           <li key={c} className="border border-line px-2 py-0.5 font-mono text-[11px] text-muted">
-            {c}
+            <CoinText>{c}</CoinText>
           </li>
         ))}
       </ul>

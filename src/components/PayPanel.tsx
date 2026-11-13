@@ -15,6 +15,8 @@ import {
   Button,
   Card,
   CardHeader,
+  CoinAmount,
+  CoinText,
   CopyButton,
   Countdown,
   Eyebrow,
@@ -370,11 +372,15 @@ function QuoteBox({
     <div className="space-y-3">
       <Card as="div" tone="inverse" padding="sm">
         <p className="font-mono text-[11px] tracking-wider text-paper/70 uppercase">You pay</p>
-        <p className="mt-1 text-3xl font-bold tabular-nums">{formatAsset(quote.amount, quote.asset)}</p>
+        <p className="mt-1 text-3xl font-bold tabular-nums">
+          <CoinAmount units={quote.amount} asset={quote.asset} />
+        </p>
         <p className="mt-1 text-sm text-paper/70">
-          for {formatFiat(inv.total, inv.currency)}
-          {tip > 0 && ` + ${formatFiat(tip, inv.currency)} tip`} · 1 {quote.asset} ={" "}
-          {rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {inv.currency}
+          <CoinText>
+            for {formatFiat(inv.total, inv.currency)}
+            {tip > 0 && ` + ${formatFiat(tip, inv.currency)} tip`} · 1 {quote.asset} ={" "}
+            {rate < 0.01 ? rate.toPrecision(3) : rate.toLocaleString(undefined, { maximumFractionDigits: 4 })} {inv.currency}
+          </CoinText>
         </p>
         <p className="mt-3 border-t border-paper/20 pt-3 text-sm">
           {expired ? (
@@ -404,6 +410,7 @@ function ExternalWallet({ quote, onSent }: { quote: Quote; onSent: () => void })
       </AnchorButton>
       <Card as="div" tone="subtle" padding="sm" className="space-y-3 text-sm">
         <p className="text-muted">Or send manually — the message is required so we can match your payment:</p>
+        {/* Only the amount row gets a coin logo: the value itself stays plain so it copies exactly. */}
         <CopyRow label="To" value={quote.recipient} />
         <CopyRow label="Amount" value={(Number(quote.amount) / 100_000).toString()} suffix="NIM" />
         <CopyRow label="Message" value={quote.memo} />
@@ -420,9 +427,7 @@ function CopyRow({ label, value, suffix }: { label: string; value: string; suffi
     <div className="flex items-center justify-between gap-2">
       <div className="min-w-0">
         <Eyebrow>{label}</Eyebrow>
-        <p className="font-mono text-xs break-all">
-          {value} {suffix}
-        </p>
+        <p className="font-mono text-xs break-all">{suffix ? <CoinText>{`${value} ${suffix}`}</CoinText> : value}</p>
       </div>
       <CopyButton text={value} size="sm" />
     </div>

@@ -1,5 +1,5 @@
 import { Avatar } from "@/components/Avatar";
-import { Badge, type BadgeVariant, LogoMark } from "@/components/ui";
+import { Badge, type BadgeVariant, CoinText, LogoMark } from "@/components/ui";
 import type { PublicCheque } from "@/lib/cheques";
 import { formatAsset, formatFiat } from "@/lib/currencies";
 import { shortAddress } from "@/lib/nimiq-address";
@@ -51,12 +51,16 @@ export function ChequeCard({ cheque }: { cheque: PublicCheque }) {
           </div>
           <div className="border-2 border-ink px-3 py-1.5 text-right">
             <p className="font-mono text-[10px] tracking-wider text-muted uppercase">Amount</p>
-            <p className="font-mono text-lg font-bold tabular-nums">{mainAmount}</p>
+            <p className="font-mono text-lg font-bold tabular-nums">
+              <CoinText>{mainAmount}</CoinText>
+            </p>
           </div>
         </div>
 
         {isFiat && (
-          <p className="mt-2 border-b border-line pb-1 font-mono text-xs text-muted">{formatAsset(cheque.amount, "NIM")} locked inside</p>
+          <p className="mt-2 border-b border-line pb-1 font-mono text-xs text-muted">
+            <CoinText>{formatAsset(cheque.amount, "NIM")} locked inside</CoinText>
+          </p>
         )}
 
         <div className="mt-4 grid grid-cols-2 items-end gap-4">

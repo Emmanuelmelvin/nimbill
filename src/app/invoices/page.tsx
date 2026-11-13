@@ -6,6 +6,7 @@ import {
   Alert,
   AnchorButton,
   Card,
+  CoinAmount,
   Dropdown,
   EmptyState,
   Field,
@@ -23,7 +24,7 @@ import { RemindActions, ViewedStatus } from "@/components/InvoiceReminder";
 import { TabPage } from "@/components/TabPage";
 import { TransferList } from "@/components/TransferList";
 import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
-import { formatAsset, formatFiat } from "@/lib/currencies";
+import { formatFiat } from "@/lib/currencies";
 import { localDate, type EarningPoint } from "@/lib/earnings";
 import { formatMoney, type Fx } from "@/lib/money";
 
@@ -141,7 +142,9 @@ function InvoiceList({ invoices }: { invoices: OwnInvoice[] }) {
                   <div className="flex shrink-0 flex-col items-end gap-1 text-right">
                     <p className="font-bold tabular-nums">{formatFiat(inv.total, inv.currency)}</p>
                     {inv.payment ? (
-                      <p className="font-mono text-xs">{formatAsset(inv.payment.amount, inv.payment.asset as "NIM" | "USDT")}</p>
+                      <p className="font-mono text-xs">
+                        <CoinAmount units={inv.payment.amount} asset={inv.payment.asset as "NIM" | "USDT"} />
+                      </p>
                     ) : (
                       <StatusBadge status={inv.status} dueDate={inv.dueDate} />
                     )}

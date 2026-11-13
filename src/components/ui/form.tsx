@@ -1,4 +1,5 @@
 import type { ComponentProps, ReactNode } from "react";
+import { withCoins } from "./coins";
 import { cx } from "./cx";
 
 /** Shared look for text inputs, selects and textareas. */
@@ -18,7 +19,7 @@ export function Label({
 }: ComponentProps<"label"> & { optional?: boolean; size?: "md" | "sm" }) {
   return (
     <label className={cx(labelStyles(size), className)} {...rest}>
-      {children}
+      {withCoins(children)}
       {optional && <span className="font-normal text-muted"> (optional)</span>}
     </label>
   );
@@ -48,7 +49,7 @@ export function Field({
         {label}
       </Label>
       {children}
-      {hint && <p className="mt-1.5 text-xs text-muted">{hint}</p>}
+      {hint && <p className="mt-1.5 text-xs text-muted">{withCoins(hint)}</p>}
     </div>
   );
 }
@@ -84,8 +85,8 @@ export function Checkbox({
   return (
     <label className={cx("flex min-h-11 cursor-pointer items-center justify-between gap-4", className)}>
       <span>
-        <span className="block font-medium">{label}</span>
-        {description && <span className="block text-sm text-muted">{description}</span>}
+        <span className="block font-medium">{withCoins(label)}</span>
+        {description && <span className="block text-sm text-muted">{withCoins(description)}</span>}
       </span>
       <span className="relative inline-flex h-6 w-6 shrink-0">
         <input
@@ -168,7 +169,7 @@ export function SegmentedControl<T extends string>({
               on ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-subtle",
             )}
           >
-            {o.label}
+            {withCoins(o.label)}
           </button>
         );
       })}

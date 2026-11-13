@@ -3,6 +3,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import { openInNimiqPayLink } from "@/lib/client/nimiq";
 import { AnchorButton, Button, type ButtonSize, type ButtonVariant } from "./button";
 import { Card } from "./card";
+import { withCoins } from "./coins";
 import { TextLink } from "./navigation";
 
 const noopSubscribe = () => () => {};
@@ -34,7 +35,7 @@ export function OpenInNimiqPay({ text = "This needs the Nimiq Pay wallet." }: { 
   const url = useHref();
   return (
     <Card as="div" tone="strong" padding="sm">
-      <p className="text-sm">{text}</p>
+      <p className="text-sm">{withCoins(text)}</p>
       <AnchorButton href={url ? openInNimiqPayLink(url) : "#"} block className="mt-3">
         Open in Nimiq Pay
       </AnchorButton>

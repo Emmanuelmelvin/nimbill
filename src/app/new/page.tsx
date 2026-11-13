@@ -2,7 +2,21 @@
 import { getHostFiat } from "@nimiq/mini-app-sdk";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { Alert, Button, Card, Checkbox, Dropdown, Field, Header, Input, Label, OpenInNimiqPay, PageTitle, Textarea } from "@/components/ui";
+import {
+  Alert,
+  Button,
+  Card,
+  Checkbox,
+  CoinText,
+  Dropdown,
+  Field,
+  Header,
+  Input,
+  Label,
+  OpenInNimiqPay,
+  PageTitle,
+  Textarea,
+} from "@/components/ui";
 import { CurrencyLabel } from "@/components/CurrencyIcon";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
@@ -255,8 +269,10 @@ export default function NewInvoice() {
               <span className="block text-2xl font-bold tabular-nums">{formatFiat(total, currency)}</span>
               {rates && total > 0 && (
                 <span className="block font-mono text-xs text-muted">
-                  ≈ {Math.ceil(total / rates.NIM).toLocaleString()} NIM today
-                  {merchant.evmAddress ? ` · ${(total / rates.USDT).toFixed(2)} USDT` : ""}
+                  <CoinText>
+                    ≈ {Math.ceil(total / rates.NIM).toLocaleString()} NIM today
+                    {merchant.evmAddress ? ` · ${(total / rates.USDT).toFixed(2)} USDT` : ""}
+                  </CoinText>
                 </span>
               )}
             </span>

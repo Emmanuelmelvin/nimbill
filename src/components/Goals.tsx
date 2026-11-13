@@ -5,7 +5,7 @@ import type { PublicGoal } from "@/lib/client/ledger";
 import { goalProgress, localDate, parseLocalDate, type EarningPoint } from "@/lib/earnings";
 import { formatUnit, type Fx } from "@/lib/money";
 import { CurrencySelect } from "./CurrencySelect";
-import { Alert, Badge, Button, Card, CardHeader, Disclosure, Field, Input, TextButton } from "./ui";
+import { Alert, Badge, Button, Card, CardHeader, CoinText, Disclosure, Field, Input, TextButton, coinText } from "./ui";
 
 const shortDate = (s: string, withYear = false) =>
   parseLocalDate(s).toLocaleDateString(
@@ -69,24 +69,28 @@ export function GoalProgress({
 
       <div className="flex items-baseline justify-between gap-3">
         <p className="min-w-0 break-words tabular-nums">
-          <span className="text-xl font-bold">{p.earned === null ? "—" : amount(p.earned)}</span>
-          <span className="text-sm text-muted"> of {amount(p.target)}</span>
+          <span className="text-xl font-bold">{p.earned === null ? "—" : coinText(amount(p.earned))}</span>
+          <span className="text-sm text-muted">
+            <CoinText> of {amount(p.target)}</CoinText>
+          </span>
         </p>
         <p className="shrink-0 font-mono text-sm font-semibold">{Math.floor(p.fraction * 100)}%</p>
       </div>
 
       <p className="text-sm text-muted">
-        {p.earned === null
-          ? "Live rates are unavailable right now, so progress can't be worked out."
-          : p.reached
-            ? p.state === "ended"
-              ? "You hit this goal."
-              : `You hit this goal with ${days(p.daysLeft)} to spare.`
-            : p.state === "ended"
-              ? `Ended ${amount(p.target - p.earned)} short.`
-              : p.state === "upcoming"
-                ? `Runs for ${days(p.daysTotal)}. That is ${amount(p.target / p.daysTotal)} a day.`
-                : `${days(p.daysLeft)} left. You need ${amount(p.perDayNeeded ?? 0)} a day to get there.`}
+        <CoinText>
+          {p.earned === null
+            ? "Live rates are unavailable right now, so progress can't be worked out."
+            : p.reached
+              ? p.state === "ended"
+                ? "You hit this goal."
+                : `You hit this goal with ${days(p.daysLeft)} to spare.`
+              : p.state === "ended"
+                ? `Ended ${amount(p.target - p.earned)} short.`
+                : p.state === "upcoming"
+                  ? `Runs for ${days(p.daysTotal)}. That is ${amount(p.target / p.daysTotal)} a day.`
+                  : `${days(p.daysLeft)} left. You need ${amount(p.perDayNeeded ?? 0)} a day to get there.`}
+        </CoinText>
       </p>
       {action}
     </div>
@@ -289,8 +293,10 @@ export function GoalsCard({
                       {shortDate(g.startDate)} – {shortDate(g.endDate, true)}
                     </p>
                     <p className="text-sm tabular-nums">
-                      {p.earned === null ? "—" : formatUnit(p.earned, g.currency)}
-                      <span className="text-muted"> of {formatUnit(p.target, g.currency)}</span>
+                      {p.earned === null ? "—" : coinText(formatUnit(p.earned, g.currency))}
+                      <span className="text-muted">
+                        <CoinText> of {formatUnit(p.target, g.currency)}</CoinText>
+                      </span>
                     </p>
                   </div>
                   <div className="flex shrink-0 flex-col items-end gap-1">

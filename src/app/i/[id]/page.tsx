@@ -13,6 +13,7 @@ import {
   Card,
   CardHeader,
   CodeBlock,
+  CoinAmount,
   CopyButton,
   Disclosure,
   Header,
@@ -27,7 +28,7 @@ import {
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { nimExplorerTx, openInNimiqPayLink, polygonExplorerTx } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
-import { formatAsset, formatFiat } from "@/lib/currencies";
+import { formatFiat } from "@/lib/currencies";
 
 export default function InvoicePage() {
   return (
@@ -154,7 +155,7 @@ function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolea
       </div>
       <h2 className="mt-3 text-xl font-bold">{fresh ? "Payment confirmed!" : isOwner ? "You've been paid" : "Paid"}</h2>
       <p className="mt-1 text-muted">
-        {formatAsset(p.amount, p.asset as "NIM" | "USDT")} for {formatFiat(inv.total, inv.currency)}
+        <CoinAmount units={p.amount} asset={p.asset as "NIM" | "USDT"} /> for {formatFiat(inv.total, inv.currency)}
         {Number(p.tip) > 0 && ` + ${formatFiat(p.tip!, inv.currency)} tip`} · {new Date(p.paidAt).toLocaleString()}
       </p>
       <p className="mt-1 font-mono text-[11px] tracking-wider text-muted uppercase">

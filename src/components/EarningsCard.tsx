@@ -1,6 +1,5 @@
 "use client";
 import { useMemo, useState } from "react";
-import { formatAsset } from "@/lib/currencies";
 import {
   RANGES,
   RANGE_NAMES,
@@ -16,7 +15,7 @@ import {
 } from "@/lib/earnings";
 import { formatMoney, toUsd, type Fx, type Unit } from "@/lib/money";
 import { CurrencyLabel } from "./CurrencyIcon";
-import { Card, Eyebrow, SegmentedControl, cx } from "./ui";
+import { Card, CoinAmount, CoinText, Eyebrow, SegmentedControl, cx } from "./ui";
 
 const BAR_GAP: Record<RangeKey, string> = { today: "gap-px", "7d": "gap-2", "30d": "gap-px", "90d": "gap-1", "1y": "gap-1", all: "gap-1" };
 
@@ -90,7 +89,9 @@ export function EarningsCard({
 
       <div aria-live="polite">
         <Eyebrow>{bucket ? `${range === "90d" ? "Week of " : ""}${bucket.label}` : `Earned · ${RANGE_NAMES[range]}`}</Eyebrow>
-        <p className="mt-1 text-3xl leading-tight font-bold break-words tabular-nums">{money(bucket ? bucket.usd : series.usd)}</p>
+        <p className="mt-1 text-3xl leading-tight font-bold break-words tabular-nums">
+          <CoinText>{money(bucket ? bucket.usd : series.usd)}</CoinText>
+        </p>
         <p className="mt-0.5 text-xs text-muted">
           {bucket ? (
             payments(bucket.count)
@@ -117,7 +118,7 @@ export function EarningsCard({
               style={{ bottom: `${(paceUsd / max) * 100}%` }}
             >
               <span className="absolute -top-px right-0 -translate-y-full bg-paper pl-1 font-mono text-[10px] font-semibold">
-                GOAL PACE {money(paceUsd, true)}
+                <CoinText>GOAL PACE {money(paceUsd, true)}</CoinText>
               </span>
             </div>
           )}
@@ -168,7 +169,7 @@ export function EarningsCard({
                     <CurrencyLabel code={a} />
                   </span>
                   <span className="font-mono text-xs tabular-nums">
-                    {split[a].count ? formatAsset(split[a].units, a) : "—"}
+                    {split[a].count ? <CoinAmount units={split[a].units} asset={a} /> : "—"}
                     <span className="text-muted"> · {series.usd > 0 ? Math.round((split[a].usd / series.usd) * 100) : 0}%</span>
                   </span>
                 </li>
@@ -181,7 +182,9 @@ export function EarningsCard({
               {clients.map((c) => (
                 <li key={c.client} className="flex items-baseline justify-between gap-2">
                   <span className="min-w-0 truncate">{c.client}</span>
-                  <span className="shrink-0 font-mono text-xs tabular-nums">{money(c.usd, true)}</span>
+                  <span className="shrink-0 font-mono text-xs tabular-nums">
+                    <CoinText>{money(c.usd, true)}</CoinText>
+                  </span>
                 </li>
               ))}
             </ul>

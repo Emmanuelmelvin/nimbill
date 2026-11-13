@@ -20,6 +20,7 @@ import {
   Button,
   Card,
   CardHeader,
+  CoinText,
   DescriptionList,
   type DescriptionRow,
   Field,
@@ -29,6 +30,7 @@ import {
   RadioCard,
   TextButton,
   TextLink,
+  coinText,
   labelStyles,
 } from "./ui";
 
@@ -227,7 +229,7 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
 
   const rows: DescriptionRow[] = staker
     ? [
-        { term: "Staked", detail: <span className="font-bold tabular-nums">{nimText(staker.balance)}</span> },
+        { term: "Staked", detail: <span className="font-bold tabular-nums">{coinText(nimText(staker.balance))}</span> },
         {
           term: "Pool",
           detail: pool ? (
@@ -245,7 +247,7 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
                 term: "Unstaking",
                 detail: (
                   <>
-                    <span className="tabular-nums">{nimText(waiting)}</span>
+                    <span className="tabular-nums">{coinText(nimText(waiting))}</span>
                     <span className="block text-xs text-muted">
                       {staker.unlocksAt ? `Unlocks ${untilText(staker.unlocksAt)}` : "In the waiting period"}
                     </span>
@@ -254,7 +256,9 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
               },
             ]
           : []),
-        ...(ready > 0 ? [{ term: "Unlocked", detail: <span className="tabular-nums">{nimText(ready)} · ready to withdraw</span> }] : []),
+        ...(ready > 0
+          ? [{ term: "Unlocked", detail: <span className="tabular-nums">{coinText(`${nimText(ready)} · ready to withdraw`)}</span> }]
+          : []),
       ]
     : [];
 
@@ -384,7 +388,7 @@ export function StakeCard({ suggestedLuna, title = "Put your NIM to work" }: { s
                   Stake {nim > 0 ? nim.toLocaleString() : ""} NIM
                 </Button>
                 <p className="text-center text-xs text-muted">
-                  You can unstake any time; unstaked NIM unlocks after a waiting period.{" "}
+                  <CoinText>You can unstake any time; unstaked NIM unlocks after a waiting period.</CoinText>{" "}
                   <TextButton onClick={() => setMode("summary")}>Cancel</TextButton>
                 </p>
               </>

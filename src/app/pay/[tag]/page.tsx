@@ -6,7 +6,20 @@ import { Avatar } from "@/components/Avatar";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import { ProductImage } from "@/components/ProductImage";
 import { ProductPreview } from "@/components/ProductPreview";
-import { Alert, Button, CopyButton, Field, Input, Loader, LogoMark, SegmentedControl, TextLink, cx, useHref } from "@/components/ui";
+import {
+  Alert,
+  Button,
+  CoinText,
+  CopyButton,
+  Field,
+  Input,
+  Loader,
+  LogoMark,
+  SegmentedControl,
+  TextLink,
+  cx,
+  useHref,
+} from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { formatFiat } from "@/lib/currencies";
@@ -71,7 +84,7 @@ function Board({ board }: { board: PublicBoard }) {
             <span className="font-mono text-[11px] tracking-wider text-muted uppercase">Pay link</span>
             <span className="inline-flex items-center gap-1.5 border border-ink px-2 py-0.5 font-mono text-[11px] font-semibold">
               <span aria-hidden className="h-1.5 w-1.5 bg-ink" />
-              NIM{merchant.acceptsUsdt && " · USDT"}
+              <CoinText>{merchant.acceptsUsdt ? "NIM · USDT" : "NIM"}</CoinText>
             </span>
           </div>
           <div className="mt-5 flex items-center gap-4">
@@ -235,7 +248,7 @@ function OpenAmount({ board, own }: { board: PublicBoard; own: boolean }) {
           Continue to pay →
         </Button>
         <p className="text-center text-xs text-muted">
-          Next you pick NIM{board.merchant.acceptsUsdt && " or USDT"}. The price is locked for 5 minutes.
+          <CoinText>{`Next you pick ${board.merchant.acceptsUsdt ? "NIM or USDT" : "NIM"}. The price is locked for 5 minutes.`}</CoinText>
         </p>
       </Stub>
     </form>

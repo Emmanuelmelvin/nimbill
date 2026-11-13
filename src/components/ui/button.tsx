@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
+import { withCoins } from "./coins";
 import { cx } from "./cx";
 import { Spinner } from "./feedback";
 
@@ -61,27 +62,41 @@ export function Button({
       {loading ? (
         <>
           <Spinner size="sm" />
-          {loadingText ?? <span className="sr-only">Loading</span>}
+          {withCoins(loadingText) ?? <span className="sr-only">Loading</span>}
         </>
       ) : (
-        children
+        withCoins(children)
       )}
     </button>
   );
 }
 
 /** An in-app link that looks like a button. */
-export function LinkButton({ variant, size, block, className, ...rest }: ComponentProps<typeof Link> & StyleProps) {
-  return <Link className={buttonStyles({ variant, size, block, className })} {...rest} />;
+export function LinkButton({ variant, size, block, className, children, ...rest }: ComponentProps<typeof Link> & StyleProps) {
+  return (
+    <Link className={buttonStyles({ variant, size, block, className })} {...rest}>
+      {withCoins(children)}
+    </Link>
+  );
 }
 
 /** A plain anchor (external URL or deep link) that looks like a button. */
-export function AnchorButton({ variant, size, block, className, ...rest }: ComponentProps<"a"> & StyleProps) {
-  return <a className={buttonStyles({ variant, size, block, className })} {...rest} />;
+export function AnchorButton({ variant, size, block, className, children, ...rest }: ComponentProps<"a"> & StyleProps) {
+  return (
+    <a className={buttonStyles({ variant, size, block, className })} {...rest}>
+      {withCoins(children)}
+    </a>
+  );
 }
 
 /** A button that looks like a text link, for low-emphasis actions. */
-export function TextButton({ muted = true, className, type = "button", ...rest }: ComponentProps<"button"> & { muted?: boolean }) {
+export function TextButton({
+  muted = true,
+  className,
+  type = "button",
+  children,
+  ...rest
+}: ComponentProps<"button"> & { muted?: boolean }) {
   return (
     <button
       type={type}
@@ -91,6 +106,8 @@ export function TextButton({ muted = true, className, type = "button", ...rest }
         className,
       )}
       {...rest}
-    />
+    >
+      {withCoins(children)}
+    </button>
   );
 }

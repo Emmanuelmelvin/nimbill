@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Field } from "@/lib/api-reference";
-import { CopyButton, Eyebrow, cx } from "../ui";
+import { CopyButton, Eyebrow, cx, withCoins, withCoinsDeep, type NoCoins } from "../ui";
 
 /** A numbered section with an anchor, in the "01 / Label" style. */
 export function Section({
@@ -23,9 +23,10 @@ export function Section({
       <Eyebrow>
         {index} / {label}
       </Eyebrow>
-      <h2 className="mt-2 text-2xl leading-tight font-bold tracking-tight sm:text-3xl">{title}</h2>
-      {intro && <div className="mt-3 max-w-2xl text-muted">{intro}</div>}
-      <div className="mt-6">{children}</div>
+      <h2 className="mt-2 text-2xl leading-tight font-bold tracking-tight sm:text-3xl">{withCoinsDeep(title)}</h2>
+      {intro && <div className="mt-3 max-w-2xl text-muted">{withCoinsDeep(intro)}</div>}
+      {/* Coin logos in the prose; code samples (<Code>, <pre>, <code>) are left exactly as written. */}
+      <div className="mt-6">{withCoinsDeep(children)}</div>
     </section>
   );
 }
@@ -55,6 +56,8 @@ export function Code({
     </div>
   );
 }
+// Code is copied as-is, so it never gets coin logos.
+(Code as NoCoins).noCoins = true;
 
 export function MethodBadge({ method }: { method: "GET" | "POST" }) {
   return (
@@ -83,7 +86,7 @@ export function Fields({ title, fields }: { title: string; fields: Field[] }) {
               {f.required && <span className="ml-1 border border-ink px-1 text-[10px] font-semibold uppercase">required</span>}
             </dt>
             <dd className="text-sm text-muted">
-              {f.description}
+              {withCoins(f.description)}
               {f.enum && f.enum.length <= 4 && <span className="font-mono text-xs text-ink"> ({f.enum.join(" | ")})</span>}
             </dd>
           </div>
@@ -112,8 +115,8 @@ export function Tile({
           {icon}
         </span>
       )}
-      <h3 className="font-bold">{title}</h3>
-      <div className="mt-1 text-sm text-muted">{children}</div>
+      <h3 className="font-bold">{withCoinsDeep(title)}</h3>
+      <div className="mt-1 text-sm text-muted">{withCoinsDeep(children)}</div>
     </div>
   );
 }

@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { useSession } from "@/lib/client/session";
 import { LinkButton } from "./button";
+import { withCoins } from "./coins";
 import { cx } from "./cx";
 
 /** The NimBill mark: a receipt with a torn (zigzag) edge and an "N". Same shape as app/icon.svg. */
@@ -91,8 +92,8 @@ export function Header({ back }: { back?: string }) {
 export function PageTitle({ title, description, className }: { title: ReactNode; description?: ReactNode; className?: string }) {
   return (
     <div className={cx("mb-5", className)}>
-      <h1 className="text-2xl leading-tight font-bold tracking-tight">{title}</h1>
-      {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+      <h1 className="text-2xl leading-tight font-bold tracking-tight">{withCoins(title)}</h1>
+      {description && <p className="mt-1 text-sm text-muted">{withCoins(description)}</p>}
     </div>
   );
 }
@@ -116,11 +117,11 @@ export function TextLink({
   const cls = cx(LINK, muted ? "text-muted hover:text-ink" : "text-ink", className);
   return external ? (
     <a href={href} target="_blank" rel="noreferrer" className={cls}>
-      {children}
+      {withCoins(children)}
     </a>
   ) : (
     <Link href={href} className={cls}>
-      {children}
+      {withCoins(children)}
     </Link>
   );
 }
@@ -130,7 +131,7 @@ export function Disclosure({ summary, children, className }: { summary: ReactNod
   return (
     <details className={cx("group border-t border-line", className)}>
       <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between text-sm font-medium">
-        {summary}
+        {withCoins(summary)}
         <span aria-hidden className="font-mono text-base transition-transform group-open:rotate-45">
           +
         </span>

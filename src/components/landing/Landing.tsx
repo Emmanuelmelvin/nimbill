@@ -3,7 +3,21 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { PayByNumber } from "@/components/PayByNumber";
-import { Alert, Button, Eyebrow, Loader, LogoMark, OpenInNimiqPay, TextLink, buttonStyles, cx } from "@/components/ui";
+import { CurrencyLabel } from "@/components/CurrencyIcon";
+import {
+  Alert,
+  Button,
+  CoinText,
+  Eyebrow,
+  Loader,
+  LogoMark,
+  OpenInNimiqPay,
+  TextLink,
+  buttonStyles,
+  coinText,
+  cx,
+  withCoins,
+} from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { useInView, useReducedMotion } from "@/lib/client/motion";
 import { useNimiq } from "@/lib/client/nimiq";
@@ -163,7 +177,9 @@ function Nav() {
                         <NavLink href={item.href} onClick={close} className="group flex items-center justify-between gap-4 py-3">
                           <span className="min-w-0">
                             <span className="block font-semibold">{item.label}</span>
-                            <span className="mt-0.5 block text-sm text-muted">{item.text}</span>
+                            <span className="mt-0.5 block text-sm text-muted">
+                              <CoinText>{item.text}</CoinText>
+                            </span>
                           </span>
                           <span
                             aria-hidden
@@ -192,7 +208,7 @@ function Words({ text, start = 0 }: { text: string; start?: number }) {
       {text.split(" ").map((word, i) => (
         <span key={i} className="inline-block overflow-hidden pb-[0.08em] align-bottom">
           <span className="word-in inline-block" style={delay(start + i * 70)}>
-            {word}
+            {coinText(word)}
             {" "}
           </span>
         </span>
@@ -413,8 +429,8 @@ function SectionHead({ index, label, title, text }: { index: string; label: stri
       <Eyebrow>
         {index} / {label}
       </Eyebrow>
-      <h2 className="mt-3 text-3xl leading-[1.02] font-bold tracking-tighter sm:text-5xl">{title}</h2>
-      {text && <p className="mt-4 text-muted sm:text-lg">{text}</p>}
+      <h2 className="mt-3 text-3xl leading-[1.02] font-bold tracking-tighter sm:text-5xl">{withCoins(title)}</h2>
+      {text && <p className="mt-4 text-muted sm:text-lg">{withCoins(text)}</p>}
     </Reveal>
   );
 }
@@ -485,7 +501,9 @@ function HowItWorks() {
                   <span className="font-mono text-[11px] tracking-wider text-muted uppercase">Step {i + 1} of 3</span>
                 </div>
                 <h3 className="mt-4 text-xl font-bold">{step.title}</h3>
-                <p className="mt-1 text-sm text-muted">{step.text}</p>
+                <p className="mt-1 text-sm text-muted">
+                  <CoinText>{step.text}</CoinText>
+                </p>
                 <div className="mt-5">{step.visual}</div>
               </li>
             ))}
@@ -541,7 +559,9 @@ function Verification() {
                   <td className="px-4 py-2.5 text-right font-mono text-xs">
                     <span className="inline-grid">
                       <span className="pending col-start-1 row-start-1 text-muted">checking…</span>
-                      <span className="ok col-start-1 row-start-1 font-semibold">✓ {result}</span>
+                      <span className="ok col-start-1 row-start-1 font-semibold">
+                        <CoinText>✓ {result}</CoinText>
+                      </span>
                     </span>
                   </td>
                 </tr>
@@ -583,12 +603,14 @@ function Features() {
                 <span aria-hidden className="h-px w-8 bg-current" />
                 live rate · rounded up
               </p>
-              <p className="text-3xl font-bold tracking-tight sm:text-4xl">92,500.00 NIM</p>
+              <p className="text-3xl font-bold tracking-tight sm:text-4xl">
+                <CoinText>92,500.00 NIM</CoinText>
+              </p>
             </div>
             <div className="grid grid-cols-3 gap-1 font-mono text-[11px]">
               {CURRENCIES.slice(0, 12).map((c) => (
-                <span key={c.code} className="border border-current/30 px-1.5 py-1 text-center">
-                  {c.code}
+                <span key={c.code} className="flex justify-center border border-current/30 px-1.5 py-1">
+                  <CurrencyLabel code={c.code} />
                 </span>
               ))}
             </div>
@@ -605,7 +627,9 @@ function Features() {
               %
             </span>
             <h3 className="mt-5 text-xl font-bold">Grow what you earn</h3>
-            <p className={sub}>Stake your NIM earnings with a top-rated pool in one tap, right after you get paid.</p>
+            <p className={sub}>
+              <CoinText>Stake your NIM earnings with a top-rated pool in one tap, right after you get paid.</CoinText>
+            </p>
             <div aria-hidden className="mt-5 flex h-12 items-end gap-1">
               {[22, 30, 38, 46, 58, 70, 84, 100].map((h, i) => (
                 <span key={i} className="grow-y flex-1 bg-current" style={{ height: `${h}%`, ...delay(400 + i * 70) }} />
@@ -679,7 +703,9 @@ function Footer() {
         <div className="flex items-center gap-2">
           <LogoMark size={22} />
           <span className="font-bold tracking-tighter">NimBill</span>
-          <span className="text-sm text-muted">· Invoices paid in NIM and USDT</span>
+          <span className="text-sm text-muted">
+            <CoinText>· Invoices paid in NIM and USDT</CoinText>
+          </span>
         </div>
         <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
           <li>

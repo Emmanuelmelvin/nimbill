@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import type { ReactNode } from "react";
 import { AI_LOGOS, AiLogo } from "@/components/AiLogos";
 import { Code, Fields, Section, Tile } from "@/components/docs/DocsParts";
-import { Badge, Eyebrow, Header, LinkButton, TextLink, buttonStyles, cx } from "@/components/ui";
+import { Badge, CoinText, Eyebrow, Header, LinkButton, TextLink, buttonStyles, cx } from "@/components/ui";
 import type { Field } from "@/lib/api-reference";
 import { requestOrigin } from "@/lib/request-origin";
 // The published package's own manifest, so the name and version shown here never drift from npm.
@@ -412,7 +412,7 @@ export default async function McpPage() {
           <p className="mt-4 max-w-2xl text-muted sm:text-lg">
             NimBill ships an MCP server on npm (<span className="font-mono text-ink">npx -y {PKG}</span>) that gives Claude, Cursor,
             Windsurf, and Antigravity their own non-custodial Ed25519 Nimiq wallet, a <span className="font-mono text-ink">@tag</span>, and
-            15 tools to pay invoices, buy from boards, send NIM by tag, and write or cash cheques on-chain.
+            <CoinText>15 tools to pay invoices, buy from boards, send NIM by tag, and write or cash cheques on-chain.</CoinText>
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             <a href="#connect" className={buttonStyles({ size: "md" })}>

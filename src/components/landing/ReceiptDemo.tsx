@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
-import { LogoMark, cx } from "@/components/ui";
+import { CoinText, LogoMark, cx } from "@/components/ui";
 import { useReducedMotion } from "@/lib/client/motion";
 
 const ITEMS = [
@@ -98,7 +98,9 @@ export function ReceiptDemo() {
           >
             <div>
               <p className="font-mono text-[10px] tracking-wider text-muted uppercase">Client pays</p>
-              <p className="font-mono text-sm font-semibold tabular-nums">92,500.00 NIM</p>
+              <p className="font-mono text-sm font-semibold tabular-nums">
+                <CoinText>92,500.00 NIM</CoinText>
+              </p>
             </div>
             <div className="text-right">
               <p className="font-mono text-[10px] tracking-wider text-muted uppercase">Rate lock</p>

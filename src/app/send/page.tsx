@@ -9,6 +9,8 @@ import {
   AnchorButton,
   Button,
   Card,
+  CoinAmount,
+  CoinText,
   Field,
   Header,
   Input,
@@ -262,8 +264,14 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
       <div className="space-y-4">
         <Card tone="inverse" className="text-center">
           <p className="font-mono text-[11px] tracking-wider text-paper/70 uppercase">Sent</p>
-          <p className="mt-2 text-3xl font-bold tabular-nums">{amountText(t)}</p>
-          {!isCoin(t.currency) && <p className="mt-1 font-mono text-sm text-paper/70">{formatAsset(t.amount, t.asset)}</p>}
+          <p className="mt-2 text-3xl font-bold tabular-nums">
+            <CoinText>{amountText(t)}</CoinText>
+          </p>
+          {!isCoin(t.currency) && (
+            <p className="mt-1 font-mono text-sm text-paper/70">
+              <CoinAmount units={t.amount} asset={t.asset} />
+            </p>
+          )}
           <p className="mt-4 border-t border-paper/20 pt-4 text-sm">
             to <span className="font-semibold">{t.counterparty.name}</span> · <span className="font-mono">{t.counterparty.handle}</span>
           </p>
@@ -300,10 +308,12 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
         <Spinner size="lg" />
         <p className="font-semibold">{phase.message}</p>
         <p className="text-sm text-muted">
-          Sending {amountText(phase.transfer)} to {phase.transfer.counterparty.handle}.{" "}
-          {phase.transfer.asset === "USDT"
-            ? "Polygon needs a few confirmations, usually under a minute."
-            : "This usually takes a few seconds."}
+          <CoinText>
+            Sending {amountText(phase.transfer)} to {phase.transfer.counterparty.handle}.{" "}
+            {phase.transfer.asset === "USDT"
+              ? "Polygon needs a few confirmations, usually under a minute."
+              : "This usually takes a few seconds."}
+          </CoinText>
         </p>
       </Card>
     );
@@ -389,15 +399,17 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
             </div>
           </div>
           <p className="text-xs text-muted">
-            {isCoin(currency)
-              ? `${sentAs}.`
-              : coinEstimate !== null
-                ? `≈ ${formatAsset(Math.ceil(coinEstimate * 100) * (UNIT[asset] / 100), asset)} at the live rate. ${sentAs}.`
-                : rate === null && validAmount
-                  ? `Live rates are unavailable right now. Pick ${asset} to send without a rate.`
-                  : `${sentAs} at the live rate.`}
-            {asset === "USDT" &&
-              " The exact amount ends in a few extra digits that identify your transfer. The network fee is paid in POL."}
+            <CoinText>
+              {isCoin(currency)
+                ? `${sentAs}.`
+                : coinEstimate !== null
+                  ? `≈ ${formatAsset(Math.ceil(coinEstimate * 100) * (UNIT[asset] / 100), asset)} at the live rate. ${sentAs}.`
+                  : rate === null && validAmount
+                    ? `Live rates are unavailable right now. Pick ${asset} to send without a rate.`
+                    : `${sentAs} at the live rate.`}
+              {asset === "USDT" &&
+                " The exact amount ends in a few extra digits that identify your transfer. The network fee is paid in POL."}
+            </CoinText>
           </p>
           <Field label="Note" htmlFor="note" optional hint="Only you and the recipient see it.">
             <Input id="note" value={note} onChange={(e) => setNote(e.target.value)} placeholder="Lunch on Friday" maxLength={80} />

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { withCoins } from "./coins";
 import { cx } from "./cx";
 
 const SPINNER_SIZES = { sm: "h-4 w-4 border-2", md: "h-5 w-5 border-2", lg: "h-8 w-8 border-[3px]" };
@@ -57,8 +58,8 @@ export function Alert({
         {a.icon}
       </span>
       <div className="min-w-0 flex-1">
-        {title && <p className="font-semibold">{title}</p>}
-        {children}
+        {title && <p className="font-semibold">{withCoins(title)}</p>}
+        {withCoins(children)}
       </div>
     </div>
   );
@@ -82,7 +83,7 @@ export function Badge({ variant = "outline", children, className }: { variant?: 
         className,
       )}
     >
-      {children}
+      {withCoins(children)}
     </span>
   );
 }
@@ -107,8 +108,8 @@ export function StatusBadge({ status, dueDate }: { status: string; dueDate?: str
 export function EmptyState({ title, description, action }: { title: ReactNode; description?: ReactNode; action?: ReactNode }) {
   return (
     <div className="border border-dashed border-edge px-5 py-10 text-center">
-      <p className="font-semibold">{title}</p>
-      {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+      <p className="font-semibold">{withCoins(title)}</p>
+      {description && <p className="mt-1 text-sm text-muted">{withCoins(description)}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );

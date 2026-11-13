@@ -2,9 +2,9 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client/api";
 import { nimExplorerTx, polygonExplorerTx } from "@/lib/client/nimiq";
-import { formatAsset, formatFiat } from "@/lib/currencies";
+import { formatFiat } from "@/lib/currencies";
 import type { TransferView } from "@/lib/transfers";
-import { Alert, Badge, Card, EmptyState, LinkButton, Loader, cx } from "./ui";
+import { Alert, Badge, Card, CoinAmount, EmptyState, LinkButton, Loader, cx } from "./ui";
 
 /** Money sent to and received from other NimBill users by tag. Kept apart from invoices and earnings. */
 export function TransferList() {
@@ -39,7 +39,7 @@ export function TransferList() {
                 const sent = t.direction === "sent";
                 // Typed in a currency: show that first, with the coin underneath. Typed in the coin: just the coin.
                 const fiat = t.currency !== "NIM" && t.currency !== "USDT" ? formatFiat(t.fiatAmount, t.currency) : null;
-                const coin = formatAsset(t.amount, t.asset);
+                const coin = <CoinAmount units={t.amount} asset={t.asset} />;
                 const explorer = t.txHash ? (t.asset === "USDT" ? polygonExplorerTx(t.txHash) : nimExplorerTx(t.txHash)) : null;
                 const row = (
                   <>

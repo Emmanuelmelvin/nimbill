@@ -11,6 +11,7 @@ import {
   Button,
   Card,
   CodeBlock,
+  CoinText,
   CopyButton,
   Field,
   Input,
@@ -207,7 +208,9 @@ function ChequeScreen({
       {cheque.status === "cashed" && (
         <Card tone="inverse" className="space-y-2 text-center">
           <p className="font-mono text-[11px] tracking-wider text-paper/70 uppercase">Cashed</p>
-          <p className="text-2xl font-bold tabular-nums">{displayAmount}</p>
+          <p className="text-2xl font-bold tabular-nums">
+            <CoinText>{displayAmount}</CoinText>
+          </p>
           {cheque.claimedBy && (
             <p className="text-sm text-paper/80">
               Claimed by <span className="font-semibold text-paper">{cheque.claimedBy.name}</span>
@@ -300,16 +303,20 @@ function ChequeScreen({
           {cheque.recipient.kind === "tag" ? (
             <div className="space-y-2">
               <p className="text-sm">
-                This cheque is locked to{" "}
-                <span className="font-semibold">
-                  {cheque.recipient.name} ({cheque.recipient.handle})
-                </span>
-                . Cashing sends the NIM straight to their wallet.
+                <CoinText>
+                  This cheque is locked to{" "}
+                  <span className="font-semibold">
+                    {cheque.recipient.name} ({cheque.recipient.handle})
+                  </span>
+                  . Cashing sends the NIM straight to their wallet.
+                </CoinText>
               </p>
             </div>
           ) : (
             <div className="space-y-3">
-              <p className="text-sm font-semibold">Where should the NIM go?</p>
+              <p className="text-sm font-semibold">
+                <CoinText>Where should the NIM go?</CoinText>
+              </p>
               {defaultMyAddress && !rawDest && (
                 <div className="flex items-center justify-between gap-3 border border-ink bg-subtle p-3">
                   <div className="min-w-0">
@@ -371,7 +378,7 @@ function ChequeScreen({
             Cash {displayAmount} →
           </Button>
           <p className="text-center text-xs text-muted">
-            Moves {formatAsset(cheque.amount, "NIM")} from this cheque straight into the wallet on-chain.
+            <CoinText>Moves {formatAsset(cheque.amount, "NIM")} from this cheque straight into the wallet on-chain.</CoinText>
           </p>
         </Card>
       )}
@@ -382,7 +389,9 @@ function ChequeScreen({
           <Card className="space-y-3">
             <p className="text-sm font-semibold">Changed your mind?</p>
             <p className="text-xs text-muted">
-              Cancel this cheque before it&apos;s cashed to sweep the {formatAsset(cheque.amount, "NIM")} back into your wallet.
+              <CoinText>
+                Cancel this cheque before it&apos;s cashed to sweep the {formatAsset(cheque.amount, "NIM")} back into your wallet.
+              </CoinText>
             </p>
             {actionError && <Alert kind="error">{actionError}</Alert>}
             <Button variant="danger" block loading={busy === "cancel"} disabled={!!busy} onClick={() => void runAction("cancel")}>
