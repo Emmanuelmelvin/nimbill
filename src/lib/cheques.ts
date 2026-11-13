@@ -47,12 +47,13 @@ export const chequeMemo = (id: string) => `NimBill C ${id}`;
 
 const DEV_CHEQUE_KEY = "nimbill-local-dev-cheque-key-v1";
 
-/** Which secret new cheques derive their server key from. */
-function newChequeKeyRef(): "cheque" {
-  if (isProd && !env.CHEQUE_KEY_SECRET) {
-    throw Errors.config("CHEQUE_KEY_SECRET (32+ chars) must be set in production to write cheques.");
-  }
-  return "cheque";
+/**
+ * Which secret new cheques derive their server key from: the dedicated CHEQUE_KEY_SECRET when it
+ * is set, otherwise SESSION_SECRET (so a deployment without the new variable keeps working).
+ * Each cheque records its choice, so setting CHEQUE_KEY_SECRET later doesn't affect open cheques.
+ */
+function newChequeKeyRef(): "cheque" | "session" {
+  return env.CHEQUE_KEY_SECRET || !env.SESSION_SECRET ? "cheque" : "session";
 }
 
 /** Deterministic server half of the 2-of-2 cheque key for `chequeId`. */
