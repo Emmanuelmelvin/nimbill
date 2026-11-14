@@ -17,6 +17,8 @@ export type DocPage = {
   method?: Endpoint["method"];
   /** Listed but not written yet. */
   soon?: boolean;
+  /** Shows a "New" badge in the sidebar, for a feature worth pointing out. */
+  isNew?: boolean;
   headings?: DocHeading[];
   /** More words the search box should match (an endpoint's path, for example). */
   keywords?: string;
@@ -79,26 +81,25 @@ export const DOC_TABS: DocTab[] = [
             headings: [
               ["base-url", "Base URL"],
               ["errors", "Errors"],
+              ["rate-limits", "Rate limits"],
               ["endpoints", "Endpoints"],
               ["machine-readable", "Machine-readable"],
             ],
           },
-          ...ENDPOINTS.map(
-            (e): DocPage => ({
-              href: endpointHref(e.id),
-              title: e.summary,
-              method: e.method,
-              keywords: `${e.method} ${e.path} ${e.id}`,
-              headings: [
-                ...(e.params ? [["path", "Path parameters"] as DocHeading] : []),
-                ...(e.query ? [["query", "Query parameters"] as DocHeading] : []),
-                ...(e.body ? [["body", "Body"] as DocHeading] : []),
-                ["request", "Request"],
-                ["response", "Response"],
-                ["errors", "When it goes wrong"],
-              ],
-            }),
-          ),
+          ...ENDPOINTS.map((e): DocPage => ({
+            href: endpointHref(e.id),
+            title: e.summary,
+            method: e.method,
+            keywords: `${e.method} ${e.path} ${e.id}`,
+            headings: [
+              ...(e.params ? [["path", "Path parameters"] as DocHeading] : []),
+              ...(e.query ? [["query", "Query parameters"] as DocHeading] : []),
+              ...(e.body ? [["body", "Body"] as DocHeading] : []),
+              ["request", "Request"],
+              ["response", "Response"],
+              ["errors", "When it goes wrong"],
+            ],
+          })),
         ],
       },
       {
@@ -125,7 +126,47 @@ export const DOC_TABS: DocTab[] = [
       },
       {
         title: "Pay with NimBill",
-        pages: [{ href: "/docs/webhooks", title: "Webhooks", soon: true }],
+        pages: [
+          {
+            href: "/docs/webhooks",
+            title: "Overview",
+            isNew: true,
+            keywords: "webhooks store shop checkout ecommerce",
+            headings: [
+              ["how", "How it works"],
+              ["setup", "Set it up"],
+              ["rules", "Three rules"],
+              ["next", "Next"],
+            ],
+          },
+          {
+            href: "/docs/webhooks/create",
+            title: "Create a signed invoice",
+            keywords: "NimBill-Signature HMAC secret reference metadata returnUrl",
+            headings: [
+              ["sign", "Sign the request"],
+              ["fields", "Body"],
+              ["code", "Code"],
+              ["send", "Send the customer to pay"],
+              ["errors", "When it goes wrong"],
+              ["limits", "Rate limits"],
+            ],
+          },
+          {
+            href: "/docs/webhooks/receive",
+            title: "Receive webhooks",
+            keywords: "invoice.paid webhook.test verify signature retries",
+            headings: [
+              ["request", "What you receive"],
+              ["events", "Events"],
+              ["verify", "Verify the signature"],
+              ["respond", "Respond and retries"],
+              ["duplicates", "Duplicates and order"],
+              ["test", "Test it"],
+              ["rotate", "Rotate the secret"],
+            ],
+          },
+        ],
       },
     ],
   },
@@ -153,15 +194,39 @@ export const DOC_TABS: DocTab[] = [
       {
         title: "Set up your AI",
         pages: [
-          { href: "/ai/claude", title: "Claude", headings: [["install", "Install the skill"], ["skill-file", "SKILL.md"]] },
-          { href: "/ai/chatgpt", title: "ChatGPT", headings: [["custom-gpt", "Make a custom GPT"], ["instructions", "Instructions"]] },
+          {
+            href: "/ai/claude",
+            title: "Claude",
+            headings: [
+              ["install", "Install the skill"],
+              ["skill-file", "SKILL.md"],
+            ],
+          },
+          {
+            href: "/ai/chatgpt",
+            title: "ChatGPT",
+            headings: [
+              ["custom-gpt", "Make a custom GPT"],
+              ["instructions", "Instructions"],
+            ],
+          },
           { href: "/ai/cursor", title: "Cursor", headings: [["rule", "Add a project rule"]] },
           {
             href: "/ai/other",
             title: "Grok, Gemini and others",
-            headings: [["instructions", "Instructions"], ["browsing", "Assistants that browse"]],
+            headings: [
+              ["instructions", "Instructions"],
+              ["browsing", "Assistants that browse"],
+            ],
           },
-          { href: "/ai/own-agent", title: "Your own agent or code", headings: [["files", "Point it at a file"], ["mcp", "Give it a wallet"]] },
+          {
+            href: "/ai/own-agent",
+            title: "Your own agent or code",
+            headings: [
+              ["files", "Point it at a file"],
+              ["mcp", "Give it a wallet"],
+            ],
+          },
         ],
       },
     ],

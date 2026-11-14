@@ -6,6 +6,7 @@ import { logger } from "./logger";
 import { safePost } from "./safe-post";
 import { siteUrl } from "./site";
 import { activeSecrets, getEndpoint } from "./webhooks";
+import { MAX_ATTEMPTS, RETRY_DELAYS_MIN } from "./webhook-policy";
 import { signatureHeader } from "./webhook-signature";
 
 // Sends what's queued in webhook_events. Run by the webhook worker (worker/index.ts), never by the
@@ -17,8 +18,7 @@ import { signatureHeader } from "./webhook-signature";
 // workers never send the same event at once, and a worker that dies mid-send only delays it.
 
 /** Wait before retry n (after the first attempt fails, retry 1 waits 1 minute…). About 3 days in all. */
-export const RETRY_DELAYS_MS = [1, 5, 15, 60, 180, 360, 720, 1440, 1440].map((m) => m * 60_000);
-export const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
+const RETRY_DELAYS_MS = RETRY_DELAYS_MIN.map((m) => m * 60_000);
 /** Events nobody could deliver for this long (e.g. webhooks turned off) are given up on. */
 export const MAX_EVENT_AGE_MS = 3 * 24 * 3600 * 1000;
 /** How long a claimed event is reserved for the worker that took it. Longer than one delivery can take. */

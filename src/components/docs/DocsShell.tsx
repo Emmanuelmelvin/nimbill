@@ -117,7 +117,10 @@ export function DocsShell({ children }: { children: ReactNode }) {
               <Pager path={path} />
             </div>
           </main>
-          <aside aria-label="On this page" className="sticky top-[6.25rem] hidden h-[calc(100dvh-6.25rem)] overflow-y-auto py-10 pr-6 xl:block">
+          <aside
+            aria-label="On this page"
+            className="sticky top-[6.25rem] hidden h-[calc(100dvh-6.25rem)] overflow-y-auto py-10 pr-6 xl:block"
+          >
             <Toc path={path} variant="side" />
           </aside>
         </div>
@@ -168,6 +171,9 @@ function NavItem({ page, on, onNavigate }: { page: DocPage; on: boolean; onNavig
           Coming soon
         </span>
       )}
+      {page.isNew && (
+        <span className="shrink-0 bg-ink px-1 font-mono text-[9px] font-semibold tracking-wider text-paper uppercase">New</span>
+      )}
     </Link>
   );
 }
@@ -200,8 +206,22 @@ function Drawer({ tab, path, onClose }: { tab: DocTab; path: string; onClose: ()
       >
         <div className="flex h-14 shrink-0 items-center justify-between border-b border-ink px-4">
           <Logo />
-          <button type="button" onClick={onClose} aria-label="Close the menu" className="flex h-10 w-10 items-center justify-center border border-ink">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square" aria-hidden>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close the menu"
+            className="flex h-10 w-10 items-center justify-center border border-ink"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="square"
+              aria-hidden
+            >
               <path d="M5 5l14 14M19 5L5 19" />
             </svg>
           </button>
@@ -251,9 +271,11 @@ function useHeadings(path: string): TocItem[] {
     if (!root) return;
     let key = "";
     const read = () => {
-      const found = [...root.querySelectorAll<HTMLElement>("h2[id], h3[id]")].map(
-        (h): TocItem => ({ id: h.id, text: h.textContent?.trim() ?? "", level: h.tagName === "H3" ? 3 : 2 }),
-      );
+      const found = [...root.querySelectorAll<HTMLElement>("h2[id], h3[id]")].map((h): TocItem => ({
+        id: h.id,
+        text: h.textContent?.trim() ?? "",
+        level: h.tagName === "H3" ? 3 : 2,
+      }));
       const next = JSON.stringify(found);
       if (next !== key) {
         key = next;
@@ -318,7 +340,8 @@ function Toc({ path, variant }: { path: string; variant: "side" | "inline" }) {
               "-ml-px block border-l py-1 text-sm transition-colors",
               it.level === 3 ? "pl-6" : "pl-3",
               variant === "inline" && "border-transparent",
-              variant === "side" && (active === it.id ? "border-ink font-semibold text-ink" : "border-transparent text-muted hover:text-ink"),
+              variant === "side" &&
+                (active === it.id ? "border-ink font-semibold text-ink" : "border-transparent text-muted hover:text-ink"),
               variant === "inline" && "text-muted hover:text-ink",
             )}
           >
@@ -389,7 +412,10 @@ function SearchButton({ onClick, className }: { onClick: () => void; className?:
     <button
       type="button"
       onClick={onClick}
-      className={cx("h-9 items-center gap-2 border border-edge px-3 text-sm text-muted transition-colors hover:border-ink hover:text-ink", className)}
+      className={cx(
+        "h-9 items-center gap-2 border border-edge px-3 text-sm text-muted transition-colors hover:border-ink hover:text-ink",
+        className,
+      )}
     >
       <SearchIcon />
       <span className="flex-1 text-left">Search the docs…</span>

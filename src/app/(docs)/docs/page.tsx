@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { LogoStrip } from "@/components/docs/AiParts";
-import { Card, Cards, DocPage, H2, Tile } from "@/components/docs/DocsParts";
+import { Card, Cards, CtaBox, DocPage, H2, Tile } from "@/components/docs/DocsParts";
 import { LinkButton, cx } from "@/components/ui";
 import { requestOrigin } from "@/lib/request-origin";
 
@@ -19,8 +19,8 @@ export default async function Introduction() {
     <DocPage title="Get paid by people, programs and AI agents.">
       <p className="text-muted sm:text-lg">
         Every NimBill user has a tag like <span className="font-mono text-ink">ada@nimbill</span> and a public board at{" "}
-        <span className="font-mono break-all text-ink">{example}</span>. Anything that can send an HTTP request can pay it: a shop, a bot,
-        a script or an AI assistant. Plain JSON, no API key, and the money goes straight from wallet to wallet.
+        <span className="font-mono break-all text-ink">{example}</span>. Anything that can send an HTTP request can pay it: a shop, a bot, a
+        script or an AI assistant. Plain JSON, no API key, and the money goes straight from wallet to wallet.
       </p>
       <div className="flex flex-wrap gap-3">
         <LinkButton href="/docs/quick-start" size="md">
@@ -41,12 +41,32 @@ export default async function Introduction() {
           ["/skill.md", "skill.md"],
         ].map(([href, label]) => (
           <li key={href}>
-            <a href={href} className="inline-block border border-line px-2 py-1 text-muted transition-colors hover:border-ink hover:text-ink">
+            <a
+              href={href}
+              className="inline-block border border-line px-2 py-1 text-muted transition-colors hover:border-ink hover:text-ink"
+            >
               {label}
             </a>
           </li>
         ))}
       </ul>
+
+      <CtaBox
+        title={
+          <>
+            <span className="mr-2 inline-block bg-paper px-1.5 align-middle font-mono text-[10px] tracking-wider text-ink uppercase">
+              New
+            </span>
+            Pay with NimBill
+          </>
+        }
+        text="Have an online store? Take NIM and USDT at checkout, straight into your wallet, and get a signed webhook the moment each order is paid."
+        action={
+          <LinkButton href="/docs/webhooks" variant="secondary" className="shrink-0 border-paper">
+            Add it to your store →
+          </LinkButton>
+        }
+      />
 
       <H2 id="works-with">Works with</H2>
       <LogoStrip title="Works with" footnote="…and any agent or program that can make HTTP requests. Logos belong to their owners." />
@@ -59,7 +79,11 @@ export default async function Introduction() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Tile icon="₦" title="Checkout for your shop or app">
           Price in Naira, Shillings, Euros or 16 more currencies. Create an invoice when a customer checks out, show them the invoice link,
-          and mark the order paid when NimBill confirms it on-chain.
+          and mark the order paid when NimBill&apos;s webhook confirms it on-chain. See{" "}
+          <a href="/docs/webhooks" className="text-ink underline underline-offset-4">
+            Pay with NimBill
+          </a>
+          .
         </Tile>
         <Tile icon="#" title="Bots that take payments">
           A Telegram, Discord or WhatsApp bot can sell a ticket, a file or an hour of your time: create the invoice, send the link, check
@@ -80,7 +104,10 @@ export default async function Introduction() {
         {[
           ["No API key or account", "Every endpoint here is public. The payer never signs up."],
           ["No custody", "Money goes from the payer's wallet to the merchant's. NimBill only reads the blockchain."],
-          ["No webhooks to host", "Ask the invoice for its status; NimBill also finds payments sent without a verify call."],
+          [
+            "Webhooks only if you want them",
+            "Ask the invoice for its status, or let NimBill tell your store when it's paid (Pay with NimBill).",
+          ],
           ["No currency maths", "Prices are in local currency. The quote turns them into exact coin amounts."],
         ].map(([t, d], i) => (
           <li
@@ -106,6 +133,12 @@ export default async function Introduction() {
         </Card>
         <Card href="/ai" title="AI assistants" icon="✦">
           Teach Claude, ChatGPT, Cursor or Grok to pay with NimBill.
+        </Card>
+        <Card href="/docs/webhooks" title="Pay with NimBill" icon="₦">
+          Checkout for your online store, with signed webhooks.
+        </Card>
+        <Card href="/mcp" title="MCP Agent Wallet" icon="◆">
+          Give an AI agent its own wallet to pay with.
         </Card>
       </Cards>
     </DocPage>

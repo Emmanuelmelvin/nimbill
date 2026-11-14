@@ -10,13 +10,14 @@ import { listProducts, productView } from "./products";
 import { enforceLimit } from "./rate-limit";
 import type { BoardInvoiceBody } from "./schemas";
 import { formatTag, normalizeTag, tagProblem } from "./tags";
+import { BOARD_INVOICES_PER_10_MIN, STORE_INVOICES_PER_10_MIN } from "./webhook-policy";
 import { checkReturnUrl, verifyStoreRequest } from "./webhooks";
 
 const MINUTE = 60_000;
 /** Most invoices visitors may start on one board in 10 minutes, so nobody can flood it. */
-const MAX_STARTED_PER_10_MIN = 30;
+const MAX_STARTED_PER_10_MIN = BOARD_INVOICES_PER_10_MIN;
 /** The same for the merchant's own store, counted apart (signed requests, "Pay with NimBill"). */
-const MAX_STORE_STARTED_PER_10_MIN = 300;
+const MAX_STORE_STARTED_PER_10_MIN = STORE_INVOICES_PER_10_MIN;
 /** Unpaid board invoices older than this are no longer shown to the owner. */
 export const PENDING_ORDER_DAYS = 7;
 

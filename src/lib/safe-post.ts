@@ -4,6 +4,7 @@ import http from "node:http";
 import https from "node:https";
 import { isIP, type LookupFunction } from "node:net";
 import { isProd } from "./env";
+import { DELIVERY_TIMEOUT_S } from "./webhook-policy";
 
 // POST to a URL a merchant typed, without letting it reach anything private.
 //
@@ -16,7 +17,7 @@ import { isProd } from "./env";
 
 export type PostResult = { status: number | null; body: string; error: string | null; ms: number };
 
-const TIMEOUT_MS = 10_000;
+const TIMEOUT_MS = DELIVERY_TIMEOUT_S * 1000;
 const MAX_BODY = 4 * 1024;
 
 /** True for addresses that are not on the public internet. */

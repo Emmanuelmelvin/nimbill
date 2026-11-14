@@ -22,6 +22,14 @@ ${agentStepsText(origin)}
 
 ${AGENT_RULES.map((r) => `- ${r}`).join("\n")}
 
+## Pay with NimBill (for online stores)
+
+A merchant's own store can create invoices on its board from its server and receive a webhook when each is paid. There is still no API key: the merchant's webhook secret (Settings → Webhooks) signs both ways.
+
+- Create: POST ${origin}/api/pay/{tag}/invoices with the header NimBill-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>. Signed requests may add reference, metadata and returnUrl. Save invoice.id and send the customer to ${origin}/i/{invoice.id}.
+- Receive: NimBill POSTs { id, type: "invoice.paid", test, data: { invoice } } to the store's URL, signed the same way. Verify it on the raw body, skip duplicate ids, match the order by invoice.id and check total and currency, answer 2xx within 10 seconds. Failures are retried for about 3 days.
+- Guide: ${origin}/docs/webhooks
+
 ## Links
 
 - [Developer docs](${origin}/docs): why and how, a quick start, and every endpoint with examples

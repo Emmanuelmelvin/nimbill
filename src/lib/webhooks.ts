@@ -7,6 +7,7 @@ import type { Invoice, WebhookEndpoint, WebhookEvent } from "./db/schema";
 import { env, isProd } from "./env";
 import { Errors } from "./errors";
 import { logger } from "./logger";
+import { ROTATION_OVERLAP_HOURS } from "./webhook-policy";
 import { checkSignature } from "./webhook-signature";
 
 // "Pay with NimBill": a merchant's store creates board invoices with signed requests and gets a
@@ -14,7 +15,7 @@ import { checkSignature } from "./webhook-signature";
 // webhook-signature.ts). Delivery is done by the webhook worker, which reads webhook_events.
 
 /** How long the old secret keeps working after a rotation. */
-export const ROTATION_OVERLAP_MS = 24 * 3600 * 1000;
+const ROTATION_OVERLAP_MS = ROTATION_OVERLAP_HOURS * 3600 * 1000;
 
 const ALPHABET = "23456789abcdefghjkmnpqrstuvwxyz";
 function randomId(prefix: string, len: number): string {

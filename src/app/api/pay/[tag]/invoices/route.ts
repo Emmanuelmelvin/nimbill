@@ -6,6 +6,7 @@ import { createBoardInvoice } from "@/lib/board-server";
 import { publicInvoice } from "@/lib/invoices";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 import { BoardInvoiceBody } from "@/lib/schemas";
+import { ANON_INVOICES_PER_IP_PER_MIN } from "@/lib/webhook-policy";
 import { SIGNATURE_HEADER } from "@/lib/webhook-signature";
 
 // Public: start paying on a board. Returns the invoice to pay, at /i/<id>, like any other invoice.
@@ -22,7 +23,7 @@ export const POST = withCors(
     const rawBody = await req.text(); // the signature covers these exact bytes
     const header = req.headers.get(SIGNATURE_HEADER);
     // Anonymous callers also get a per-IP allowance, so one client can't use up a whole board's.
-    if (!header) rateLimit(`board-invoice:${clientIp(req.headers)}`, 10, 60_000);
+    if (!header) rateLimit(`board-invoice:${clientIp(req.headers)}`, ANON_INVOICES_PER_IP_PER_MIN, 60_000);
     const body = BoardInvoiceBody.parse(JSON.parse(rawBody));
     const inv = await createBoardInvoice(
       decodeURIComponent(tag),

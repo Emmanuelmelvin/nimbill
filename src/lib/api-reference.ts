@@ -6,7 +6,7 @@ import { CURRENCY_CODES } from "./currencies";
 
 export type Field = {
   name: string;
-  type: "string" | "number" | "integer";
+  type: "string" | "number" | "integer" | "object";
   required?: boolean;
   enum?: readonly string[];
   description: string;
@@ -82,6 +82,22 @@ export const ENDPOINTS: Endpoint[] = [
       { name: "amount", type: "number", description: "Amount to pay when not buying a product." },
       { name: "currency", type: "string", enum: CURRENCY_CODES, description: "Currency of amount, e.g. USD, NGN, EUR." },
       { name: "description", type: "string", description: "What the amount is for, up to 120 characters." },
+      {
+        name: "reference",
+        type: "string",
+        description:
+          "Pay with NimBill only (signed requests): your own order id, up to 100 characters. Sent back in webhooks; never shown publicly.",
+      },
+      {
+        name: "metadata",
+        type: "object",
+        description: "Pay with NimBill only: up to 20 string keys and values of your own, sent back in webhooks.",
+      },
+      {
+        name: "returnUrl",
+        type: "string",
+        description: "Pay with NimBill only: where the payer goes back to after paying. Must be on the store address saved in NimBill.",
+      },
     ],
     example: {
       request: { productId: "g3exvt33mh", quantity: 2, payerName: "Shop bot for Tunde" },
@@ -101,9 +117,10 @@ export const ENDPOINTS: Endpoint[] = [
     },
     errors: [
       "400 VALIDATION: a field is missing or wrong (the message says which)",
-      "400 BAD_REQUEST: the board doesn't take open amounts",
+      "400 BAD_REQUEST: the board doesn't take open amounts, or reference/metadata/returnUrl were sent without a signature",
+      "401 UNAUTHORIZED: a NimBill-Signature header was sent but doesn't match, is older than 5 minutes, or webhooks are off",
       "404 NOT_FOUND: no such tag, or the product isn't available",
-      "429 RATE_LIMITED: more than 30 invoices on this board in 10 minutes",
+      "429 RATE_LIMITED: more than 30 invoices on this board in 10 minutes (300 for the merchant's own signed requests), or more than 10 a minute from one address. Wait RateLimit-Reset seconds",
     ],
   },
   {
