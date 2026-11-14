@@ -62,6 +62,15 @@ docker build -f worker/Dockerfile -t nimbill-worker .
 Run one instance; more are safe (events are claimed with `FOR UPDATE SKIP LOCKED`), just not needed.
 Don't give it a public port or a health-check URL: it has none.
 
+### Brimble
+
+`brimble.toml` at the repo root sets this up as a Brimble **Worker** built from `worker/Dockerfile`.
+In the dashboard: **New project**, connect the repo (`main`), choose **Worker**, keep the root directory
+at the repo root, pick the region closest to the database, add the environment variables above under
+**Environment**, and deploy. **Logs** should show the worker starting; then send a test event from
+Settings → Webhooks. A missing required variable makes the worker exit, and after 5 quick restarts
+Brimble marks it Failed: fix the variable and press **Restart**.
+
 ## What stores receive
 
 ```

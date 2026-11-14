@@ -1,0 +1,12 @@
+# Brimble (https://brimble.io): hosts the webhook worker only. The web app stays on Vercel, which
+# ignores this file. See worker/README.md for what the worker does and the environment it needs.
+[services.nimbill-worker]
+type = "worker" # no port, no public URL, no health checks
+
+[services.nimbill-worker.build]
+# Relative to the project's root directory, which must stay the repo root: the image needs src/lib.
+dockerfile = "worker/Dockerfile"
+
+[services.nimbill-worker.scale]
+# One is enough. More are safe (events are claimed with FOR UPDATE SKIP LOCKED), just not needed.
+replicas = 1
