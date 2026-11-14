@@ -698,6 +698,23 @@ for (const [path, text] of [
   res = await fetch(B + path);
   ok(res.status === 200 && (await res.text()).includes(text), `docs page ${path} is served`);
 }
+// Marketing pages: each is served, has the site footer, and its own share image.
+for (const [path, text] of [
+  ["/about", "Who builds it"],
+  ["/privacy", "What NimBill stores"],
+  ["/terms", "Terms of use"],
+  ["/blog", "Introducing Pay with NimBill"],
+  ["/blog/pay-with-nimbill", "No API key. One secret, both ways"],
+]) {
+  res = await fetch(B + path);
+  const html = await res.text();
+  ok(
+    res.status === 200 && html.includes(text) && html.includes("x.com/mercichidi") && html.includes('property="og:image"'),
+    `site page ${path} is served with footer and share image`,
+  );
+}
+res = await fetch(B + "/blog/no-such-post");
+ok(res.status === 404, "unknown blog post is a 404");
 res = await fetch(B + "/skill.md");
 const skill = await res.text();
 ok(

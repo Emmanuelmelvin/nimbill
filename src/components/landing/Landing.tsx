@@ -23,6 +23,7 @@ import { useInView, useReducedMotion } from "@/lib/client/motion";
 import { useNimiq } from "@/lib/client/nimiq";
 import { useSignIn } from "@/lib/client/session";
 import { CURRENCIES } from "@/lib/currencies";
+import { SiteFooter } from "@/components/site/SiteFooter";
 import { ReceiptDemo } from "./ReceiptDemo";
 
 /** Inline style that sets the animation / transition delay used by the classes in globals.css. */
@@ -41,7 +42,7 @@ export function Landing() {
       <Features />
       <PaySection />
       <FinalCall />
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }
@@ -742,53 +743,5 @@ function FinalCall() {
         </Reveal>
       </Container>
     </section>
-  );
-}
-
-function Footer() {
-  return (
-    <footer>
-      <Container className="flex flex-col gap-6 py-10 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <LogoMark size={22} />
-          <span className="font-bold tracking-tighter">NimBill</span>
-          <span className="text-sm text-muted">
-            <CoinText>· Invoices paid in NIM and USDT</CoinText>
-          </span>
-        </div>
-        <ul className="flex flex-wrap gap-x-5 gap-y-2 text-sm">
-          <li>
-            <TextLink href="/stats" muted>
-              Payments made with NimBill
-            </TextLink>
-          </li>
-          <li>
-            <TextLink href="/docs" muted>
-              Developer docs
-            </TextLink>
-          </li>
-          <li>
-            <TextLink href="/ai" muted>
-              AI assistants
-            </TextLink>
-          </li>
-          <li>
-            <TextLink href="/mcp" muted>
-              MCP Agent Wallet
-            </TextLink>
-          </li>
-          <li>
-            <TextLink href="https://nimiq.com/nimiq-pay" external muted>
-              Get Nimiq Pay
-            </TextLink>
-          </li>
-          <li>
-            <TextLink href="https://miniappscompetition.com/cycle3" external muted>
-              Mini Apps Competition
-            </TextLink>
-          </li>
-        </ul>
-      </Container>
-    </footer>
   );
 }

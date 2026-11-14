@@ -17,3 +17,29 @@ export function siteUrl(): URL {
 
 /** Shared Open Graph fields. Child routes that set `openGraph` replace the parent's, so spread this in. */
 export const baseOpenGraph = { siteName: SITE_NAME, type: "website", locale: "en_US" } as const;
+
+/**
+ * Metadata for a public page: title, description, Open Graph and Twitter in one go.
+ * `title` gets the root template (" · NimBill"); link previews use `ogTitle` (default: the title).
+ */
+export function pageMetadata({
+  title,
+  description,
+  path,
+  ogTitle = title,
+  type = "website",
+}: {
+  title: string;
+  description: string;
+  path: string;
+  ogTitle?: string;
+  type?: "website" | "article";
+}) {
+  return {
+    title,
+    description,
+    alternates: { canonical: path },
+    openGraph: { ...baseOpenGraph, type, title: ogTitle, description, url: path },
+    twitter: { card: "summary_large_image" as const, title: ogTitle, description },
+  };
+}
