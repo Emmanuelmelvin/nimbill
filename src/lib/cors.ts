@@ -1,4 +1,6 @@
 import "server-only";
+import { RATE_LIMIT_HEADERS } from "./rate-limit";
+import { SIGNATURE_HEADER } from "./webhook-signature";
 
 // CORS for the public API, so agents and pages running in a browser on another site can call it.
 //
@@ -13,7 +15,11 @@ function corsHeaders(methods: Method[]): Record<string, string> {
   return {
     "access-control-allow-origin": "*",
     "access-control-allow-methods": [...methods, "OPTIONS"].join(", "),
-    "access-control-allow-headers": "content-type",
+    // NimBill-Signature: stores sign the invoices they create (normally from their server, where
+    // CORS doesn't apply, but a signed request from a browser shouldn't fail on the pre-check).
+    "access-control-allow-headers": `content-type, ${SIGNATURE_HEADER}`,
+    // Let scripts on other sites read how many requests they have left.
+    "access-control-expose-headers": RATE_LIMIT_HEADERS.join(", "),
   };
 }
 

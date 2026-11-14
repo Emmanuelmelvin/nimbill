@@ -168,6 +168,12 @@ function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolea
         <AnchorButton href={explorer} target="_blank" rel="noreferrer" variant="secondary" size="sm" className="min-h-11">
           On-chain proof ↗
         </AnchorButton>
+        {/* "Pay with NimBill": back to the store that sent the payer here (its address is checked server-side). */}
+        {inv.returnUrl && !isOwner && (
+          <AnchorButton href={inv.returnUrl} size="md" className="col-span-2 min-h-11">
+            Back to {new URL(inv.returnUrl).host} →
+          </AnchorButton>
+        )}
       </div>
     </Card>
   );

@@ -23,6 +23,7 @@ import { env, isProd } from "./env";
 import { Errors } from "./errors";
 import { newId } from "./invoices";
 import { lookupTag, type TagOwner } from "./merchant-tags";
+import { enforceLimit } from "./rate-limit";
 import { normalizeAddress } from "./nimiq-address";
 import { getRate } from "./rates";
 import type { ChequeClaimBody, NewChequeBody } from "./schemas";
@@ -82,12 +83,15 @@ export async function createCheque(
 ): Promise<{ cheque: Cheque; rate: number }> {
   const db = await getDb();
   const recent = await db
-    .select({ id: schema.cheques.id })
+    .select({ createdAt: schema.cheques.createdAt })
     .from(schema.cheques)
     .where(and(eq(schema.cheques.writerAddress, writerAddress), gt(schema.cheques.createdAt, new Date(Date.now() - HOUR))));
-  if (recent.length >= MAX_STARTED_PER_HOUR) {
-    throw Errors.rateLimited("You've started a lot of cheques in the last hour. Try again later.");
-  }
+  enforceLimit({
+    used: recent.length,
+    limit: MAX_STARTED_PER_HOUR,
+    resetAt: Math.min(Date.now(), ...recent.map((r) => r.createdAt.getTime())) + HOUR,
+    message: "You've started a lot of cheques in the last hour. Try again later.",
+  });
 
   let recipient: TagOwner | null = null;
   if (input.recipientTag) {

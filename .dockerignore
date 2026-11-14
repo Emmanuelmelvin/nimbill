@@ -1,0 +1,11 @@
+# Docker build context for worker/Dockerfile. Vercel ignores this file.
+node_modules
+.next
+.data
+.env*
+demo
+docs
+mcp
+public
+*.png
+*.mp4

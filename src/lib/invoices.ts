@@ -11,6 +11,7 @@ import { getRate } from "./rates";
 import { LUNA_PER_NIM, USDT_DECIMALS } from "./currencies";
 import { decodeData, nimiq, polygon, sameNimAddress, type NimTx } from "./clients";
 import { PRICE_LOCK_GRACE_MS, PRICE_LOCK_MS, txHashUsed, uniqueUsdtAmount } from "./usdt-amounts";
+import { recordInvoicePaid } from "./webhooks";
 
 export const QUOTE_TTL_MS = PRICE_LOCK_MS;
 // A payment broadcast just before a quote expires still counts if it lands within this window.
@@ -74,6 +75,8 @@ export async function createInvoice(input: {
   /** "board": made by a visitor on the merchant's board. Numbered when paid (see assignBoardNumber). */
   source?: "direct" | "board";
   productId?: string | null;
+  /** "Pay with NimBill": set only for board invoices created by a signed store request. */
+  integration?: { id: string; reference?: string | null; metadata?: Record<string, string> | null; returnUrl?: string | null } | null;
 }): Promise<Invoice> {
   const db = await getDb();
   await ensureMerchant(input.merchantAddress);
@@ -102,6 +105,10 @@ export async function createInvoice(input: {
       note: input.note || null,
       dueDate: input.dueDate || null,
       isDemo: !!input.isDemo,
+      integrationId: input.integration?.id ?? null,
+      reference: input.integration?.reference ?? null,
+      metadata: input.integration?.metadata ?? null,
+      returnUrl: input.integration?.returnUrl ?? null,
     })
     .returning();
   return inv;
@@ -254,6 +261,9 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
   if (!updated) return null;
   const final = updated.source === "board" && !updated.isDemo ? await assignBoardNumber(updated) : updated;
   notifyInvoicePaid(final);
+  // Store webhook ("Pay with NimBill"), for invoices a store created with a signed request. Queued
+  // here, delivered by the webhook worker. Never throws, so it can't undo or fail the payment.
+  await recordInvoicePaid(final);
   return final;
 }
 
@@ -435,6 +445,9 @@ export function publicInvoice(inv: Invoice) {
     status: inv.status,
     isDemo: inv.isDemo,
     createdAt: inv.createdAt.toISOString(),
+    // Where the payer goes back to after paying ("Pay with NimBill"). Only ever set by a signed
+    // store request, on the store's saved address. `reference` and `metadata` stay private.
+    returnUrl: inv.returnUrl,
     memo: paymentMemo(inv.id),
     payment:
       inv.status === "paid"

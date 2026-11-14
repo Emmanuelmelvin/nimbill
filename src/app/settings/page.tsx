@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Alert, Button, Card, CodeBlock, CopyButton, Eyebrow, Field, Header, OpenInNimiqPay, PageTitle } from "@/components/ui";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import { ProfileForm } from "@/components/ProfileForm";
+import { WebhooksCard } from "@/components/WebhooksCard";
 import { api, type MerchantInfo } from "@/lib/client/api";
 import { signOut, useSession } from "@/lib/client/session";
 import { formatTag } from "@/lib/tags";
@@ -84,6 +85,8 @@ export default function Settings() {
           <ProfileForm withEmail />
         </Card>
         <DisplayCurrency />
+        {/* Stores create invoices on the merchant's board, which needs a tag. */}
+        {merchant.tag && <WebhooksCard />}
         <Button
           variant="danger"
           block

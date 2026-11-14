@@ -66,6 +66,14 @@ export const invoices = pgTable("invoices", {
   // When someone other than the merchant first opened the invoice page while it was unpaid.
   // Private to the merchant ("Sent → Viewed → Paid"); null = not opened yet.
   viewedAt: timestamp("viewed_at", { withTimezone: true }),
+  // "Pay with NimBill": the merchant's webhook endpoint id, set when their store created this board
+  // invoice with a request signed by its webhook secret (see lib/webhooks.ts). Only these invoices
+  // send store webhooks, and only on these are `reference`, `metadata` and `returnUrl` set.
+  // Null = made anonymously (a visitor, an agent).
+  integrationId: text("integration_id"),
+  reference: text("reference"), // the store's own order id; private to the merchant and the store
+  metadata: jsonb("metadata").$type<Record<string, string>>(), // the store's key/values, sent back in webhooks
+  returnUrl: text("return_url"), // where the payer goes back to after paying, on the store's allowed origin
 });
 
 // An earnings target for a period. Progress is computed from paid invoices, never stored.
@@ -199,6 +207,48 @@ export const cheques = pgTable("cheques", {
   settledAt: timestamp("settled_at", { withTimezone: true }),
 });
 
+// "Pay with NimBill": where a merchant's store receives webhooks. One per merchant.
+// Its secret signs both ways: the store signs the invoices it creates, NimBill signs every webhook.
+export const webhookEndpoints = pgTable("webhook_endpoints", {
+  id: text("id").primaryKey(), // "we_…"
+  merchantAddress: text("merchant_address").notNull().unique(),
+  url: text("url").notNull(), // where webhooks are POSTed
+  // The one origin (scheme://host[:port]) an invoice's returnUrl may point to. Null = no returnUrl allowed.
+  returnOrigin: text("return_origin"),
+  // AES-256-GCM with WEBHOOK_KEY_SECRET (see lib/webhooks.ts). HMAC needs the secret itself, so it
+  // can't be hashed like a password.
+  secretEnc: text("secret_enc").notNull(),
+  // After a rotation the old secret keeps working until `previousExpiresAt`, so the store can switch over.
+  previousSecretEnc: text("previous_secret_enc"),
+  previousExpiresAt: timestamp("previous_expires_at", { withTimezone: true }),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// "webhook.test": sent from Settings → Webhooks with a made-up invoice (`invoice_id` is "test_…").
+export type WebhookEventType = "invoice.paid" | "webhook.test";
+
+// Outbox: one row per thing that happened, written where it happens (markPaid) and delivered by
+// the webhook worker. A merchant has one endpoint, so the row also tracks its delivery.
+// unique(type, invoice_id) makes writing it idempotent, so missed rows can safely be added again.
+export const webhookEvents = pgTable("webhook_events", {
+  id: text("id").primaryKey(), // "evt_…", the same on every retry so stores can drop duplicates
+  merchantAddress: text("merchant_address").notNull(),
+  type: text("type").$type<WebhookEventType>().notNull(),
+  invoiceId: text("invoice_id").notNull(),
+  // pending -> delivered, or failed after the last retry. The payload is built when it is sent.
+  status: text("status").$type<"pending" | "delivered" | "failed">().notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+  lastStatus: integer("last_status"), // HTTP status of the last attempt; null = no response
+  lastError: text("last_error"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  deliveredAt: timestamp("delivered_at", { withTimezone: true }),
+});
+
+export type WebhookEndpoint = typeof webhookEndpoints.$inferSelect;
+export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type Cheque = typeof cheques.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Transfer = typeof transfers.$inferSelect;
@@ -368,4 +418,37 @@ ALTER TABLE transfers ADD COLUMN IF NOT EXISTS asset text NOT NULL DEFAULT 'NIM'
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS to_evm_address text;
 ALTER TABLE transfers ADD COLUMN IF NOT EXISTS from_evm_address text;
 CREATE INDEX IF NOT EXISTS transfers_to_evm_idx ON transfers (lower(to_evm_address), created_at DESC);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS integration_id text;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS reference text;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS metadata jsonb;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS return_url text;
+CREATE INDEX IF NOT EXISTS invoices_integration_idx ON invoices (integration_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS webhook_endpoints (
+  id text PRIMARY KEY,
+  merchant_address text NOT NULL UNIQUE,
+  url text NOT NULL,
+  return_origin text,
+  secret_enc text NOT NULL,
+  previous_secret_enc text,
+  previous_expires_at timestamptz,
+  enabled boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TABLE IF NOT EXISTS webhook_events (
+  id text PRIMARY KEY,
+  merchant_address text NOT NULL,
+  type text NOT NULL,
+  invoice_id text NOT NULL,
+  status text NOT NULL DEFAULT 'pending',
+  attempts integer NOT NULL DEFAULT 0,
+  next_attempt_at timestamptz NOT NULL DEFAULT now(),
+  last_status integer,
+  last_error text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  delivered_at timestamptz
+);
+CREATE UNIQUE INDEX IF NOT EXISTS webhook_events_once_idx ON webhook_events (type, invoice_id);
+CREATE INDEX IF NOT EXISTS webhook_events_due_idx ON webhook_events (status, next_attempt_at);
+CREATE INDEX IF NOT EXISTS webhook_events_merchant_idx ON webhook_events (merchant_address, created_at DESC);
 `;

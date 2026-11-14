@@ -8,6 +8,7 @@ import type { Transfer } from "./db/schema";
 import { Errors } from "./errors";
 import { newId } from "./invoices";
 import { lookupTag } from "./merchant-tags";
+import { enforceLimit } from "./rate-limit";
 import { getRate } from "./rates";
 import { formatTag } from "./tags";
 import { CLOCK_SKEW_MS, PRICE_LOCK_GRACE_MS, PRICE_LOCK_MS, txHashUsed, uniqueUsdtAmount } from "./usdt-amounts";
@@ -41,11 +42,15 @@ export async function createTransfer(
 
   const db = await getDb();
   const recent = await db
-    .select({ id: schema.transfers.id })
+    .select({ createdAt: schema.transfers.createdAt })
     .from(schema.transfers)
     .where(and(eq(schema.transfers.fromAddress, fromAddress), gt(schema.transfers.createdAt, new Date(Date.now() - HOUR))));
-  if (recent.length >= MAX_STARTED_PER_HOUR)
-    throw Errors.rateLimited("You've started a lot of transfers in the last hour. Try again later.");
+  enforceLimit({
+    used: recent.length,
+    limit: MAX_STARTED_PER_HOUR,
+    resetAt: Math.min(Date.now(), ...recent.map((r) => r.createdAt.getTime())) + HOUR,
+    message: "You've started a lot of transfers in the last hour. Try again later.",
+  });
 
   const [[me], [recipient]] = await Promise.all([
     db.select().from(schema.merchants).where(eq(schema.merchants.address, fromAddress)),

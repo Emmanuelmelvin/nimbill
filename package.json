@@ -11,11 +11,13 @@
     "start": "next start",
     "lint": "eslint",
     "mcp": "node mcp/index.mjs",
+    "worker": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings worker/index.ts",
     "test:mcp": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-mcp.mjs",
     "test:api": "node scripts/api-smoke.mjs",
     "test:address": "node --experimental-strip-types --no-warnings scripts/test-address.ts",
     "test:earnings": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-earnings.ts",
     "test:tags": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-tags.ts",
+    "test:webhooks": "node --experimental-strip-types --no-warnings scripts/test-webhooks.ts",
     "dev:seed": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/dev-seed.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

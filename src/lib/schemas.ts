@@ -162,6 +162,16 @@ export const BoardInvoiceBody = z
       .optional(),
     currency: z.enum(CURRENCY_CODES, { error: "Unsupported currency" }).optional(),
     description: z.string().trim().min(1, "Say what you're paying for").max(120).optional(),
+    // "Pay with NimBill": only accepted on requests signed with the merchant's webhook secret.
+    reference: z.string().trim().min(1).max(100, "Keep reference under 100 characters").optional(),
+    metadata: z
+      .record(
+        z.string().min(1).max(40, "metadata keys must be 40 characters or less"),
+        z.string().max(500, "metadata values must be 500 characters or less"),
+      )
+      .refine((m) => Object.keys(m).length <= 20, "metadata can have at most 20 keys")
+      .optional(),
+    returnUrl: z.string().trim().max(1000, "returnUrl is too long").optional(),
   })
   .refine(
     (b) => b.productId || (b.amount !== undefined && b.currency && b.description),

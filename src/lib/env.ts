@@ -21,6 +21,9 @@ const Schema = z.object({
   // Derives the server's half of every cheque key. Kept apart from SESSION_SECRET so rotating
   // sessions never locks funded cheques. Never rotate or lose it while cheques are open.
   CHEQUE_KEY_SECRET: optional(z.string().min(32, "CHEQUE_KEY_SECRET must be at least 32 characters")),
+  // Encrypts every store's webhook secret at rest ("Pay with NimBill", lib/webhooks.ts). Losing or
+  // changing it makes the saved secrets unreadable: each store would need a new one.
+  WEBHOOK_KEY_SECRET: optional(z.string().min(32, "WEBHOOK_KEY_SECRET must be at least 32 characters")),
   DATABASE_URL: optional(z.url("DATABASE_URL must be a postgres connection URL")),
 
   // Demo invoice
