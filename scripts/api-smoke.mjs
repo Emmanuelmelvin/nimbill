@@ -686,7 +686,18 @@ ok(
   "API docs page is served",
 );
 res = await fetch(B + "/docs/agents", { redirect: "manual" });
-ok([307, 308].includes(res.status) && res.headers.get("location").includes("/docs"), "old agent guide redirects to /docs");
+ok([307, 308].includes(res.status) && res.headers.get("location").includes("/docs/quick-start"), "old agent guide redirects to the quick start");
+for (const [path, text] of [
+  ["/docs/quick-start", "Buy a product with curl"],
+  ["/docs/api/create-board-invoice", "Create an invoice on a board"],
+  ["/ai", "How an AI pays with NimBill"],
+  ["/ai/claude", "nimbill-pay"],
+  ["/mcp", "Give your AI agent its own Nimiq wallet"],
+  ["/mcp/tools", "wallet_status"],
+]) {
+  res = await fetch(B + path);
+  ok(res.status === 200 && (await res.text()).includes(text), `docs page ${path} is served`);
+}
 res = await fetch(B + "/skill.md");
 const skill = await res.text();
 ok(

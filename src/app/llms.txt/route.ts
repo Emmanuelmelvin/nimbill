@@ -24,7 +24,9 @@ ${AGENT_RULES.map((r) => `- ${r}`).join("\n")}
 
 ## Links
 
-- [API docs](${origin}/docs): why and how, every endpoint with examples, and setups for Claude, ChatGPT, Cursor and Grok
+- [Developer docs](${origin}/docs): why and how, a quick start, and every endpoint with examples
+- [AI assistants](${origin}/ai): setups for Claude, ChatGPT, Cursor, Grok and your own agent
+- [MCP Agent Wallet](${origin}/mcp): give an MCP client its own Nimiq wallet
 - [OpenAPI](${origin}/openapi.json): the API as OpenAPI 3.1
 - [Agent skill](${origin}/skill.md): a SKILL.md to install the steps above as a skill
 - [A board as JSON](${origin}/api/pay/{tag}): includes a howToPay section with that board's URLs filled in

@@ -1,5 +1,5 @@
-// The public NimBill API, described once. The /docs page, /openapi.json, /skill.md and the
-// copy-paste setups for AI tools are all made from this file, so they can't disagree.
+// The public NimBill API, described once. The /docs pages, /openapi.json, /skill.md and the
+// copy-paste setups for AI tools (/ai) are all made from this file, so they can't disagree.
 // Shared by the server and the browser.
 import { AGENT_RULES, AGENT_STEPS, agentStepsText } from "./agent-docs";
 import { CURRENCY_CODES } from "./currencies";

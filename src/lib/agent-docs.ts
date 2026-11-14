@@ -1,5 +1,5 @@
 // How a program (an AI agent, a script, a shop backend) pays a NimBill board.
-// One source for the board API's `howToPay`, /llms.txt and the /docs/agents page,
+// One source for the board API's `howToPay`, /llms.txt and the /ai page,
 // so the three never disagree. Shared by the server and the browser.
 
 export type AgentStep = {

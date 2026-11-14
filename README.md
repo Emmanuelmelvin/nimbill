@@ -85,7 +85,7 @@ Each cheque is its own 2-of-2 Ed25519 Nimiq wallet (`A_cheque = A_link + A_serve
 
 ![The NimBill API docs page and the MCP agent wallet page in browser windows.](docs/readme/agents.png)
 
-- **HTTP API.** Every board's JSON includes the exact steps to pay it. [`/docs`](https://nimbill.mblob.me/docs) explains the API with examples and copy-paste setups for Claude (a skill), Cursor (a rule), ChatGPT (a custom GPT action) and Grok/Gemini. Machine-readable: `/llms.txt`, `/openapi.json`, `/skill.md`.
+- **HTTP API.** Every board's JSON includes the exact steps to pay it. [`/docs`](https://nimbill.mblob.me/docs) explains the API with a quick start and a page per endpoint; [`/ai`](https://nimbill.mblob.me/ai) has copy-paste setups for Claude (a skill), Cursor (a rule), ChatGPT (a custom GPT action) and Grok/Gemini. Machine-readable: `/llms.txt`, `/openapi.json`, `/skill.md`.
 - **CORS for browser agents.** The public endpoints allow cross-site requests. Signed-in endpoints and owner actions stay closed to other sites.
 - **MCP agent wallet** ([`nimbill-mcp`](https://www.npmjs.com/package/nimbill-mcp) on npm). Gives Claude, Cursor, Windsurf or Antigravity its own non-custodial Nimiq wallet and `@tag`, with 15 tools to pay invoices, buy from boards, send NIM by tag, and write or cash cheques on-chain. Spending limits and an encrypted key file are built in. See [`mcp/README.md`](mcp/README.md).
 

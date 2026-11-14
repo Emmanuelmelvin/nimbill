@@ -66,8 +66,8 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: "Developers",
     items: [
-      { href: "/docs", label: "API", text: "Plain HTTP and JSON. No API key, verified on-chain." },
-      { href: "/docs/agents", label: "AI agents", text: "Let agents create and pay invoices for you." },
+      { href: "/docs", label: "Developer docs", text: "Plain HTTP and JSON. No API key, verified on-chain." },
+      { href: "/ai", label: "AI assistants", text: "Set up ChatGPT, Claude, Cursor or Grok to pay with NimBill." },
       { href: "/mcp", label: "MCP server", text: "An agent wallet for Claude and other MCP clients." },
     ],
   },
@@ -77,7 +77,8 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
 const BAR_LINKS = [
   { href: "#how", label: "How it works" },
   { href: "/stats", label: "Payments" },
-  { href: "/docs", label: "API" },
+  { href: "/docs", label: "Docs" },
+  { href: "/ai", label: "AI" },
   { href: "/mcp", label: "MCP" },
 ];
 
@@ -763,7 +764,12 @@ function Footer() {
           </li>
           <li>
             <TextLink href="/docs" muted>
-              API and AI agents
+              Developer docs
+            </TextLink>
+          </li>
+          <li>
+            <TextLink href="/ai" muted>
+              AI assistants
             </TextLink>
           </li>
           <li>
