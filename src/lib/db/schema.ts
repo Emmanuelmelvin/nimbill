@@ -255,6 +255,59 @@ export const webhookEvents = pgTable("webhook_events", {
   deliveredAt: timestamp("delivered_at", { withTimezone: true }),
 });
 
+// Withdrawals (lib/withdraw): NIM or USDT turned into USDC/USDT on another chain. Nimiq Pay pays a
+// Lightning invoice (step 1), a provider such as Lendaswap turns it into the stablecoin (step 2),
+// and the worker claims it to `destination`. Both steps' IDs are kept, so a stuck or failed
+// withdrawal can always be traced to where the money is.
+export type WithdrawalStatus =
+  | "requested" // the user asked for it; the worker has not created the provider swap yet
+  | "quoted" // the provider swap exists and its Lightning invoice is waiting to be paid
+  | "paying" // the user approved in Nimiq Pay; the Lightning payment is on its way
+  | "swapping" // the provider got the Lightning payment and is locking the stablecoin
+  | "delivering" // the claim was sent; waiting for it to be final on the destination chain
+  | "delivered" // the stablecoin is in the destination wallet (checked on-chain)
+  | "expired" // the invoice ran out before it was paid; nothing was spent
+  | "cancelled" // the user declined in Nimiq Pay; nothing was spent
+  | "refund_pending" // something failed after payment; the money is on its way back
+  | "refunded"
+  | "failed"; // needs a human: see `failureReason`
+
+export type WithdrawalFee = { label: string; amount: string; asset: string }; // amount in the asset's smallest unit
+export type WithdrawalStatusChange = { status: WithdrawalStatus; at: string; note?: string };
+
+export const withdrawals = pgTable("withdrawals", {
+  id: text("id").primaryKey(), // "wd_…"
+  nimiqAddress: text("nimiq_address").notNull(), // who withdrew, "NQ.. .... ..."
+  payWith: text("pay_with").$type<"NIM" | "USDT">().notNull(),
+  chain: text("chain").notNull(), // a ChainId from lib/withdraw/chains.ts
+  asset: text("asset").$type<"USDC" | "USDT">().notNull(),
+  destination: text("destination").notNull(), // address on `chain`, checksummed for EVM
+  // Amounts are in the smallest unit, as strings: Luna for NIM, 6 decimals for USDC/USDT.
+  receiveAmount: text("receive_amount").notNull(), // what the user asked to receive
+  receiveMin: text("receive_min"), // the least the provider guarantees
+  sendEstimate: text("send_estimate"), // the "about" amount shown before approval, in `payWith`
+  sendActual: text("send_actual"), // what Nimiq Pay actually took, once known
+  fees: jsonb("fees").$type<WithdrawalFee[]>().notNull().default([]),
+  // Step 2: the provider's swap and the Lightning invoice it asked us to pay.
+  providerId: text("provider_id"), // "lendaswap", …
+  providerSwapId: text("provider_swap_id"),
+  lightningInvoice: text("lightning_invoice"), // BOLT11
+  invoiceSats: text("invoice_sats"),
+  invoicePaymentHash: text("invoice_payment_hash"),
+  quoteExpiresAt: timestamp("quote_expires_at", { withTimezone: true }),
+  // Step 1: what `payLightningInvoice` gave back in Nimiq Pay.
+  payTxHash: text("pay_tx_hash"),
+  paySwapId: text("pay_swap_id"),
+  // The end: the transfer into `destination`.
+  destinationTxHash: text("destination_tx_hash"),
+  status: text("status").$type<WithdrawalStatus>().notNull().default("requested"),
+  statusHistory: jsonb("status_history").$type<WithdrawalStatusChange[]>().notNull().default([]),
+  failureReason: text("failure_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type Withdrawal = typeof withdrawals.$inferSelect;
 export type WebhookEndpoint = typeof webhookEndpoints.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type Cheque = typeof cheques.$inferSelect;
@@ -464,4 +517,34 @@ ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS disabled_reason text;
 ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS disabled_at timestamptz;
 CREATE INDEX IF NOT EXISTS webhook_events_due_idx ON webhook_events (status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS webhook_events_merchant_idx ON webhook_events (merchant_address, created_at DESC);
+CREATE TABLE IF NOT EXISTS withdrawals (
+  id text PRIMARY KEY,
+  nimiq_address text NOT NULL,
+  pay_with text NOT NULL,
+  chain text NOT NULL,
+  asset text NOT NULL,
+  destination text NOT NULL,
+  receive_amount text NOT NULL,
+  receive_min text,
+  send_estimate text,
+  send_actual text,
+  fees jsonb NOT NULL DEFAULT '[]'::jsonb,
+  provider_id text,
+  provider_swap_id text,
+  lightning_invoice text,
+  invoice_sats text,
+  invoice_payment_hash text,
+  quote_expires_at timestamptz,
+  pay_tx_hash text,
+  pay_swap_id text,
+  destination_tx_hash text,
+  status text NOT NULL DEFAULT 'requested',
+  status_history jsonb NOT NULL DEFAULT '[]'::jsonb,
+  failure_reason text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS withdrawals_owner_idx ON withdrawals (nimiq_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS withdrawals_open_idx ON withdrawals (status, updated_at);
+CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_provider_swap_idx ON withdrawals (provider_id, provider_swap_id);
 `;

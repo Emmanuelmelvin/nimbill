@@ -43,6 +43,10 @@ const Schema = z.object({
   MAIL_FROM: optional(z.string()), // "NimBill <billing@your-domain.com>"; defaults to Resend's shared test sender
   RESEND_API_URL: withDefault(z.url(), "https://api.resend.com"),
 
+  // Withdrawals (lib/withdraw): who may see crypto withdrawals while they are being tested.
+  // Comma-separated Nimiq addresses, e.g. "NQ12 3456 …, NQ98 7654 …". Unset = nobody.
+  WITHDRAW_TESTERS: optional(z.string()),
+
   // Public URL (link previews, links in emails)
   SITE_URL: optional(z.url()),
   PORT: optional(z.coerce.number().int().positive()),
