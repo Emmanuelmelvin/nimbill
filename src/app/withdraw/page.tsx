@@ -1,22 +1,29 @@
 "use client";
-import { Badge, Button, Card, CardHeader } from "@/components/ui";
+import { useState } from "react";
 import { TabPage } from "@/components/TabPage";
+import { SegmentedControl } from "@/components/ui";
+import { CryptoWithdraw } from "@/components/withdraw/CryptoWithdraw";
+import { FiatWithdraw } from "@/components/withdraw/FiatWithdraw";
+
+type Tab = "crypto" | "fiat";
 
 export default function Withdraw() {
+  const [tab, setTab] = useState<Tab>("crypto");
   return (
     <TabPage title="Withdraw" description="Payments land in your own wallet, so your NIM and USDT are already yours to move.">
-      {/* Placeholder for the upcoming USDT → local-currency payout (Paycrest, Nigeria first). */}
-      <Card tone="subtle" aria-disabled="true">
-        <CardHeader
-          icon="₦"
-          title="Withdraw to bank"
-          description="Cash out your USDT straight to a Nigerian bank account, in Naira."
-          action={<Badge variant="muted">Coming soon</Badge>}
+      <div className="space-y-4">
+        <SegmentedControl<Tab>
+          label="Withdraw to"
+          block
+          value={tab}
+          onChange={setTab}
+          options={[
+            { value: "crypto", label: "Crypto" },
+            { value: "fiat", label: "Bank and mobile money" },
+          ]}
         />
-        <Button variant="secondary" block disabled className="mt-4">
-          Withdraw to bank
-        </Button>
-      </Card>
+        {tab === "crypto" ? <CryptoWithdraw /> : <FiatWithdraw />}
+      </div>
     </TabPage>
   );
 }

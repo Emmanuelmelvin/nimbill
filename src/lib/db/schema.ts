@@ -307,6 +307,17 @@ export const withdrawals = pgTable("withdrawals", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// Who wants to cash out to a bank or mobile money once that exists, and how: demand data for
+// choosing the first fiat partner. One row per Nimiq address.
+export const fiatWaitlist = pgTable("fiat_waitlist", {
+  nimiqAddress: text("nimiq_address").primaryKey(),
+  country: text("country").notNull(), // "NG", "GH", "KE", "ZA" or "other"
+  method: text("method").notNull(), // "bank" | "mobile_money" | "cash_agent"
+  monthly: text("monthly").notNull(), // expected monthly amount, a bucket from lib/withdraw/schemas.ts
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export type Withdrawal = typeof withdrawals.$inferSelect;
 export type WebhookEndpoint = typeof webhookEndpoints.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
@@ -547,4 +558,12 @@ CREATE TABLE IF NOT EXISTS withdrawals (
 CREATE INDEX IF NOT EXISTS withdrawals_owner_idx ON withdrawals (nimiq_address, created_at DESC);
 CREATE INDEX IF NOT EXISTS withdrawals_open_idx ON withdrawals (status, updated_at);
 CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_provider_swap_idx ON withdrawals (provider_id, provider_swap_id);
+CREATE TABLE IF NOT EXISTS fiat_waitlist (
+  nimiq_address text PRIMARY KEY,
+  country text NOT NULL,
+  method text NOT NULL,
+  monthly text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 `;
