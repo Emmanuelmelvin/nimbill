@@ -2,17 +2,156 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/client/api";
 import type { WebhookEndpointView } from "@/lib/webhooks";
-import { Alert, Badge, Button, Card, Checkbox, CodeBlock, CopyButton, Eyebrow, Field, Input, Loader } from "./ui";
+import {
+  Alert,
+  Badge,
+  Button,
+  Checkbox,
+  CodeBlock,
+  CopyButton,
+  DescriptionList,
+  Eyebrow,
+  Field,
+  Input,
+  Loader,
+  cardStyles,
+  cx,
+  type DescriptionRow,
+} from "./ui";
 
 type Answer = { endpoint: WebhookEndpointView | null; secret?: string };
+type EventView = WebhookEndpointView["events"][number];
 
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const exact = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "medium" });
+
+const statusLabel = (e: EventView) => (e.status === "pending" && e.attempts > 0 ? `retrying (${e.attempts})` : e.status);
+
+/** One event in "Recent events". Opens to show its details and the JSON body the store gets. */
+function EventRow({ event: e }: { event: EventView }) {
+  const [body, setBody] = useState<string | null>(null);
+  const [bodyError, setBodyError] = useState<string | null>(null);
+
+  async function loadBody() {
+    if (body !== null) return;
+    setBodyError(null);
+    try {
+      const r = await api<{ body: unknown }>(`/api/webhooks/events/${e.id}`);
+      setBody(r.body ? JSON.stringify(r.body, null, 2) : "");
+    } catch (err) {
+      setBodyError((err as Error).message);
+    }
+  }
+
+  const rows: DescriptionRow[] = [
+    {
+      term: "Event ID",
+      detail: (
+        <span className="flex items-center gap-2">
+          {e.id}
+          <CopyButton text={e.id} size="sm" label="Copy" />
+        </span>
+      ),
+      mono: true,
+    },
+    { term: "Type", detail: e.type, mono: true },
+    { term: e.type === "webhook.test" ? "Test ID" : "Invoice", detail: e.invoiceId, mono: true },
+    { term: "Status", detail: statusLabel(e) },
+    { term: "Attempts", detail: String(e.attempts) },
+    { term: "Created", detail: exact(e.createdAt) },
+  ];
+  if (e.deliveredAt) rows.push({ term: "Delivered", detail: exact(e.deliveredAt) });
+  if (e.nextAttemptAt && e.attempts > 0) rows.push({ term: "Next try", detail: exact(e.nextAttemptAt) });
+  if (e.lastStatus !== null) rows.push({ term: "Your server", detail: `HTTP ${e.lastStatus}` });
+  else if (e.attempts > 0) rows.push({ term: "Your server", detail: "No answer" });
+  if (e.lastError) rows.push({ term: "Last error", detail: e.lastError, mono: true });
+
+  return (
+    <li>
+      <details
+        className="group/event"
+        onToggle={(ev) => {
+          if (ev.currentTarget.open) void loadBody();
+        }}
+      >
+        <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 py-2 text-sm [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0">
+            <span className="block font-mono">{e.type}</span>
+            <span className="block truncate text-xs text-muted">
+              {when(e.createdAt)}
+              {e.lastError ? ` · ${e.lastError}` : e.lastStatus ? ` · HTTP ${e.lastStatus}` : ""}
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <Badge variant={e.status === "delivered" ? "solid" : e.status === "failed" ? "strong" : "outline"}>{statusLabel(e)}</Badge>
+            <span aria-hidden className="font-mono text-base transition-transform group-open/event:rotate-45">
+              +
+            </span>
+          </span>
+        </summary>
+        <div className="space-y-3 pb-3 text-sm">
+          <DescriptionList rows={rows} />
+          <div className="space-y-1">
+            <Eyebrow>Body</Eyebrow>
+            {bodyError ? (
+              <Alert kind="error">{bodyError}</Alert>
+            ) : body === null ? (
+              <Loader compact label="Loading body" />
+            ) : body === "" ? (
+              <p className="text-muted">The invoice no longer exists, so there is no body to show.</p>
+            ) : (
+              <>
+                <pre className="max-h-80 overflow-auto border border-line bg-subtle p-3 font-mono text-xs leading-relaxed">{body}</pre>
+                <p className="text-xs text-muted">
+                  {e.type === "webhook.test"
+                    ? "What your server was sent."
+                    : "Built from the invoice as it is now, the same way it's sent."}
+                </p>
+              </>
+            )}
+          </div>
+        </div>
+      </details>
+    </li>
+  );
+}
 
 /**
- * "Pay with NimBill": where the merchant's store gets told about payments. One secret signs both
- * ways: the store signs the invoices it creates, NimBill signs every webhook it sends.
+ * "Pay with NimBill" in Settings: closed by default and tagged for developers, so merchants without
+ * an online store aren't faced with webhook URLs and secrets. Nothing is loaded until it is opened.
  */
 export function WebhooksCard() {
+  const [opened, setOpened] = useState(false);
+  return (
+    <details
+      className={cx(cardStyles({ padding: "none" }), "group")}
+      onToggle={(e) => {
+        if (e.currentTarget.open) setOpened(true);
+      }}
+    >
+      <summary className="flex min-h-11 cursor-pointer list-none items-start justify-between gap-3 p-5 [&::-webkit-details-marker]:hidden">
+        <span className="min-w-0">
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="text-lg leading-tight font-bold">Webhooks</span>
+            <Badge variant="muted">For developers</Badge>
+          </span>
+          <span className="mt-1 block text-sm text-muted">Connect your online store to NimBill. Not needed for everyday invoicing.</span>
+        </span>
+        <span aria-hidden className="font-mono text-lg leading-tight transition-transform group-open:rotate-45">
+          +
+        </span>
+      </summary>
+      {/* Stays mounted once opened, so closing and reopening keeps what was typed. */}
+      <div className="border-t border-line p-5">{opened && <WebhooksPanel />}</div>
+    </details>
+  );
+}
+
+/**
+ * Where the merchant's store gets told about payments. One secret signs both ways: the store signs
+ * the invoices it creates, NimBill signs every webhook it sends.
+ */
+function WebhooksPanel() {
   const [endpoint, setEndpoint] = useState<WebhookEndpointView | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [url, setUrl] = useState("");
@@ -69,18 +208,12 @@ export function WebhooksCard() {
     }
   }
 
-  if (!loaded)
-    return (
-      <Card>
-        <Loader compact label="Loading webhooks" />
-      </Card>
-    );
+  if (!loaded) return <Loader compact label="Loading webhooks" />;
 
   return (
-    <Card className="space-y-4">
+    <div className="space-y-4">
       <div>
         <Eyebrow>Pay with NimBill</Eyebrow>
-        <h2 className="mt-1 text-lg font-bold">Webhooks</h2>
         <p className="mt-1 text-sm text-muted">
           Have a shop? Your store creates invoices on your board, customers pay straight into your wallet, and your server gets a signed
           message the moment each one is paid. No API key: one secret signs both ways.
@@ -211,26 +344,15 @@ export function WebhooksCard() {
                 Nothing yet. Events show up here when an invoice your store created is paid. Send a test event to check your server.
               </p>
             ) : (
-              <ul className="divide-y divide-line">
+              <ul className="divide-y divide-line border-y border-line">
                 {endpoint.events.map((e) => (
-                  <li key={e.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-                    <span className="min-w-0">
-                      <span className="block font-mono">{e.type}</span>
-                      <span className="block truncate text-xs text-muted">
-                        {e.invoiceId} · {when(e.createdAt)}
-                        {e.lastError ? ` · ${e.lastError}` : e.lastStatus ? ` · HTTP ${e.lastStatus}` : ""}
-                      </span>
-                    </span>
-                    <Badge variant={e.status === "delivered" ? "solid" : e.status === "failed" ? "strong" : "outline"}>
-                      {e.status === "pending" && e.attempts > 0 ? `retrying (${e.attempts})` : e.status}
-                    </Badge>
-                  </li>
+                  <EventRow key={e.id} event={e} />
                 ))}
               </ul>
             )}
           </div>
         </>
       )}
-    </Card>
+    </div>
   );
 }

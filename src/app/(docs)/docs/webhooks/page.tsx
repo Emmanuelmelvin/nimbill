@@ -69,9 +69,9 @@ export default function Webhooks() {
         </Step>
         <Step n={2} title="Turn on webhooks.">
           <p>
-            In <span className="font-mono">Settings → Webhooks</span>, enter the https URL that receives webhooks and, optionally, your
-            store&apos;s address (where customers may be sent back to). Copy the secret it shows. It is shown only once; you can make a new
-            one any time.
+            In Settings, open <span className="font-mono">Webhooks</span> (tagged For developers, closed by default) and enter the https URL
+            that receives webhooks and, optionally, your store&apos;s address (where customers may be sent back to). Copy the secret it
+            shows. It is shown only once; you can make a new one any time.
           </p>
         </Step>
         <Step n={3} title="Store the secret on your server.">
@@ -83,7 +83,8 @@ export default function Webhooks() {
         <Step n={4} title="Send a test event.">
           <p>
             <span className="font-mono">Send test event</span> in Settings delivers a <span className="font-mono">webhook.test</span> with a
-            made-up paid invoice, so you can check your handler without paying anything.
+            made-up paid invoice, so you can check your handler without paying anything. Open the event under Recent events to see what your
+            server answered and the exact body it was sent.
           </p>
         </Step>
       </Steps>

@@ -1,7 +1,7 @@
 import "server-only";
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { isIP } from "node:net";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import type { Invoice, WebhookEndpoint, WebhookEvent } from "./db/schema";
 import { env, isProd } from "./env";
@@ -198,6 +198,16 @@ export async function recentEvents(merchantAddress: string, limit = 20): Promise
     .limit(limit);
 }
 
+/** One of the merchant's own events, or null (also for someone else's). */
+export async function getEvent(merchantAddress: string, id: string): Promise<WebhookEvent | null> {
+  const db = await getDb();
+  const [ev] = await db
+    .select()
+    .from(schema.webhookEvents)
+    .where(and(eq(schema.webhookEvents.id, id), eq(schema.webhookEvents.merchantAddress, merchantAddress)));
+  return ev ?? null;
+}
+
 /** What the merchant sees in Settings. Never the secret. */
 export function endpointView(ep: WebhookEndpoint, events: WebhookEvent[]) {
   const rotating = ep.previousExpiresAt && ep.previousExpiresAt.getTime() > Date.now() ? ep.previousExpiresAt.toISOString() : null;
@@ -219,6 +229,8 @@ export function endpointView(ep: WebhookEndpoint, events: WebhookEvent[]) {
       lastError: e.lastError,
       createdAt: e.createdAt.toISOString(),
       deliveredAt: e.deliveredAt?.toISOString() ?? null,
+      /** When the worker tries again; only while it's still pending. */
+      nextAttemptAt: e.status === "pending" ? e.nextAttemptAt.toISOString() : null,
     })),
   };
 }

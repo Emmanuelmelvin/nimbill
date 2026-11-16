@@ -64,8 +64,8 @@ export function storeInvoice(inv: Invoice) {
 export type StoreInvoice = ReturnType<typeof storeInvoice>;
 
 /** A made-up paid invoice for "Send test event", so a store can check its handler without paying. */
-function sampleInvoice(merchantAddress: string, eventId: string): StoreInvoice {
-  const now = new Date();
+// Dated when the event was queued (not when it's sent), so retries and the Settings preview match.
+function sampleInvoice(merchantAddress: string, eventId: string, now: Date): StoreInvoice {
   return {
     id: "test_invoice",
     number: "INV-TEST",
@@ -96,7 +96,7 @@ export async function buildPayload(
   ev: WebhookEvent,
 ): Promise<{ id: string; type: string; createdAt: string; test: boolean; data: { invoice: StoreInvoice } } | null> {
   const base = { id: ev.id, type: ev.type, createdAt: ev.createdAt.toISOString() };
-  if (ev.type === "webhook.test") return { ...base, test: true, data: { invoice: sampleInvoice(ev.merchantAddress, ev.id) } };
+  if (ev.type === "webhook.test") return { ...base, test: true, data: { invoice: sampleInvoice(ev.merchantAddress, ev.id, ev.createdAt) } };
   const db = await getDb();
   const [inv] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, ev.invoiceId));
   if (!inv) return null;

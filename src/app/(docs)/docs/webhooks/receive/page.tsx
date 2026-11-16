@@ -89,7 +89,7 @@ export default async function ReceiveWebhooks() {
         Answer with any <span className="text-ink">2xx</span> within {DELIVERY_TIMEOUT_S} seconds. Anything else (an error status, a
         timeout, a refused connection) counts as a failure and is retried after {retryScheduleText()}: {MAX_ATTEMPTS} attempts over about 3
         days. Then the event is marked failed. Recent events in Settings shows each event&apos;s status, how many attempts it took and the
-        last answer your server gave.
+        last answer your server gave (see <a href="#look-up">Look up an event</a>).
       </p>
       <ul className="list-disc space-y-1.5 pl-5 text-muted">
         <li>Redirects are not followed: give the final https URL.</li>
@@ -99,6 +99,28 @@ export default async function ReceiveWebhooks() {
           what&apos;s waiting.
         </li>
       </ul>
+
+      <H2 id="look-up">Look up an event</H2>
+      <p className="text-muted">
+        <span className={mono}>Settings → Webhooks</span> (tagged <span className="text-ink">For developers</span>) lists your 20 most
+        recent events under <span className="text-ink">Recent events</span>. Open one to see:
+      </p>
+      <ul className="list-disc space-y-1.5 pl-5 text-muted">
+        <li>
+          Its <span className={mono}>id</span> (the same as the <span className={mono}>NimBill-Event-Id</span> header, so you can find it in
+          your server&apos;s logs), its type and the invoice it is about.
+        </li>
+        <li>Its status, how many attempts it took, when it was created and delivered, and when the next retry is due.</li>
+        <li>The last HTTP status your server answered with, or the error, such as a timeout or a refused connection.</li>
+        <li>
+          The JSON body your server is sent. Bodies aren&apos;t stored: an <span className={mono}>invoice.*</span> body is built from the
+          invoice as it is now, the same way the delivery builds it, and a <span className={mono}>webhook.test</span> body is exactly what
+          was sent.
+        </li>
+      </ul>
+      <p className="text-muted">
+        Events are only shown to you when you&apos;re signed in to NimBill. Your store can&apos;t list them with the webhook secret.
+      </p>
 
       <H2 id="duplicates">Duplicates and order</H2>
       <p className="text-muted">
