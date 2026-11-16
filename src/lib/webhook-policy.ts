@@ -10,6 +10,24 @@ export const DELIVERY_TIMEOUT_S = 10;
 /** How long the old secret keeps working after "New secret". */
 export const ROTATION_OVERLAP_HOURS = 24;
 
+// An endpoint that keeps failing (like Stripe and Svix: judged by how long, not just how many, so a
+// busy store isn't punished for one bad hour). Any delivery that gets a 2xx resets all of this.
+/** Never warn or remove before this many failed attempts in a row. */
+export const FAILING_MIN_ATTEMPTS = 5;
+/** Every delivery failing for this long: the merchant is warned by email and in the app. */
+export const FAILING_WARN_AFTER_HOURS = 24;
+/** Every delivery failing for this long: webhooks are removed (turned off). */
+export const FAILING_REMOVE_AFTER_DAYS = 5;
+/** The warning always comes at least this long before the removal. */
+export const REMOVAL_NOTICE_HOURS = 48;
+
+/** When a failing endpoint will be removed: 5 days after it started failing, and at least 48 h after the warning. */
+export function removalDate(failingSince: Date, warnedAt: Date | null, now = new Date()): Date {
+  const byAge = failingSince.getTime() + FAILING_REMOVE_AFTER_DAYS * 86_400_000;
+  const byNotice = (warnedAt ?? now).getTime() + REMOVAL_NOTICE_HOURS * 3_600_000;
+  return new Date(Math.max(byAge, byNotice));
+}
+
 /** Board invoices a merchant's own store may create (signed requests) in 10 minutes. */
 export const STORE_INVOICES_PER_10_MIN = 300;
 /** Board invoices anyone else may start on one board in 10 minutes, all together. */

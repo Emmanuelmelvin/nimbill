@@ -6,6 +6,7 @@
 //   deliver  every 2 s   send queued webhook_events to stores, signed, with retries
 //   watch    every 15 s  look on-chain for payments to store invoices nobody is watching
 //   sweep    every 60 s  queue webhooks for paid store invoices that are missing one
+//   health   every 5 min warn merchants whose URL keeps failing, then remove it (webhook-health.ts)
 //
 // It runs the app's own code from src/lib (one set of payment rules, one schema), loaded by
 // worker/loader.mjs. Start it with `npm run worker`, or `npm run worker -- --once` to run every
@@ -14,6 +15,7 @@ import { env, isProd } from "../src/lib/env";
 import { getDb } from "../src/lib/db";
 import { logger } from "../src/lib/logger";
 import { deliverDue, sweepMissedEvents } from "../src/lib/webhook-delivery";
+import { checkEndpointHealth } from "../src/lib/webhook-health";
 import { watchStoreInvoices } from "../src/lib/webhook-watch";
 
 type Job = { name: string; everyMs: number; run: () => Promise<unknown> };
@@ -29,6 +31,7 @@ const JOBS: Job[] = [
   },
   { name: "watch", everyMs: 15_000, run: watchStoreInvoices },
   { name: "sweep", everyMs: 60_000, run: sweepMissedEvents },
+  { name: "health", everyMs: 5 * 60_000, run: () => checkEndpointHealth() },
 ];
 
 let stopping = false;

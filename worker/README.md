@@ -9,6 +9,7 @@ web app and makes outgoing HTTPS requests.
 | `deliver` | 2 s   | Sends queued `webhook_events`, signed with the merchant's secret, and retries for ~3 days  |
 | `watch`   | 15 s  | Looks on-chain for payments to store invoices, so a shopper closing the tab doesn't matter |
 | `sweep`   | 60 s  | Queues `invoice.paid` for any paid store invoice that is missing one                       |
+| `health`  | 5 min | Warns merchants whose URL has failed for 24 h, removes it after 5 days (emails both times) |
 
 The worker runs the web app's own code from `src/lib` (the same payment matching, the same schema),
 so the two can't disagree about whether an invoice is paid. Node runs the TypeScript directly; there

@@ -10,6 +10,7 @@ import { useLedger } from "@/lib/client/ledger";
 import { useSession } from "@/lib/client/session";
 import { localDate } from "@/lib/earnings";
 import { formatMoney } from "@/lib/money";
+import type { EndpointHealth } from "@/lib/webhooks";
 
 export default function Home() {
   const { merchant, loading } = useSession();
@@ -38,6 +39,28 @@ export default function Home() {
   );
 }
 
+const dateTime = (iso: string | null) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "");
+
+/** The store's webhook URL is about to be removed for failing, or was. Shown until it is fixed in Settings. */
+function WebhookAlert({ health }: { health: EndpointHealth }) {
+  const removed = health.state === "removed";
+  return (
+    <Card tone="strong" className="flex items-center justify-between gap-4">
+      <div className="min-w-0">
+        <p className="font-semibold">{removed ? "Webhooks were removed" : "Your webhook URL is failing"}</p>
+        <p className="text-sm text-muted">
+          {removed
+            ? `Your store's URL kept failing, so webhooks were turned off on ${dateTime(health.removedAt)}.`
+            : `Every delivery since ${dateTime(health.failingSince)} has failed. Fix it by ${dateTime(health.removeAt)} or webhooks will be removed.`}
+        </p>
+      </div>
+      <LinkButton href="/settings#webhooks" size="sm" className="shrink-0">
+        {removed ? "Turn on" : "Fix"}
+      </LinkButton>
+    </Card>
+  );
+}
+
 /** Signed-in home: what came in, what is still owed, and how the goal is going. */
 function Dashboard() {
   const { ledger, error } = useLedger();
@@ -61,6 +84,8 @@ function Dashboard() {
   return (
     <div className="space-y-6">
       {merchant?.tag && <TagRow tag={merchant.tag} />}
+
+      {ledger.webhooks && <WebhookAlert health={ledger.webhooks} />}
 
       {/* Accounts made before tags existed: ask once, until a tag is claimed. */}
       {merchant && !merchant.tag && (

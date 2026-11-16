@@ -4,12 +4,22 @@ import { CodeGroup } from "@/components/docs/CodeGroup";
 import { Callout, Code, DefinitionBox, DocPage, H2 } from "@/components/docs/DocsParts";
 import { DELIVERY_HEADERS, paidPayload, receiveTabs } from "@/components/docs/webhook-snippets";
 import { requestOrigin } from "@/lib/request-origin";
-import { DELIVERY_TIMEOUT_S, MAX_ATTEMPTS, ROTATION_OVERLAP_HOURS, retryScheduleText } from "@/lib/webhook-policy";
+import {
+  DELIVERY_TIMEOUT_S,
+  FAILING_MIN_ATTEMPTS,
+  FAILING_REMOVE_AFTER_DAYS,
+  FAILING_WARN_AFTER_HOURS,
+  MAX_ATTEMPTS,
+  REMOVAL_NOTICE_HOURS,
+  ROTATION_OVERLAP_HOURS,
+  retryScheduleText,
+} from "@/lib/webhook-policy";
 import { SIGNATURE_TOLERANCE_S } from "@/lib/webhook-signature";
 
 export const metadata: Metadata = {
   title: "Receive webhooks",
-  description: "What NimBill sends your store when an invoice is paid, how to verify the signature, retries, duplicates and testing.",
+  description:
+    "What NimBill sends your store when an invoice is paid, how to verify the signature, retries, what happens when your URL keeps failing, duplicates and testing.",
 };
 
 const mono = "font-mono text-ink";
@@ -99,6 +109,34 @@ export default async function ReceiveWebhooks() {
           what&apos;s waiting.
         </li>
       </ul>
+
+      <H2 id="failing">When your URL keeps failing</H2>
+      <p className="text-muted">
+        NimBill watches your URL as a whole, not just single events. What counts is how long every delivery has failed in a row. One slow
+        hour on a busy store doesn&apos;t, and any webhook that gets a 2xx clears it all.
+      </p>
+      <ol className="list-decimal space-y-1.5 pl-5 text-muted">
+        <li>
+          <span className="text-ink">Failing.</span> As soon as a delivery fails, Settings → Webhooks says so, and the card shows{" "}
+          <span className="text-ink">Failing</span>.
+        </li>
+        <li>
+          <span className="text-ink">Warning, after {FAILING_WARN_AFTER_HOURS} hours.</span> Once every delivery has failed for{" "}
+          {FAILING_WARN_AFTER_HOURS} hours (at least {FAILING_MIN_ATTEMPTS} attempts in a row), you get an email and a notice on your
+          dashboard with the date webhooks will be removed.
+        </li>
+        <li>
+          <span className="text-ink">Removal, after {FAILING_REMOVE_AFTER_DAYS} days.</span> If it&apos;s still failing{" "}
+          {FAILING_REMOVE_AFTER_DAYS} days after the first failure, and at least {REMOVAL_NOTICE_HOURS} hours after the warning, webhooks
+          are removed. You get a second email, and Settings and the dashboard say so. Your store stops getting webhooks, and its signed
+          requests are refused until you turn them back on. Payments to your board still reach your wallet.
+        </li>
+      </ol>
+      <p className="text-muted">
+        To turn webhooks back on, fix your server and press <span className={mono}>Save</span> in Settings → Webhooks. Your secret stays the
+        same. Saving a new URL also starts the count over. The emails go to the address saved in Settings; without one you&apos;ll only see
+        the notices in the app.
+      </p>
 
       <H2 id="look-up">Look up an event</H2>
       <p className="text-muted">

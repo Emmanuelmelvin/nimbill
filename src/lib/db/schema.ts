@@ -222,6 +222,14 @@ export const webhookEndpoints = pgTable("webhook_endpoints", {
   previousSecretEnc: text("previous_secret_enc"),
   previousExpiresAt: timestamp("previous_expires_at", { withTimezone: true }),
   enabled: boolean("enabled").notNull().default(true),
+  // Health (lib/webhook-health.ts): the first failed attempt since the last 2xx, and how many in a row.
+  // Reset by any delivered webhook and by the merchant saving a new URL or turning webhooks back on.
+  failingSince: timestamp("failing_since", { withTimezone: true }),
+  consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+  warnedAt: timestamp("warned_at", { withTimezone: true }), // "will be removed" warning sent
+  // Set when NimBill turned webhooks off itself ("failing": the URL kept failing). Null = on, or the merchant turned them off.
+  disabledReason: text("disabled_reason").$type<"failing">(),
+  disabledAt: timestamp("disabled_at", { withTimezone: true }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -449,6 +457,11 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   delivered_at timestamptz
 );
 CREATE UNIQUE INDEX IF NOT EXISTS webhook_events_once_idx ON webhook_events (type, invoice_id);
+ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS failing_since timestamptz;
+ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS consecutive_failures integer NOT NULL DEFAULT 0;
+ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS warned_at timestamptz;
+ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS disabled_reason text;
+ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS disabled_at timestamptz;
 CREATE INDEX IF NOT EXISTS webhook_events_due_idx ON webhook_events (status, next_attempt_at);
 CREATE INDEX IF NOT EXISTS webhook_events_merchant_idx ON webhook_events (merchant_address, created_at DESC);
 `;

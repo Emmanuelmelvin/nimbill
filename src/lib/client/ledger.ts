@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { EarningPoint } from "@/lib/earnings";
 import type { OpenInvoice, PublicGoal } from "@/lib/ledger";
 import type { Fx } from "@/lib/money";
+import type { EndpointHealth } from "@/lib/webhooks";
 import { api } from "./api";
 
 export type { PublicGoal };
@@ -16,6 +17,8 @@ export type Ledger = {
   fx: Fx | null;
   /** The fiat currency the merchant wants totals in. */
   currency: string;
+  /** Set when the webhook URL is about to be, or was, removed for failing. */
+  webhooks: EndpointHealth | null;
 };
 
 /** The signed-in merchant's earnings data. `reload` refetches after a change (e.g. a goal was saved). */

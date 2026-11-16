@@ -5,6 +5,7 @@ import type { Invoice, WebhookEvent } from "./db/schema";
 import { logger } from "./logger";
 import { safePost } from "./safe-post";
 import { siteUrl } from "./site";
+import { recordAttempt } from "./webhook-health";
 import { activeSecrets, getEndpoint } from "./webhooks";
 import { MAX_ATTEMPTS, RETRY_DELAYS_MIN } from "./webhook-policy";
 import { signatureHeader } from "./webhook-signature";
@@ -139,7 +140,8 @@ export async function deliver(ev: WebhookEvent): Promise<DeliveryOutcome> {
     if (!ep) return (await giveUp(ev, "No webhook URL is set up anymore."), "failed");
     if (!ep.enabled) {
       if (tooOld) return (await giveUp(ev, "Webhooks were turned off for too long."), "failed");
-      await finish(ev, { nextAttemptAt: new Date(Date.now() + DISABLED_RECHECK_MS), lastError: "Webhooks are turned off." });
+      const lastError = ep.disabledReason === "failing" ? "Webhooks were removed after repeated failures." : "Webhooks are turned off.";
+      await finish(ev, { nextAttemptAt: new Date(Date.now() + DISABLED_RECHECK_MS), lastError });
       return "waiting";
     }
     const payload = await buildPayload(ev);
@@ -156,6 +158,12 @@ export async function deliver(ev: WebhookEvent): Promise<DeliveryOutcome> {
       "nimbill-delivery-attempt": String(attempt),
     });
     const ok = res.status !== null && res.status >= 200 && res.status < 300;
+    // The endpoint's health (warning, then removal, after days of failures). Only answers from the
+    // store's side count; our own errors land in the catch below and never do.
+    // Never let this fail the event: it was already sent, and a throw here would send it again.
+    await recordAttempt(ep.id, ok).catch((e) =>
+      logger.warn("webhook health not recorded", { endpointId: ep.id, error: (e as Error).message }),
+    );
     const log = { eventId: ev.id, type: ev.type, attempt, status: res.status, ms: res.ms };
     if (ok) {
       await finish(ev, { status: "delivered", attempts: attempt, lastStatus: res.status, lastError: null, deliveredAt: new Date() });

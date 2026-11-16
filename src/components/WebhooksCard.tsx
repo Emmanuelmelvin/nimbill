@@ -1,6 +1,7 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
+import { FAILING_REMOVE_AFTER_DAYS, FAILING_WARN_AFTER_HOURS } from "@/lib/webhook-policy";
 import type { WebhookEndpointView } from "@/lib/webhooks";
 import {
   Alert,
@@ -116,15 +117,54 @@ function EventRow({ event: e }: { event: EventView }) {
   );
 }
 
+/** Whether saving the form turns webhooks on: yes for a new endpoint and after NimBill removed them. */
+const formEnabled = (ep: WebhookEndpointView | null) => (ep ? ep.health.state === "removed" || ep.enabled : true);
+
 /**
  * "Pay with NimBill" in Settings: closed by default and tagged for developers, so merchants without
- * an online store aren't faced with webhook URLs and secrets. Nothing is loaded until it is opened.
+ * an online store aren't faced with webhook URLs and secrets. The header still says when the URL is
+ * failing or was removed, and /settings#webhooks (the dashboard and email link) opens it.
  */
 export function WebhooksCard() {
+  const ref = useRef<HTMLDetailsElement>(null);
   const [opened, setOpened] = useState(false);
+  const [endpoint, setEndpoint] = useState<WebhookEndpointView | null>(null);
+  const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api<Answer>("/api/webhooks")
+      .then((r) => setEndpoint(r.endpoint))
+      .catch((e) => setLoadError((e as Error).message))
+      .finally(() => setLoaded(true));
+    if (window.location.hash === "#webhooks" && ref.current) {
+      ref.current.open = true;
+      ref.current.scrollIntoView({ block: "start" });
+    }
+  }, []);
+
+  // While something is still waiting to go out, refresh the event list so the merchant sees it
+  // delivered (or failing) without reloading. Only the endpoint is updated, never what they're typing.
+  const waiting = !!endpoint?.events.some((e) => e.status === "pending" && e.attempts === 0);
+  useEffect(() => {
+    if (!waiting) return;
+    const t = setInterval(async () => {
+      try {
+        const r = await api<Answer>("/api/webhooks");
+        if (r.endpoint) setEndpoint(r.endpoint);
+      } catch {
+        // offline for a moment; the next tick tries again
+      }
+    }, 3000);
+    return () => clearInterval(t);
+  }, [waiting]);
+
+  const state = endpoint?.health.state;
   return (
     <details
-      className={cx(cardStyles({ padding: "none" }), "group")}
+      ref={ref}
+      id="webhooks"
+      className={cx(cardStyles({ padding: "none" }), "group scroll-mt-4")}
       onToggle={(e) => {
         if (e.currentTarget.open) setOpened(true);
       }}
@@ -134,6 +174,8 @@ export function WebhooksCard() {
           <span className="flex flex-wrap items-center gap-2">
             <span className="text-lg leading-tight font-bold">Webhooks</span>
             <Badge variant="muted">For developers</Badge>
+            {state === "removed" && <Badge variant="solid">Removed</Badge>}
+            {(state === "warned" || state === "failing") && <Badge variant="strong">Failing</Badge>}
           </span>
           <span className="mt-1 block text-sm text-muted">Connect your online store to NimBill. Not needed for everyday invoicing.</span>
         </span>
@@ -142,21 +184,62 @@ export function WebhooksCard() {
         </span>
       </summary>
       {/* Stays mounted once opened, so closing and reopening keeps what was typed. */}
-      <div className="border-t border-line p-5">{opened && <WebhooksPanel />}</div>
+      <div className="border-t border-line p-5">
+        {!opened ? null : !loaded ? (
+          <Loader compact label="Loading webhooks" />
+        ) : loadError ? (
+          <Alert kind="error">{loadError}</Alert>
+        ) : (
+          <WebhooksPanel endpoint={endpoint} setEndpoint={setEndpoint} />
+        )}
+      </div>
     </details>
   );
+}
+
+/** What the merchant must know about a failing or removed URL, with what to do about it. */
+function HealthNotice({ health }: { health: WebhookEndpointView["health"] }) {
+  if (health.state === "removed")
+    return (
+      <Alert kind="error" title="Webhooks were removed">
+        Your URL kept failing, so NimBill turned webhooks off on {health.removedAt ? when(health.removedAt) : "—"}. Your store gets no
+        webhooks and its signed requests are refused. Fix your server, then press Save to turn them back on. Your secret hasn&apos;t
+        changed.
+      </Alert>
+    );
+  if (health.state === "warned")
+    return (
+      <Alert kind="warn" title="Your webhook URL is failing">
+        Every delivery since {health.failingSince ? when(health.failingSince) : "—"} has failed ({health.consecutiveFailures} attempts in a
+        row). Fix your server or change the URL by {health.removeAt ? when(health.removeAt) : "—"}, or webhooks will be removed. The first
+        webhook that gets through clears this.
+      </Alert>
+    );
+  if (health.state === "failing")
+    return (
+      <Alert kind="info" title="Recent deliveries failed">
+        The last {health.consecutiveFailures === 1 ? "delivery" : `${health.consecutiveFailures} deliveries`} to your server failed. If
+        every delivery keeps failing for {FAILING_WARN_AFTER_HOURS} hours you&apos;ll get a warning, and after {FAILING_REMOVE_AFTER_DAYS}{" "}
+        days webhooks are removed. Open an event below to see what your server answered.
+      </Alert>
+    );
+  return null;
 }
 
 /**
  * Where the merchant's store gets told about payments. One secret signs both ways: the store signs
  * the invoices it creates, NimBill signs every webhook it sends.
  */
-function WebhooksPanel() {
-  const [endpoint, setEndpoint] = useState<WebhookEndpointView | null>(null);
-  const [loaded, setLoaded] = useState(false);
-  const [url, setUrl] = useState("");
-  const [returnOrigin, setReturnOrigin] = useState("");
-  const [enabled, setEnabled] = useState(true);
+function WebhooksPanel({
+  endpoint,
+  setEndpoint,
+}: {
+  endpoint: WebhookEndpointView | null;
+  setEndpoint: (ep: WebhookEndpointView | null) => void;
+}) {
+  const [url, setUrl] = useState(endpoint?.url ?? "");
+  const [returnOrigin, setReturnOrigin] = useState(endpoint?.returnOrigin ?? "");
+  const [enabled, setEnabled] = useState(formEnabled(endpoint));
   const [secret, setSecret] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "save" | "rotate" | "delete" | "test">(null);
   const [error, setError] = useState<string | null>(null);
@@ -166,31 +249,8 @@ function WebhooksPanel() {
     setEndpoint(ep);
     setUrl(ep?.url ?? "");
     setReturnOrigin(ep?.returnOrigin ?? "");
-    setEnabled(ep?.enabled ?? true);
+    setEnabled(formEnabled(ep));
   }
-
-  useEffect(() => {
-    api<Answer>("/api/webhooks")
-      .then((r) => apply(r.endpoint))
-      .catch((e) => setError((e as Error).message))
-      .finally(() => setLoaded(true));
-  }, []);
-
-  // While something is still waiting to go out, refresh the event list so the merchant sees it
-  // delivered (or failing) without reloading. Only the list is updated, never what they're typing.
-  const waiting = !!endpoint?.events.some((e) => e.status === "pending" && e.attempts === 0);
-  useEffect(() => {
-    if (!waiting) return;
-    const t = setInterval(async () => {
-      try {
-        const r = await api<Answer>("/api/webhooks");
-        if (r.endpoint) setEndpoint((cur) => (cur ? { ...cur, events: r.endpoint!.events } : r.endpoint));
-      } catch {
-        // offline for a moment; the next tick tries again
-      }
-    }, 3000);
-    return () => clearInterval(t);
-  }, [waiting]);
 
   async function run(kind: "save" | "rotate" | "delete" | "test", call: () => Promise<Answer>) {
     setBusy(kind);
@@ -208,10 +268,9 @@ function WebhooksPanel() {
     }
   }
 
-  if (!loaded) return <Loader compact label="Loading webhooks" />;
-
   return (
     <div className="space-y-4">
+      {endpoint && <HealthNotice health={endpoint.health} />}
       <div>
         <Eyebrow>Pay with NimBill</Eyebrow>
         <p className="mt-1 text-sm text-muted">

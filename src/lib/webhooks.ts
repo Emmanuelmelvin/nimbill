@@ -7,7 +7,7 @@ import type { Invoice, WebhookEndpoint, WebhookEvent } from "./db/schema";
 import { env, isProd } from "./env";
 import { Errors } from "./errors";
 import { logger } from "./logger";
-import { ROTATION_OVERLAP_HOURS } from "./webhook-policy";
+import { ROTATION_OVERLAP_HOURS, removalDate } from "./webhook-policy";
 import { checkSignature } from "./webhook-signature";
 
 // "Pay with NimBill": a merchant's store creates board invoices with signed requests and gets a
@@ -134,12 +134,18 @@ export async function saveEndpoint(merchantAddress: string, input: EndpointInput
   const db = await getDb();
   const existing = await getEndpoint(merchantAddress);
   if (existing) {
+    // A new URL, or turning webhooks back on (also after NimBill removed them), starts the health
+    // record over: the failures were about the old setup (see lib/webhook-health.ts).
+    const turningOn = input.enabled === true && !existing.enabled;
+    const fresh = url !== existing.url || turningOn;
     const [endpoint] = await db
       .update(schema.webhookEndpoints)
       .set({
         url,
         ...(returnOrigin !== undefined ? { returnOrigin } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(fresh ? { failingSince: null, consecutiveFailures: 0, warnedAt: null } : {}),
+        ...(turningOn ? { disabledReason: null, disabledAt: null } : {}),
         updatedAt: new Date(),
       })
       .where(eq(schema.webhookEndpoints.id, existing.id))
@@ -208,6 +214,41 @@ export async function getEvent(merchantAddress: string, id: string): Promise<Web
   return ev ?? null;
 }
 
+/**
+ * How the endpoint is doing, for Settings and the dashboard (lib/webhook-health.ts does the work):
+ *   ok       nothing to say
+ *   failing  recent deliveries failed, no warning yet (Settings only)
+ *   warned   failing for a day: will be removed on `removeAt` unless a delivery gets through
+ *   removed  NimBill turned webhooks off after days of failures; saving turns them back on
+ */
+export function endpointHealth(ep: WebhookEndpoint, now = new Date()) {
+  const iso = (d: Date | null) => d?.toISOString() ?? null;
+  const state: "ok" | "failing" | "warned" | "removed" =
+    !ep.enabled && ep.disabledReason === "failing"
+      ? "removed"
+      : ep.enabled && ep.warnedAt
+        ? "warned"
+        : ep.enabled && ep.failingSince && ep.consecutiveFailures > 0
+          ? "failing"
+          : "ok";
+  return {
+    state,
+    failingSince: iso(ep.failingSince),
+    consecutiveFailures: ep.consecutiveFailures,
+    removeAt: state === "warned" && ep.failingSince ? removalDate(ep.failingSince, ep.warnedAt, now).toISOString() : null,
+    removedAt: state === "removed" ? iso(ep.disabledAt) : null,
+  };
+}
+export type EndpointHealth = ReturnType<typeof endpointHealth>;
+
+/** For the dashboard: only the news a merchant must act on (a warning or a removal), else null. */
+export async function webhookAlert(merchantAddress: string): Promise<EndpointHealth | null> {
+  const ep = await getEndpoint(merchantAddress);
+  if (!ep) return null;
+  const h = endpointHealth(ep);
+  return h.state === "warned" || h.state === "removed" ? h : null;
+}
+
 /** What the merchant sees in Settings. Never the secret. */
 export function endpointView(ep: WebhookEndpoint, events: WebhookEvent[]) {
   const rotating = ep.previousExpiresAt && ep.previousExpiresAt.getTime() > Date.now() ? ep.previousExpiresAt.toISOString() : null;
@@ -219,6 +260,7 @@ export function endpointView(ep: WebhookEndpoint, events: WebhookEvent[]) {
     createdAt: ep.createdAt.toISOString(),
     /** Until when the previous secret still works, while a rotation is in progress. */
     previousSecretValidUntil: rotating,
+    health: endpointHealth(ep),
     events: events.map((e) => ({
       id: e.id,
       type: e.type,
