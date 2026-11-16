@@ -7,6 +7,8 @@
 //   watch    every 15 s  look on-chain for payments to store invoices nobody is watching
 //   sweep    every 60 s  queue webhooks for paid store invoices that are missing one
 //   health   every 5 min warn merchants whose URL keeps failing, then remove it (webhook-health.ts)
+//   withdraw every 5 s   move open withdrawals forward: claim swaps, confirm delivery on-chain
+//   stuck    every 5 min log withdrawals paid but not delivered after 30 minutes
 //
 // It runs the app's own code from src/lib (one set of payment rules, one schema), loaded by
 // worker/loader.mjs. Start it with `npm run worker`, or `npm run worker -- --once` to run every
@@ -17,6 +19,7 @@ import { logger } from "../src/lib/logger";
 import { deliverDue, sweepMissedEvents } from "../src/lib/webhook-delivery";
 import { checkEndpointHealth } from "../src/lib/webhook-health";
 import { watchStoreInvoices } from "../src/lib/webhook-watch";
+import { advanceOpenWithdrawals, reportStuckWithdrawals, withdrawalsLive } from "../src/lib/withdraw/service";
 
 type Job = { name: string; everyMs: number; run: () => Promise<unknown> };
 
@@ -32,6 +35,14 @@ const JOBS: Job[] = [
   { name: "watch", everyMs: 15_000, run: watchStoreInvoices },
   { name: "sweep", everyMs: 60_000, run: sweepMissedEvents },
   { name: "health", everyMs: 5 * 60_000, run: () => checkEndpointHealth() },
+  // Withdrawals only run where they are switched on (WITHDRAW_LIVE). They also advance whenever
+  // the Withdraw screen asks for a status, but only this job finishes them once the app is closed.
+  ...(withdrawalsLive()
+    ? [
+        { name: "withdraw", everyMs: 5_000, run: () => advanceOpenWithdrawals() },
+        { name: "stuck", everyMs: 5 * 60_000, run: reportStuckWithdrawals },
+      ]
+    : []),
 ];
 
 let stopping = false;
@@ -42,6 +53,8 @@ function checkConfig() {
   if (isProd && !env.DATABASE_URL) problems.push("DATABASE_URL must point to the same Postgres database as the web app.");
   if (isProd && !env.WEBHOOK_KEY_SECRET) problems.push("WEBHOOK_KEY_SECRET must be the same value as on the web app.");
   if (isProd && !env.SITE_URL) problems.push("SITE_URL must be the web app's public address (used for invoice links in webhooks).");
+  if (withdrawalsLive() && !env.WITHDRAW_MNEMONIC)
+    problems.push("WITHDRAW_LIVE is on, so WITHDRAW_MNEMONIC must be the same recovery phrase as on the web app (it claims the swaps).");
   // The embedded dev database (.data/pglite) must only ever be open in one process: a `next dev`
   // and the worker on it at the same time each keep their own copy and overwrite each other.
   if (!isProd && !env.DATABASE_URL && !process.argv.includes("--embedded-db"))

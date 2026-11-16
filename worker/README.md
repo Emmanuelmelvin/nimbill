@@ -4,12 +4,14 @@ Sends "Pay with NimBill" webhooks. It runs as its own process, separate from the
 **not exposed to the internet**: it opens no port. It only talks to the same Postgres database as the
 web app and makes outgoing HTTPS requests.
 
-| Job       | Every | What it does                                                                               |
-| --------- | ----- | ------------------------------------------------------------------------------------------ |
-| `deliver` | 2 s   | Sends queued `webhook_events`, signed with the merchant's secret, and retries for ~3 days  |
-| `watch`   | 15 s  | Looks on-chain for payments to store invoices, so a shopper closing the tab doesn't matter |
-| `sweep`   | 60 s  | Queues `invoice.paid` for any paid store invoice that is missing one                       |
-| `health`  | 5 min | Warns merchants whose URL has failed for 24 h, removes it after 5 days (emails both times) |
+| Job        | Every | What it does                                                                                                       |
+| ---------- | ----- | ------------------------------------------------------------------------------------------------------------------ |
+| `deliver`  | 2 s   | Sends queued `webhook_events`, signed with the merchant's secret, and retries for ~3 days                          |
+| `watch`    | 15 s  | Looks on-chain for payments to store invoices, so a shopper closing the tab doesn't matter                         |
+| `sweep`    | 60 s  | Queues `invoice.paid` for any paid store invoice that is missing one                                               |
+| `health`   | 5 min | Warns merchants whose URL has failed for 24 h, removes it after 5 days (emails both times)                         |
+| `withdraw` | 5 s   | Moves open withdrawals forward: claims swaps (gasless), confirms delivery on-chain. Only with `WITHDRAW_LIVE=true` |
+| `stuck`    | 5 min | Logs withdrawals paid but not delivered after 30 minutes. Only with `WITHDRAW_LIVE=true`                           |
 
 The worker runs the web app's own code from `src/lib` (the same payment matching, the same schema),
 so the two can't disagree about whether an invoice is paid. Node runs the TypeScript directly; there
@@ -17,17 +19,20 @@ is no build step.
 
 ## Environment
 
-| Variable                              | Required | Notes                                                                   |
-| ------------------------------------- | -------- | ----------------------------------------------------------------------- |
-| `DATABASE_URL`                        | yes      | The **same** Postgres database as the web app                           |
-| `WEBHOOK_KEY_SECRET`                  | yes      | The **same** value as the web app (it decrypts the stores' secrets)     |
-| `SITE_URL`                            | yes      | The web app's public address, e.g. `https://nimbill.example`, for links |
-| `NODE_ENV`                            | yes      | `production` (the Docker image sets it)                                 |
-| `NIMIQ_RPC_URL`                       | no       | Same defaults as the web app                                            |
-| `POLYGON_RPC_URL`                     | no       |                                                                         |
-| `COINGECKO_API_KEY`                   | no       | USD values of payments                                                  |
-| `RESEND_API_KEY`, `MAIL_FROM`         | no       | "Invoice paid" emails for payments the worker finds                     |
-| `LOG_LEVEL`, `NEXT_PUBLIC_SENTRY_DSN` | no       | Logs and error reports                                                  |
+| Variable                               | Required  | Notes                                                                                                        |
+| -------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                         | yes       | The **same** Postgres database as the web app                                                                |
+| `WEBHOOK_KEY_SECRET`                   | yes       | The **same** value as the web app (it decrypts the stores' secrets)                                          |
+| `SITE_URL`                             | yes       | The web app's public address, e.g. `https://nimbill.example`, for links                                      |
+| `NODE_ENV`                             | yes       | `production` (the Docker image sets it)                                                                      |
+| `NIMIQ_RPC_URL`                        | no        | Same defaults as the web app                                                                                 |
+| `POLYGON_RPC_URL`                      | no        |                                                                                                              |
+| `COINGECKO_API_KEY`                    | no        | USD values of payments                                                                                       |
+| `RESEND_API_KEY`, `MAIL_FROM`          | no        | "Invoice paid" emails for payments the worker finds                                                          |
+| `LOG_LEVEL`, `NEXT_PUBLIC_SENTRY_DSN`  | no        | Logs and error reports                                                                                       |
+| `WITHDRAW_LIVE`                        | no        | `true` to run real withdrawals. Same value as the web app                                                    |
+| `WITHDRAW_MNEMONIC`                    | with live | The **same** recovery phrase as the web app (it claims the swaps). See [withdrawals](../docs/withdrawals.md) |
+| `ETHEREUM_RPC_URL`, `ARBITRUM_RPC_URL` | no        | Confirm withdrawals on those chains. Defaults: publicnode, arb1                                              |
 
 ## Run it
 

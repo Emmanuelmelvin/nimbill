@@ -26,6 +26,20 @@ const Schema = z.object({
   WEBHOOK_KEY_SECRET: optional(z.string().min(32, "WEBHOOK_KEY_SECRET must be at least 32 characters")),
   DATABASE_URL: optional(z.url("DATABASE_URL must be a postgres connection URL")),
 
+  // Withdrawals (lib/withdraw). Off unless WITHDRAW_LIVE is "true": the Withdraw screen then shows
+  // sample quotes and no money can move. WITHDRAW_MNEMONIC is the 12/24-word recovery phrase every
+  // swap's secret and claim key come from (`npm run withdraw:new-phrase` makes one). Set the SAME
+  // phrase on the web app and the worker, back it up offline, and never change or lose it while a
+  // withdrawal is in progress, or that withdrawal can't be claimed.
+  WITHDRAW_LIVE: withDefault(z.enum(["true", "false"]), "false"),
+  WITHDRAW_MNEMONIC: optional(
+    z
+      .string()
+      .trim()
+      .refine((m) => [12, 24].includes(m.split(/\s+/).length), "WITHDRAW_MNEMONIC must be a 12- or 24-word recovery phrase"),
+  ),
+  LENDASWAP_API_URL: withDefault(z.url(), "https://api.lendaswap.com"),
+
   // Demo invoice
   DEMO_MERCHANT_ADDRESS: optional(z.string()),
   DEMO_MERCHANT_NAME: optional(z.string().max(80)),
@@ -34,6 +48,9 @@ const Schema = z.object({
   // External services
   NIMIQ_RPC_URL: withDefault(z.url(), "https://rpc.nimiqwatch.com"),
   POLYGON_RPC_URL: withDefault(z.url(), "https://polygon-bor-rpc.publicnode.com"),
+  ETHEREUM_RPC_URL: withDefault(z.url(), "https://ethereum-rpc.publicnode.com"),
+  // arb1, not publicnode: publicnode refuses receipts from blocks old enough to be final.
+  ARBITRUM_RPC_URL: withDefault(z.url(), "https://arb1.arbitrum.io/rpc"),
   VALIDATORS_API_URL: optional(z.url()),
   COINGECKO_API_KEY: optional(z.string()),
 

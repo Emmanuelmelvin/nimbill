@@ -17,6 +17,8 @@
     "test:address": "node --experimental-strip-types --no-warnings scripts/test-address.ts",
     "test:earnings": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-earnings.ts",
     "test:tags": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-tags.ts",
+    "withdraw:new-phrase": "node --experimental-strip-types --no-warnings scripts/withdraw-new-phrase.ts",
+    "test:withdraw-live": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-withdraw-live.ts",
     "test:withdraw": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-withdraw.ts",
     "test:webhooks": "node --experimental-strip-types --no-warnings scripts/test-webhooks.ts",
     "test:webhook-health": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-webhook-health.ts",
@@ -26,6 +28,7 @@
   },
   "dependencies": {
     "@electric-sql/pglite": "^0.5.16",
+    "@lendasat/lendaswap-sdk-pure": "2.8.1",
     "@neondatabase/serverless": "^1.2.0",
     "@nimiq/mini-app-sdk": "^0.2.5",
     "@noble/curves": "^2.4.0",

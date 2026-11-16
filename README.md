@@ -35,6 +35,7 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 | **19 currencies**                 | Naira, Shillings, Cedis, Euros, Rupees and more, at a live rate locked for 5 minutes.        |
 | **Made for people and AI agents** | A public JSON API, an OpenAPI spec, and an MCP server that gives an agent its own wallet.    |
 | **Pay with NimBill for stores**   | Your store creates invoices, customers pay wallet to wallet, and a signed webhook says when. |
+| **Get your money out**            | Turn NIM into USDC or USDT on Polygon, Ethereum or Arbitrum through an atomic swap.          |
 
 ## How it works
 
@@ -64,6 +65,20 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 - **Coins and currencies you can recognise.** The real NIM and USDT logos appear wherever a coin is mentioned, and every currency picker shows the country's flag.
 - **Receipts that hold up.** The rate used, both addresses and a link to the transaction. Download as PDF.
 - **Public usage page** (`/stats`). Every paid invoice links to its on-chain transaction.
+
+## Withdraw: get your money out
+
+![Withdraw screens: picking a chain (Polygon, Ethereum and Arbitrum live, six more marked soon), a live quote for exactly 50 USDC on Polygon, and the bank and mobile money waitlist.](docs/readme/withdraw.png)
+
+Getting paid is half the job; the other half is spending it. Withdraw turns the NIM you earned into the stablecoin your exchange or wallet already uses.
+
+- **Pick where it lands.** USDC or USDT on Polygon, Ethereum or Arbitrum, each with its network and coin logo. Base, Optimism, Solana, Tron, BNB Chain and Avalanche are listed as coming soon. The address is checked against the chain you picked, so a Tron address can't be pasted for Polygon.
+- **Receive an exact amount.** A live quote from [Lendaswap](https://lendaswap.com) shows what arrives, the fees, and about how much NIM it takes. Nimiq Pay shows the exact amount when you approve.
+- **One approval.** Nimiq Pay pays a Lightning invoice with your NIM. After that NimBill finishes the swap on its own, even if you close the app, and marks it delivered only once the transfer is final on the chain.
+- **Nothing held, nothing lost.** The Lightning invoice is a _hold_ invoice: the swap provider can only collect it after your stablecoin has been claimed to your address. If the swap can't finish, the payment is cancelled and the money goes back.
+- **Bank and mobile money, next.** Cash-outs to a Nigerian bank or mobile money wallet are coming. Join the waitlist on the Withdraw screen, or use a partner Mini App today.
+
+Real withdrawals are switched on with `WITHDRAW_LIVE=true` once they have passed a real-money test; until then the screen shows sample quotes and nothing can be paid. Setup, the safety model and the test steps: [docs/withdrawals.md](docs/withdrawals.md).
 
 ## How payment verification works
 
@@ -160,6 +175,7 @@ claude mcp add nimbill -e NIMBILL_URL=https://nimbill.mblob.me -- npx -y nimbill
 | Pay an invoice in USDT (Polygon)                    | `window.ethereum`: `wallet_switchEthereumChain`, `eth_call` balance checks, `eth_sendTransaction` (ERC-20 `transfer`)  |
 | Stake earnings                                      | `nimiq.sendNewStakerTransaction()` / `nimiq.sendStakeTransaction()`, `nimiq.getBalance()`                              |
 | Unstake and withdraw                                | `nimiq.sendSetActiveStakeTransaction()`, `nimiq.sendRetireStakeTransaction()`, `nimiq.sendRemoveStakeTransaction()`    |
+| Withdraw NIM as USDC / USDT on another chain        | `nimiq.payLightningInvoice({ invoice })` (a Lendaswap hold invoice)                                                    |
 | Default invoice currency                            | `getHostFiat()`                                                                                                        |
 | Open links inside the app                           | `https://nimpay.app/miniapps/open/<url>` deep links                                                                    |
 
@@ -227,7 +243,7 @@ npm run test:webhooks   # the NimBill-Signature format used both ways
 
 ## Roadmap
 
-Recurring invoices · multi-language (via `window.nimiqPay.language`) · payouts to local bank / mobile money through licensed partners.
+Recurring invoices · multi-language (via `window.nimiqPay.language`) · cash-outs to local bank / mobile money through licensed partners (waitlist open) · more withdrawal chains (Base, Optimism, Solana, Tron).
 
 ## Resources
 
@@ -236,6 +252,7 @@ Recurring invoices · multi-language (via `window.nimiqPay.language`) · payouts
 | **Try it**           | [Live app](https://nimbill.mblob.me) · [96-second demo video](demo/nimbill-demo.mp4) ([storyboard](demo/STORYBOARD.md)) · [Live usage with on-chain proof](https://nimbill.mblob.me/stats)                                                                                                                                                                          |
 | **Developer docs**   | [Introduction](https://nimbill.mblob.me/docs) · [Quick start](https://nimbill.mblob.me/docs/quick-start) · [How payments work](https://nimbill.mblob.me/docs/how-it-works) · [Board API](https://nimbill.mblob.me/docs/api) · [Sending the payment](https://nimbill.mblob.me/docs/sending) · [Safety and limits](https://nimbill.mblob.me/docs/safety)              |
 | **Pay with NimBill** | [Webhooks guide](https://nimbill.mblob.me/docs/webhooks) · [Worker README](worker/README.md)                                                                                                                                                                                                                                                                        |
+| **Withdrawals**      | [Setup, safety and the first real test](docs/withdrawals.md) · [Lendaswap](https://lendaswap.com)                                                                                                                                                                                                                                                                   |
 | **AI assistants**    | [Overview](https://nimbill.mblob.me/ai) · [Claude](https://nimbill.mblob.me/ai/claude) · [ChatGPT](https://nimbill.mblob.me/ai/chatgpt) · [Cursor](https://nimbill.mblob.me/ai/cursor) · [Grok, Gemini and others](https://nimbill.mblob.me/ai/other) · [Your own agent](https://nimbill.mblob.me/ai/own-agent)                                                     |
 | **MCP agent wallet** | [Overview](https://nimbill.mblob.me/mcp) · [Connect your AI](https://nimbill.mblob.me/mcp/connect) · [Fund your agent](https://nimbill.mblob.me/mcp/funding) · [All 15 tools](https://nimbill.mblob.me/mcp/tools) · [Security](https://nimbill.mblob.me/mcp/security) · [npm package](https://www.npmjs.com/package/nimbill-mcp) · [`mcp/README.md`](mcp/README.md) |
 | **Machine-readable** | [llms.txt](https://nimbill.mblob.me/llms.txt) · [openapi.json](https://nimbill.mblob.me/openapi.json) · [skill.md](https://nimbill.mblob.me/skill.md)                                                                                                                                                                                                               |
@@ -243,7 +260,7 @@ Recurring invoices · multi-language (via `window.nimiqPay.language`) · payouts
 
 ## About the screenshots
 
-The screens above are the real NimBill interface, captured at phone and desktop size from a local development server with a throwaway test account (the webhook URL shown is a sample). The earnings history on the dashboard is sample data, and the wallet confirmation and "paid" result are simulated (no real NIM moved). To see a real payment, pay the sample invoice in the [live app](https://nimbill.mblob.me).
+The screens above are the real NimBill interface, captured at phone and desktop size from a local development server with a throwaway test account (the webhook URL shown is a sample). The earnings history on the dashboard is sample data, and the wallet confirmation and "paid" result are simulated (no real NIM moved). On the Withdraw screens the NIM balance is a sample; the quote is live from Lendaswap, and nothing was paid. To see a real payment, pay the sample invoice in the [live app](https://nimbill.mblob.me).
 
 ## License
 

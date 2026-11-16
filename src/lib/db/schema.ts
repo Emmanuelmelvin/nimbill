@@ -307,6 +307,19 @@ export const withdrawals = pgTable("withdrawals", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// The Lendaswap SDK's state (lib/withdraw/storage.ts). One wallet row: the next key index (the
+// recovery phrase itself is WITHDRAW_MNEMONIC, never stored). One row per swap, encrypted.
+export const withdrawWallet = pgTable("withdraw_wallet", {
+  id: text("id").primaryKey(),
+  keyIndex: integer("key_index").notNull().default(0),
+});
+export const withdrawSwaps = pgTable("withdraw_swaps", {
+  swapId: text("swap_id").primaryKey(),
+  dataEnc: text("data_enc").notNull(), // AES-256-GCM, key derived from WITHDRAW_MNEMONIC
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Who wants to cash out to a bank or mobile money once that exists, and how: demand data for
 // choosing the first fiat partner. One row per Nimiq address.
 export const fiatWaitlist = pgTable("fiat_waitlist", {
@@ -558,6 +571,16 @@ CREATE TABLE IF NOT EXISTS withdrawals (
 CREATE INDEX IF NOT EXISTS withdrawals_owner_idx ON withdrawals (nimiq_address, created_at DESC);
 CREATE INDEX IF NOT EXISTS withdrawals_open_idx ON withdrawals (status, updated_at);
 CREATE UNIQUE INDEX IF NOT EXISTS withdrawals_provider_swap_idx ON withdrawals (provider_id, provider_swap_id);
+CREATE TABLE IF NOT EXISTS withdraw_wallet (
+  id text PRIMARY KEY,
+  key_index integer NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS withdraw_swaps (
+  swap_id text PRIMARY KEY,
+  data_enc text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
 CREATE TABLE IF NOT EXISTS fiat_waitlist (
   nimiq_address text PRIMARY KEY,
   country text NOT NULL,

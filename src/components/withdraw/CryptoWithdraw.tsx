@@ -1,17 +1,32 @@
 "use client";
 import { getHostFiat } from "@nimiq/mini-app-sdk";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
-import { Alert, Badge, Button, Card, Countdown, cx, DescriptionList, Dropdown, Field, Input, Spinner, TextButton } from "@/components/ui";
+import { NimiqProviderError } from "@nimiq/mini-app-sdk";
+import {
+  Alert,
+  AnchorButton,
+  Badge,
+  Button,
+  Card,
+  Countdown,
+  cx,
+  DescriptionList,
+  Dropdown,
+  Field,
+  Input,
+  Spinner,
+  TextButton,
+} from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { walletErrorMessage } from "@/lib/client/nimiq";
+import { getNimiq, inNimiqPay, walletErrorMessage } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { polygonWallet } from "@/lib/client/wallet";
 import { CURRENCY_CODES, formatAsset, formatFiat } from "@/lib/currencies";
-import { AppError } from "@/lib/errors";
+import { AppError, Errors } from "@/lib/errors";
 import { checkDestination } from "@/lib/withdraw/address";
 import { CHAINS, getChain, offerNimiqPayAddress, tokensFor, type Asset, type ChainId, type PayWith } from "@/lib/withdraw/chains";
 import { RECEIVE_LIMITS, type QuoteView } from "@/lib/withdraw/schemas";
-import { APPROVE_MARGIN_MS } from "@/lib/withdraw/types";
+import { APPROVE_MARGIN_MS, isFinal, type WithdrawalView } from "@/lib/withdraw/types";
 import { ChainLogo, TokenLogo } from "./logos";
 
 type Step = "send" | "chain" | "destination" | "amount" | "review" | "tracking" | "receipt";
@@ -63,6 +78,7 @@ export function CryptoWithdraw() {
   const [usingMine, setUsingMine] = useState(false);
   const [receive, setReceive] = useState("");
   const [quote, setQuote] = useState<QuoteView | null>(null);
+  const [withdrawal, setWithdrawal] = useState<WithdrawalView | null>(null); // a real one, once approved
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nimBalance, setNimBalance] = useState<number | null>(null);
@@ -156,6 +172,56 @@ export function CryptoWithdraw() {
     }
   }, [payWith, chainId, asset, receive, destination]);
 
+  // Approve: create the swap, then pay its Lightning invoice in Nimiq Pay. From here on the
+  // server and the worker take over; the progress screen just asks how it is going.
+  const approve = async () => {
+    if (!quote || !chainId) return;
+    if (quote.sample) return go("tracking");
+    setError(null);
+    if (!inNimiqPay()) return setError("Approving needs Nimiq Pay. Open NimBill in Nimiq Pay to finish this withdrawal.");
+    setBusy(true);
+    let created: WithdrawalView | null = null;
+    try {
+      const nimiq = await getNimiq();
+      if (typeof nimiq.payLightningInvoice !== "function") {
+        throw Errors.wallet("Your Nimiq Pay can't pay Lightning invoices yet. Please update Nimiq Pay.");
+      }
+      created = (
+        await api<{ withdrawal: WithdrawalView }>("/api/withdraw", {
+          method: "POST",
+          body: { payWith, chain: chainId, asset, receive: receive.trim(), destination },
+        })
+      ).withdrawal;
+      if (!created.lightningInvoice) throw Errors.internal(null, "The withdrawal came back without an invoice.");
+      const result: unknown = await nimiq.payLightningInvoice({ invoice: created.lightningInvoice });
+      const legacy = NimiqProviderError.fromLegacyResponse(result);
+      if (legacy) throw legacy;
+      const paid = result as { hash?: string; swapId?: string };
+      const r = await api<{ withdrawal: WithdrawalView }>(`/api/withdraw/${created.id}/paid`, {
+        method: "POST",
+        body: { hash: paid.hash, swapId: paid.swapId },
+      }).catch(() => null);
+      setWithdrawal(r?.withdrawal ?? { ...created, status: "paying", lightningInvoice: null });
+      go("tracking");
+    } catch (e) {
+      // Nimiq Pay may have paid without being able to tell us: follow it rather than cancel it.
+      if (created && NimiqProviderError.is(e) && e.type === "TRANSACTION_OUTCOME_UNKNOWN") {
+        setWithdrawal({ ...created, status: "paying", lightningInvoice: null });
+        return go("tracking");
+      }
+      const message = walletErrorMessage(e); // null: the user declined
+      if (created) {
+        await api(`/api/withdraw/${created.id}/cancel`, {
+          method: "POST",
+          body: { reason: message ?? "Cancelled in Nimiq Pay. Nothing was spent." },
+        }).catch(() => {});
+      }
+      setError(message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const reset = () => {
     setStep("send");
     setChainId(null);
@@ -164,6 +230,7 @@ export function CryptoWithdraw() {
     setUsingMine(false);
     setReceive("");
     setQuote(null);
+    setWithdrawal(null);
     setError(null);
   };
 
@@ -346,17 +413,19 @@ export function CryptoWithdraw() {
       )}
 
       {step === "review" && quote && chain && (
-        <Review
-          quote={quote}
-          chainName={chain.name}
-          usingMine={usingMine}
-          busy={busy}
-          onRefresh={getQuote}
-          onApprove={() => go("tracking")}
-        />
+        <Review quote={quote} chainName={chain.name} usingMine={usingMine} busy={busy} onRefresh={getQuote} onApprove={approve} />
       )}
 
-      {step === "tracking" && quote && chain && <Tracking quote={quote} chainName={chain.name} onDone={() => go("receipt")} />}
+      {step === "tracking" && quote && chain && (
+        <Tracking
+          quote={quote}
+          chainName={chain.name}
+          withdrawal={withdrawal}
+          onUpdate={setWithdrawal}
+          onDone={() => go("receipt")}
+          onReset={reset}
+        />
+      )}
 
       {step === "receipt" && quote && chain && (
         <Card>
@@ -367,7 +436,8 @@ export function CryptoWithdraw() {
             <h2 className="mt-1 text-lg font-bold">Done</h2>
             <p className="mt-1 flex items-center justify-center gap-1.5">
               <TokenLogo asset={quote.asset} className="h-5 w-5" />
-              {stable(quote.receiveAmount)} {quote.asset} arrived on <ChainLogo chain={quote.chain} className="h-5 w-5" /> {chain.name}
+              {stable(withdrawal?.receiveAmount ?? quote.receiveAmount)} {quote.asset} arrived on{" "}
+              <ChainLogo chain={quote.chain} className="h-5 w-5" /> {chain.name}
             </p>
           </div>
           {quote.sample && (
@@ -378,12 +448,19 @@ export function CryptoWithdraw() {
           <DescriptionList
             className="mt-4 text-sm"
             rows={[
-              { term: "You sent", detail: about(quote.sendEstimate, quote.payWith) },
+              { term: "You sent", detail: about(withdrawal?.sendEstimate ?? quote.sendEstimate, quote.payWith) },
               { term: "To", detail: quote.destination, mono: true },
               { term: "Via", detail: quote.providerName },
+              ...(withdrawal ? [{ term: "Reference", detail: withdrawal.id, mono: true }] : []),
+              ...(withdrawal?.destinationTxHash ? [{ term: "Transaction", detail: withdrawal.destinationTxHash, mono: true }] : []),
             ]}
           />
-          <Button block variant="secondary" className="mt-5" onClick={reset}>
+          {withdrawal?.explorerUrl && (
+            <AnchorButton block className="mt-5" href={withdrawal.explorerUrl} target="_blank" rel="noreferrer">
+              View on explorer
+            </AnchorButton>
+          )}
+          <Button block variant="secondary" className="mt-3" onClick={reset}>
             New withdrawal
           </Button>
         </Card>
@@ -490,7 +567,9 @@ function Review({
         rows={[
           { term: "You send", detail: about(quote.sendEstimate, quote.payWith) },
           ...quote.fees.map((f) => ({ term: f.label, detail: `${stable(f.amount)} ${f.asset}` })),
-          { term: "At least", detail: `${stable(quote.receiveMin)} ${quote.asset} if the price moves` },
+          ...(quote.receiveMin !== quote.receiveAmount
+            ? [{ term: "At least", detail: `${stable(quote.receiveMin)} ${quote.asset} if the price moves` }]
+            : []),
           { term: "Via", detail: `${quote.providerName} · about ${Math.round(quote.etaSeconds / 60)} min` },
         ]}
       />
@@ -520,21 +599,80 @@ function Review({
   );
 }
 
-/** Progress after approval. With a sample quote it plays through the steps on a timer. */
-function Tracking({ quote, chainName, onDone }: { quote: QuoteView; chainName: string; onDone: () => void }) {
-  const [stage, setStage] = useState(0);
+/** Which of the three steps a real withdrawal is on (3 = all done). */
+const STAGE_OF: Partial<Record<WithdrawalView["status"], number>> = { quoted: 0, paying: 0, swapping: 1, delivering: 2, delivered: 3 };
+
+const OUTCOME: Partial<Record<WithdrawalView["status"], string>> = {
+  expired: "The withdrawal ran out of time",
+  cancelled: "Cancelled",
+  refunded: "Refunded",
+  failed: "Something went wrong",
+};
+
+/**
+ * Progress after approval. A real withdrawal is followed by asking the server every few seconds
+ * (which also moves it forward); a sample plays through the steps on a timer.
+ */
+function Tracking({
+  quote,
+  chainName,
+  withdrawal,
+  onUpdate,
+  onDone,
+  onReset,
+}: {
+  quote: QuoteView;
+  chainName: string;
+  withdrawal: WithdrawalView | null;
+  onUpdate: (w: WithdrawalView) => void;
+  onDone: () => void;
+  onReset: () => void;
+}) {
+  const [sampleStage, setSampleStage] = useState(0);
   useEffect(() => {
     if (!quote.sample) return;
-    if (stage >= STAGES.length) {
+    if (sampleStage >= STAGES.length) {
       const t = setTimeout(onDone, 600);
       return () => clearTimeout(t);
     }
-    const t = setTimeout(() => setStage((s) => s + 1), 1500);
+    const t = setTimeout(() => setSampleStage((s) => s + 1), 1500);
     return () => clearTimeout(t);
-  }, [quote.sample, stage, onDone]);
+  }, [quote.sample, sampleStage, onDone]);
+
+  // A real withdrawal: ask again 3 s after each answer, until it is final.
+  useEffect(() => {
+    if (quote.sample || !withdrawal) return;
+    if (withdrawal.status === "delivered") {
+      const t = setTimeout(onDone, 600);
+      return () => clearTimeout(t);
+    }
+    if (isFinal(withdrawal.status)) return;
+    const t = setTimeout(() => {
+      api<{ withdrawal: WithdrawalView }>(`/api/withdraw/${withdrawal.id}`)
+        .then((r) => onUpdate(r.withdrawal))
+        .catch(() => onUpdate({ ...withdrawal })); // keep asking after a network blip
+    }, 3_000);
+    return () => clearTimeout(t);
+  }, [quote.sample, withdrawal, onUpdate, onDone]);
+
+  const stage = quote.sample ? sampleStage : withdrawal ? (STAGE_OF[withdrawal.status] ?? 0) : 0;
+  const outcome = withdrawal && !quote.sample ? OUTCOME[withdrawal.status] : undefined;
 
   const detail = (i: number) =>
     i === 0 ? STAGES[0].doing : i === 1 ? `${STAGES[1].doing} ${quote.asset}` : `${STAGES[2].doing} ${chainName}`;
+
+  if (outcome && withdrawal) {
+    return (
+      <Card>
+        <h2 className="text-lg font-bold">{outcome}</h2>
+        {withdrawal.note && <p className="mt-2 text-sm">{withdrawal.note}</p>}
+        <DescriptionList className="mt-4 text-sm" rows={[{ term: "Reference", detail: withdrawal.id, mono: true }]} />
+        <Button block variant="secondary" className="mt-5" onClick={onReset}>
+          Start again
+        </Button>
+      </Card>
+    );
+  }
 
   return (
     <Card>
@@ -565,6 +703,13 @@ function Tracking({ quote, chainName, onDone }: { quote: QuoteView; chainName: s
           );
         })}
       </ol>
+      {withdrawal?.note && <p className="mt-3 text-sm">{withdrawal.note}</p>}
+      {withdrawal?.explorerUrl && (
+        <AnchorButton variant="secondary" size="sm" className="mt-3" href={withdrawal.explorerUrl} target="_blank" rel="noreferrer">
+          View transaction
+        </AnchorButton>
+      )}
+      {withdrawal && <p className="mt-3 text-xs text-muted">Reference: {withdrawal.id}</p>}
       {quote.sample && <p className="mt-3 text-xs text-muted">Sample: these steps are simulated.</p>}
     </Card>
   );
