@@ -1,0 +1,21 @@
+# Fly.io config for the NimBill webhook worker (worker/), not the web app (that runs on Vercel).
+# The worker opens no port, so there is no [http_service] and no health check: it only reads the
+# same Postgres database as the web app and makes outgoing HTTPS requests. See worker/README.md.
+#
+# Deploy from this folder:  fly deploy
+# Secrets (same values as on Vercel):  fly secrets set DATABASE_URL=... WEBHOOK_KEY_SECRET=... SITE_URL=...
+
+app = "nimbill-worker"
+primary_region = "iad"
+kill_signal = "SIGTERM"
+kill_timeout = "20s" # the worker waits up to 15 s for deliveries in flight before exiting
+
+[build]
+  dockerfile = "worker/Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
