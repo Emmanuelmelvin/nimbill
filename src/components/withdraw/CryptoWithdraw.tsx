@@ -3,7 +3,7 @@ import { getHostFiat } from "@nimiq/mini-app-sdk";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Alert, Badge, Button, Card, Countdown, cx, DescriptionList, Dropdown, Field, Input, Spinner, TextButton } from "@/components/ui";
 import { api } from "@/lib/client/api";
-import { getNimiq, walletErrorMessage } from "@/lib/client/nimiq";
+import { walletErrorMessage } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { polygonWallet } from "@/lib/client/wallet";
 import { CURRENCY_CODES, formatAsset, formatFiat } from "@/lib/currencies";
@@ -56,6 +56,7 @@ export function CryptoWithdraw() {
   const [step, setStep] = useState<Step>("send");
   const [payWith, setPayWith] = useState<PayWith>("NIM");
   const [chainId, setChainId] = useState<ChainId | null>(null);
+  const [choosingChain, setChoosingChain] = useState(false); // the list is open again after "Change"
   const [asset, setAsset] = useState<Asset>("USDC");
   const [destination, setDestination] = useState("");
   const [destinationError, setDestinationError] = useState<string | null>(null);
@@ -69,16 +70,13 @@ export function CryptoWithdraw() {
   const chain = chainId ? getChain(chainId) : undefined;
   const tokens = chain ? tokensFor(chain, payWith) : [];
 
-  // NIM balance, to show next to "Pay with". Only inside Nimiq Pay; quietly skipped elsewhere.
+  // NIM balance, to show next to "Pay with". Read by the server from the Nimiq network: Nimiq
+  // Pay's getBalance() can answer 0 before its light client has synced. Hidden if it fails.
   useEffect(() => {
     if (!merchant?.address) return;
     let alive = true;
-    getNimiq()
-      .then(async (n) => {
-        if (typeof n.getBalance !== "function") return;
-        const b = await n.getBalance(merchant.address);
-        if (alive && typeof b === "number") setNimBalance(b);
-      })
+    api<{ nim: number }>("/api/withdraw/balance")
+      .then((r) => alive && setNimBalance(r.nim))
       .catch(() => {});
     return () => {
       alive = false;
@@ -92,6 +90,7 @@ export function CryptoWithdraw() {
 
   const pickChain = (id: ChainId) => {
     setChainId(id);
+    setChoosingChain(false);
     const c = getChain(id)!;
     const offered = tokensFor(c, payWith).map((t) => t.asset);
     if (!offered.includes(asset)) setAsset(offered[0]);
@@ -160,6 +159,7 @@ export function CryptoWithdraw() {
   const reset = () => {
     setStep("send");
     setChainId(null);
+    setChoosingChain(false);
     setDestination("");
     setUsingMine(false);
     setReceive("");
@@ -208,23 +208,34 @@ export function CryptoWithdraw() {
         <Card>
           <h2 className="text-lg font-bold">Where should it arrive?</h2>
           <p className="mt-1 text-sm text-muted">Pick a chain, then a token.</p>
-          <div role="radiogroup" aria-label="Chain" className="mt-4 space-y-2">
-            {CHAINS.map((c) =>
-              c.available ? (
-                <Choice key={c.id} selected={chainId === c.id} onClick={() => pickChain(c.id)}>
-                  <ChainLogo chain={c.id} />
-                  <span className="flex-1 font-medium">{c.name}</span>
-                </Choice>
-              ) : (
-                <Choice key={c.id} disabled>
-                  <ChainLogo chain={c.id} muted />
-                  <span className="flex-1">{c.name}</span>
-                  <Badge variant="muted">Soon</Badge>
-                </Choice>
-              ),
-            )}
-          </div>
-          {chain && (
+          {chain && !choosingChain ? (
+            // Picked: the list folds away so the token and Continue sit right below, no scrolling.
+            <div className="mt-4 flex items-center gap-3 border border-ink p-3 shadow-[inset_0_0_0_1px_var(--color-ink)]">
+              <ChainLogo chain={chain.id} />
+              <span className="flex-1 font-medium">{chain.name}</span>
+              <TextButton muted={false} onClick={() => setChoosingChain(true)}>
+                Change
+              </TextButton>
+            </div>
+          ) : (
+            <div role="radiogroup" aria-label="Chain" className="mt-4 space-y-2">
+              {CHAINS.map((c) =>
+                c.available ? (
+                  <Choice key={c.id} selected={chainId === c.id} onClick={() => pickChain(c.id)}>
+                    <ChainLogo chain={c.id} />
+                    <span className="flex-1 font-medium">{c.name}</span>
+                  </Choice>
+                ) : (
+                  <Choice key={c.id} disabled>
+                    <ChainLogo chain={c.id} muted />
+                    <span className="flex-1">{c.name}</span>
+                    <Badge variant="muted">Soon</Badge>
+                  </Choice>
+                ),
+              )}
+            </div>
+          )}
+          {chain && !choosingChain && (
             <Field label="Token" htmlFor="withdraw-token" className="mt-5">
               <Dropdown
                 id="withdraw-token"
@@ -243,9 +254,11 @@ export function CryptoWithdraw() {
               )}
             </Field>
           )}
-          <Button block className="mt-5" disabled={!chain} onClick={() => go("destination")}>
-            Continue
-          </Button>
+          {chain && !choosingChain && (
+            <Button block className="mt-5" onClick={() => go("destination")}>
+              Continue
+            </Button>
+          )}
         </Card>
       )}
 
