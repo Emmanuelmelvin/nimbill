@@ -24,6 +24,7 @@ import { RemindActions, ViewedStatus } from "@/components/InvoiceReminder";
 import { TabPage } from "@/components/TabPage";
 import { TransferList } from "@/components/TransferList";
 import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
+import { toast } from "@/lib/client/toast";
 import { formatFiat } from "@/lib/currencies";
 import { localDate, type EarningPoint } from "@/lib/earnings";
 import { formatMoney, type Fx } from "@/lib/money";
@@ -197,7 +198,8 @@ function ClientList({ invoices, fx, currency }: Listing) {
       else await api("/api/clients", { body: { name: c.name, email: c.latest?.clientEmail ?? "" } });
       await loadBook();
     } catch (e) {
-      setError((e as Error).message);
+      // The list's own loading error stays inline; a failed save or remove pops up.
+      toast.error(saved ? `Couldn't remove ${c.name}` : `Couldn't save ${c.name}`, { description: (e as Error).message });
     } finally {
       setBusy(null);
     }

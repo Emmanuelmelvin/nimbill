@@ -8,4 +8,5 @@ export * from "./feedback";
 export * from "./form";
 export * from "./navigation";
 export * from "./nimiq";
+export * from "./toast";
 export { cx } from "./cx";

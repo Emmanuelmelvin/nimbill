@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { api, type MerchantInfo } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
+import { toast } from "@/lib/client/toast";
 import { inNimiqPay, walletErrorMessage } from "@/lib/client/nimiq";
 import { polygonWallet } from "@/lib/client/wallet";
 import { TAG_CHANGE_COOLDOWN_DAYS, suggestTag } from "@/lib/tags";
@@ -37,7 +38,6 @@ export function ProfileForm({
       : "People can send you money with it. If you change it, the old one stays reserved for you.";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   async function useWalletAddress() {
     setError(null);
@@ -57,7 +57,6 @@ export function ProfileForm({
         e.preventDefault();
         setBusy(true);
         setError(null);
-        setSaved(false);
         try {
           const { merchant: m } = await api<{ merchant: MerchantInfo }>("/api/me", {
             // An empty email clears the saved one, which turns the notifications off.
@@ -70,8 +69,9 @@ export function ProfileForm({
             },
           });
           setMerchant(m);
-          setSaved(true);
-          onSaved?.();
+          // The welcome step moves on by itself; settings stay put, so confirm the save there.
+          if (onSaved) onSaved();
+          else toast.success("Profile saved");
         } catch (err) {
           setError((err as Error).message);
         } finally {
@@ -145,7 +145,6 @@ export function ProfileForm({
       </Card>
 
       {error && <Alert kind="error">{error}</Alert>}
-      {saved && !onSaved && <Alert kind="success">Saved.</Alert>}
       <Button type="submit" block loading={busy} disabled={!name.trim() || tagCheck.status !== "ok"}>
         {submitLabel}
       </Button>

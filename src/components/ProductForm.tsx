@@ -4,6 +4,7 @@ import { useState } from "react";
 import { api } from "@/lib/client/api";
 import { shrinkImage } from "@/lib/client/image";
 import { useSession } from "@/lib/client/session";
+import { toast } from "@/lib/client/toast";
 import { formatFiat } from "@/lib/currencies";
 import type { ProductView } from "@/lib/products";
 import { CurrencySelect } from "./CurrencySelect";
@@ -54,6 +55,7 @@ export function ProductForm({ product }: { product?: ProductView }) {
         : await api<{ product: ProductView }>("/api/products", { body });
       if (picture.k === "new") await api(`/api/products/${saved.id}/image`, { method: "PUT", body: { dataUrl: picture.dataUrl } });
       if (picture.k === "remove" && product?.imageUrl) await api(`/api/products/${saved.id}/image`, { method: "DELETE" });
+      toast.success(product ? "Product saved" : "Product added");
       router.push("/board/products");
     } catch (e) {
       setError((e as Error).message);
@@ -67,6 +69,7 @@ export function ProductForm({ product }: { product?: ProductView }) {
     setError(null);
     try {
       await api(`/api/products/${product.id}`, { method: "DELETE" });
+      toast.success("Product deleted");
       router.push("/board/products");
     } catch (e) {
       setError((e as Error).message);

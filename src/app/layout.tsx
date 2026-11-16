@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Toaster } from "@/components/ui/toast";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_TITLE, baseOpenGraph, siteUrl } from "@/lib/site";
 import "./globals.css";
 
@@ -33,6 +34,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-4 pb-12 has-[.bleed]:max-w-none has-[.bleed]:px-0">
           {children}
         </div>
+        <Toaster />
       </body>
     </html>
   );

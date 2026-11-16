@@ -28,6 +28,7 @@ import {
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { nimExplorerTx, openInNimiqPayLink, polygonExplorerTx } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
+import { toast } from "@/lib/client/toast";
 import { formatFiat } from "@/lib/currencies";
 
 export default function InvoicePage() {
@@ -196,7 +197,6 @@ function SharePanel({
   const url = origin ? `${origin}/i/${inv.id}` : "";
   const [showQr, setShowQr] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const nimiqPayUrl = url ? openInNimiqPayLink(url) : "";
   const shareText = `Invoice ${inv.number} from ${inv.merchantName}: ${formatFiat(inv.total, inv.currency)}. Pay with NIM${inv.acceptsUsdt ? " or USDT" : ""}:`;
 
@@ -269,8 +269,9 @@ function SharePanel({
             try {
               const r = await api<{ invoice: PublicInvoice }>(`/api/invoices/${inv.id}`, { method: "DELETE" });
               onCancelled(r.invoice);
+              toast.success("Invoice cancelled", { description: `${inv.clientName} can no longer pay it.` });
             } catch (e) {
-              setError((e as Error).message);
+              toast.error("Couldn't cancel the invoice", { description: (e as Error).message });
             } finally {
               setCancelling(false);
             }
@@ -278,7 +279,6 @@ function SharePanel({
         >
           Cancel invoice
         </Button>
-        {error && <Alert kind="error">{error}</Alert>}
       </Disclosure>
     </Card>
   );

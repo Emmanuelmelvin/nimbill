@@ -1,6 +1,7 @@
 "use client";
 import { QRCodeSVG } from "qrcode.react";
 import { useEffect, useState } from "react";
+import { toast } from "@/lib/client/toast";
 import { Avatar } from "@/components/Avatar";
 import { AvatarField } from "@/components/AvatarField";
 import { BoardPage } from "@/components/BoardPage";
@@ -159,7 +160,6 @@ function BoardSettings({ merchant }: { merchant: MerchantInfo }) {
   const [open, setOpen] = useState(merchant.boardOpenAmounts);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
   const changed = bio.trim() !== (merchant.bio ?? "") || open !== merchant.boardOpenAmounts;
 
   return (
@@ -170,11 +170,10 @@ function BoardSettings({ merchant }: { merchant: MerchantInfo }) {
           e.preventDefault();
           setBusy(true);
           setError(null);
-          setSaved(false);
           try {
             const r = await api<{ merchant: MerchantInfo }>("/api/me", { body: { bio: bio.trim(), boardOpenAmounts: open } });
             setMerchant(r.merchant);
-            setSaved(true);
+            toast.success("Board settings saved");
           } catch (err) {
             setError((err as Error).message);
           } finally {
@@ -186,10 +185,7 @@ function BoardSettings({ merchant }: { merchant: MerchantInfo }) {
           <Textarea
             id="bio"
             value={bio}
-            onChange={(e) => {
-              setBio(e.target.value);
-              setSaved(false);
-            }}
+            onChange={(e) => setBio(e.target.value)}
             placeholder="Brand designer, Lagos"
             maxLength={160}
             className="min-h-20"
@@ -199,13 +195,9 @@ function BoardSettings({ merchant }: { merchant: MerchantInfo }) {
           label="Accept open payments"
           description="Visitors can type their own amount and what it's for. Turn it off to sell only your products."
           checked={open}
-          onChange={(e) => {
-            setOpen(e.target.checked);
-            setSaved(false);
-          }}
+          onChange={(e) => setOpen(e.target.checked)}
         />
         {error && <Alert kind="error">{error}</Alert>}
-        {saved && <Alert kind="success">Saved.</Alert>}
         <Button type="submit" variant="secondary" block loading={busy} disabled={!changed}>
           Save board settings
         </Button>

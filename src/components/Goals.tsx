@@ -2,6 +2,7 @@
 import { useState, type ReactNode } from "react";
 import { api } from "@/lib/client/api";
 import type { PublicGoal } from "@/lib/client/ledger";
+import { toast } from "@/lib/client/toast";
 import { goalProgress, localDate, parseLocalDate, type EarningPoint } from "@/lib/earnings";
 import { formatUnit, type Fx } from "@/lib/money";
 import { CurrencySelect } from "./CurrencySelect";
@@ -220,7 +221,6 @@ export function GoalsCard({
   onChanged: () => Promise<unknown>;
 }) {
   const [editing, setEditing] = useState<"new" | string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const current = currentGoal(goals);
   const past = goals.filter((g) => g !== current);
@@ -228,12 +228,12 @@ export function GoalsCard({
   async function remove(g: PublicGoal) {
     if (!confirm(`Delete the goal "${g.title}"? Your invoices and earnings are not affected.`)) return;
     setDeleting(g.id);
-    setError(null);
     try {
       await api(`/api/goals/${g.id}`, { method: "DELETE" });
       await onChanged();
+      toast.success("Goal deleted");
     } catch (e) {
-      setError((e as Error).message);
+      toast.error("Couldn't delete the goal", { description: (e as Error).message });
     } finally {
       setDeleting(null);
     }
@@ -241,6 +241,7 @@ export function GoalsCard({
 
   const saved = async () => {
     await onChanged();
+    toast.success(editing === "new" ? "Goal set" : "Goal saved");
     setEditing(null);
   };
 
@@ -277,8 +278,6 @@ export function GoalsCard({
           Set a goal
         </Button>
       )}
-
-      {error && <Alert kind="error">{error}</Alert>}
 
       {past.length > 0 && !editing && (
         <Disclosure summary={`Past goals (${past.length})`}>

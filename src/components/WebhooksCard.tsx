@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
+import { toast } from "@/lib/client/toast";
 import { FAILING_REMOVE_AFTER_DAYS, FAILING_WARN_AFTER_HOURS } from "@/lib/webhook-policy";
 import type { WebhookEndpointView } from "@/lib/webhooks";
 import {
@@ -198,6 +199,12 @@ export function WebhooksCard() {
 }
 
 /** What the merchant must know about a failing or removed URL, with what to do about it. */
+const RUN_FAILED = {
+  rotate: "Couldn't make a new secret",
+  delete: "Couldn't remove webhooks",
+  test: "Couldn't send the test event",
+};
+
 function HealthNotice({ health }: { health: WebhookEndpointView["health"] }) {
   if (health.state === "removed")
     return (
@@ -243,7 +250,6 @@ function WebhooksPanel({
   const [secret, setSecret] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "save" | "rotate" | "delete" | "test">(null);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
 
   function apply(ep: WebhookEndpointView | null) {
     setEndpoint(ep);
@@ -255,14 +261,20 @@ function WebhooksPanel({
   async function run(kind: "save" | "rotate" | "delete" | "test", call: () => Promise<Answer>) {
     setBusy(kind);
     setError(null);
-    setSaved(false);
     try {
       const r = await call();
       apply(r.endpoint);
+      // A new secret shows in its own box until it's copied, so it needs no toast.
       if (r.secret) setSecret(r.secret);
-      if (kind === "save" && !r.secret) setSaved(true);
+      else if (kind === "save") toast.success("Webhook settings saved");
+      else if (kind === "delete") toast.success("Webhooks removed");
+      else if (kind === "test")
+        toast.success("Test event sent", { description: "It shows under Recent events with your server's answer." });
     } catch (e) {
-      setError((e as Error).message);
+      const message = (e as Error).message;
+      // Save's errors sit by its button; the other buttons are further down, so theirs pop up.
+      if (kind === "save") setError(message);
+      else toast.error(RUN_FAILED[kind], { description: message });
     } finally {
       setBusy(null);
     }
@@ -340,7 +352,6 @@ function WebhooksPanel({
           />
         )}
         {error && <Alert kind="error">{error}</Alert>}
-        {saved && <Alert kind="success">Saved.</Alert>}
         <Button type="submit" block loading={busy === "save"} loadingText="Saving…" disabled={!!busy || !url.trim()}>
           {endpoint ? "Save" : "Turn on webhooks"}
         </Button>

@@ -3,28 +3,28 @@ import { useState } from "react";
 import { api, type MerchantInfo } from "@/lib/client/api";
 import { shrinkImage } from "@/lib/client/image";
 import { useSession } from "@/lib/client/session";
+import { toast } from "@/lib/client/toast";
 import { avatarUrl } from "@/lib/tags";
 import { Avatar } from "./Avatar";
-import { Alert, Button, Card } from "./ui";
+import { Button, Card } from "./ui";
 
 /** Add, change or remove the public photo. Saves straight away (no separate Save button). */
 export function AvatarField({ merchant }: { merchant: MerchantInfo }) {
   const { setMerchant } = useSession();
   const [busy, setBusy] = useState<"upload" | "remove" | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const src = merchant.tag && merchant.avatarVersion ? avatarUrl(merchant.tag, merchant.avatarVersion) : null;
 
   async function upload(file: File | undefined) {
     if (!file) return;
     setBusy("upload");
-    setError(null);
     try {
       // Cropped to the middle square and shrunk, so it's small and looks the same everywhere.
       const dataUrl = await shrinkImage(file, { maxSide: 400, square: true });
       const r = await api<{ merchant: MerchantInfo }>("/api/me/avatar", { method: "PUT", body: { dataUrl } });
       setMerchant(r.merchant);
+      toast.success("Photo updated");
     } catch (e) {
-      setError((e as Error).message);
+      toast.error("Couldn't upload the photo", { description: (e as Error).message });
     } finally {
       setBusy(null);
     }
@@ -32,12 +32,12 @@ export function AvatarField({ merchant }: { merchant: MerchantInfo }) {
 
   async function remove() {
     setBusy("remove");
-    setError(null);
     try {
       const r = await api<{ merchant: MerchantInfo }>("/api/me/avatar", { method: "DELETE" });
       setMerchant(r.merchant);
+      toast.success("Photo removed");
     } catch (e) {
-      setError((e as Error).message);
+      toast.error("Couldn't remove the photo", { description: (e as Error).message });
     } finally {
       setBusy(null);
     }
@@ -76,7 +76,6 @@ export function AvatarField({ merchant }: { merchant: MerchantInfo }) {
       <p className="text-xs text-muted">
         Shown on your public page and to people sending you money, so they know it&apos;s you. Anyone with your link can see it.
       </p>
-      {error && <Alert kind="error">{error}</Alert>}
     </Card>
   );
 }
