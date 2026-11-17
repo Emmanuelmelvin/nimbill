@@ -710,6 +710,8 @@ for (const [path, text] of [
   ["/privacy", "What NimBill stores"],
   ["/terms", "Terms of use"],
   ["/blog", "Introducing Pay with NimBill"],
+  ["/blog/money-in-to-money-out", "Designed backwards: tell us what should arrive"],
+  ["/blog/how-we-built-cheques", "Our solution: a digital safe with two keys"],
   ["/blog/pay-with-nimbill", "No API key. One secret, both ways"],
 ]) {
   res = await fetch(B + path);

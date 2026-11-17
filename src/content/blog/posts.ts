@@ -1,4 +1,6 @@
 import type { ComponentType } from "react";
+import HowWeBuiltCheques from "./how-we-built-cheques";
+import MoneyInToMoneyOut from "./money-in-to-money-out";
 import PayWithNimBill from "./pay-with-nimbill";
 
 // The blog: one TypeScript file per post in this folder, listed here newest first.
@@ -19,6 +21,26 @@ export type Post = {
 const MERCICHIDI = { name: "mercichidi", url: "https://x.com/mercichidi" };
 
 export const POSTS: Post[] = [
+  {
+    slug: "money-in-to-money-out",
+    title: "From money in to money out: how we built non-custodial withdrawals",
+    description:
+      "Getting paid is half the job; spending it is the other half. Here is how we built one-tap withdrawals that turn the NIM you earn into USDC and USDT on the networks you already use, without NimBill ever holding your money.",
+    date: "2026-11-17",
+    author: MERCICHIDI,
+    tags: ["Product", "Global Payments"],
+    Body: MoneyInToMoneyOut,
+  },
+  {
+    slug: "how-we-built-cheques",
+    title: "How we built non-custodial cheques on Nimiq",
+    description:
+      "How do you put real money inside a shareable link or QR code, lock it to a friend's @tag or leave it open to the first person who claims it, and make sure NimBill can never touch the funds? Inside our two-key digital cheque system.",
+    date: "2026-11-17",
+    author: MERCICHIDI,
+    tags: ["Product", "Behind the Scenes"],
+    Body: HowWeBuiltCheques,
+  },
   {
     slug: "pay-with-nimbill",
     title: "Introducing Pay with NimBill",
