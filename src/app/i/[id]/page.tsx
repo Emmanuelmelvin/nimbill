@@ -272,7 +272,11 @@ function PaidBanner({
                 if (!target) return;
                 setSending(true);
                 try {
-                  await api(`/api/invoices/${inv.id}/receipt`, { body: { email: target } });
+                  const res = await api<{ sent: boolean }>(`/api/invoices/${inv.id}/receipt`, { body: { email: target } });
+                  if (!res.sent) {
+                    toast.error("Couldn't send receipt", { description: "Email isn't available right now. Download the PDF instead." });
+                    return;
+                  }
                   setSentTo(target);
                   toast.success("Receipt sent", { description: `Emailed to ${target} with a PDF receipt.` });
                 } catch (err) {

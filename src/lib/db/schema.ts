@@ -66,6 +66,9 @@ export const invoices = pgTable("invoices", {
   // What the client added on top of `total` as a tip, decimal string in `currency`. Null = no tip.
   // `paidAmount` and `paidUsd` already include it.
   paidTip: text("paid_tip"),
+  // How many times the receipt was emailed on request (POST /api/invoices/[id]/receipt). Capped,
+  // so the public endpoint can't be used to send unlimited emails to arbitrary addresses.
+  receiptEmailsSent: integer("receipt_emails_sent").notNull().default(0),
   // When someone other than the merchant first opened the invoice page while it was unpaid.
   // Private to the merchant ("Sent → Viewed → Paid"); null = not opened yet.
   viewedAt: timestamp("viewed_at", { withTimezone: true }),
@@ -668,5 +671,6 @@ ALTER TABLE recurring_invoices ADD COLUMN IF NOT EXISTS anchor_day integer;
 CREATE INDEX IF NOT EXISTS recurring_invoices_merchant_idx ON recurring_invoices (merchant_address, created_at DESC);
 CREATE INDEX IF NOT EXISTS recurring_invoices_due_idx ON recurring_invoices (status, next_run_date);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payer_email text;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt_emails_sent integer NOT NULL DEFAULT 0;
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payer_email text;
 `;

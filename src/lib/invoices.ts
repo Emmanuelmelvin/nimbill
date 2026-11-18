@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import { getDb, schema } from "./db";
 import type { Invoice, LineItem, Quote } from "./db/schema";
@@ -188,14 +188,10 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0, 
   let amount = BigInt(Math.max(step, Math.ceil((coins * unit) / step) * step));
   // USDT transfers can't carry a reference, so the amount itself identifies the invoice.
   if (asset === "USDT") amount = await uniqueUsdtAmount(inv.merchantEvmAddress!, amount);
+  // Kept on the quote only: the receipt goes to whoever locked the price that was actually paid,
+  // not to the last person who opened the invoice and typed an email.
   const cleanPayerEmail = payerEmail?.trim() || null;
   const db = await getDb();
-  if (cleanPayerEmail && cleanPayerEmail !== inv.payerEmail) {
-    await db
-      .update(schema.invoices)
-      .set({ payerEmail: cleanPayerEmail })
-      .where(and(eq(schema.invoices.id, inv.id), eq(schema.invoices.status, "unpaid")));
-  }
   const [q] = await db
     .insert(schema.quotes)
     .values({
@@ -210,6 +206,27 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0, 
     })
     .returning();
   return q;
+}
+
+/**
+ * Count one requested receipt email for a paid invoice and record where it goes, or return null
+ * once `max` have been sent. Counted before sending, in one conditional update, so parallel
+ * requests can't get past the cap.
+ */
+export async function claimReceiptEmail(invoiceId: string, email: string, max: number): Promise<Invoice | null> {
+  const db = await getDb();
+  const [claimed] = await db
+    .update(schema.invoices)
+    .set({ payerEmail: email, receiptEmailsSent: sql`${schema.invoices.receiptEmailsSent} + 1` })
+    .where(
+      and(
+        eq(schema.invoices.id, invoiceId),
+        eq(schema.invoices.status, "paid"),
+        lt(schema.invoices.receiptEmailsSent, max),
+      ),
+    )
+    .returning();
+  return claimed ?? null;
 }
 
 async function quotesFor(invoiceIds: string[]): Promise<Quote[]> {

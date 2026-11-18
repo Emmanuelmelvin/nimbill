@@ -26,7 +26,8 @@ const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
  */
 export function emailBannerHtml(): string {
   const bannerUrl = new URL("/email-banner.png", siteUrl()).toString();
-  return `<img src="${escapeHtml(bannerUrl)}" alt="NimBill: invoice in your currency, get paid in NIM or USDT. Three phone screens: the earnings dashboard, a client's locked price quote, and a payment confirmed on the Nimiq blockchain." width="480" style="display:block;width:100%;max-width:480px;height:auto;margin:0 0 20px;border:1px solid #000000;" />`;
+  // 960×480 (2× the 480px email width, about 66 KB): sharp on high-density screens, light to load.
+  return `<img src="${escapeHtml(bannerUrl)}" alt="NimBill: invoice in your currency, get paid in NIM or USDT" width="480" height="240" style="display:block;width:100%;max-width:480px;height:auto;margin:0 0 20px;border:1px solid #000000;" />`;
 }
 
 /**
