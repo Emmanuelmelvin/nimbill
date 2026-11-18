@@ -1,7 +1,8 @@
 "use client";
-import { AnchorButton, CopyButton, cx, useOrigin } from "@/components/ui";
+import { AnchorButton, Badge, CopyButton, copyText, cx, Dropdown, useOrigin, type DropdownOption } from "@/components/ui";
 import type { PublicInvoice } from "@/lib/client/api";
 import { openInNimiqPayLink } from "@/lib/client/nimiq";
+import { toast } from "@/lib/client/toast";
 import { formatFiat } from "@/lib/currencies";
 import { localDate, parseLocalDate } from "@/lib/earnings";
 
@@ -98,6 +99,61 @@ export function RemindActions({
         </AnchorButton>
       )}
       <CopyButton text={message} label="Copy" size={size} className={btn} />
+    </div>
+  );
+}
+
+type ReminderPick = "" | "whatsapp" | "email" | "copy";
+
+/**
+ * Compact overdue reminder: a chip saying how late the invoice is, and a "Send reminder" menu
+ * beside it (WhatsApp, Email when the client's address is known, Copy message). Nothing is shown
+ * expanded; picking an option opens the merchant's own app or copies the message.
+ */
+export function RemindMenu({
+  inv,
+  clientEmail,
+  className,
+}: {
+  inv: PublicInvoice;
+  clientEmail?: string | null;
+  className?: string;
+}) {
+  const origin = useOrigin();
+  if (!origin) return null;
+  const late = daysOverdue(inv);
+  const message = reminderMessage(inv, openInNimiqPayLink(`${origin}/i/${inv.id}`));
+  const subject = `Reminder: invoice ${inv.number} from ${inv.merchantName}`;
+  const options: DropdownOption<ReminderPick>[] = [
+    { value: "whatsapp", label: "WhatsApp" },
+    ...(clientEmail ? [{ value: "email" as const, label: "Email", detail: clientEmail }] : []),
+    { value: "copy", label: "Copy message" },
+  ];
+
+  const send = async (pick: ReminderPick) => {
+    if (pick === "whatsapp") {
+      window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank", "noreferrer");
+    } else if (pick === "email" && clientEmail) {
+      window.location.href = `mailto:${encodeURIComponent(clientEmail)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(message)}`;
+    } else if (pick === "copy") {
+      await copyText(message);
+      toast.success("Reminder copied", { description: "Paste it into any chat or email." });
+    }
+  };
+
+  return (
+    <div className={cx("flex items-center gap-2", className)}>
+      {late > 0 && <Badge variant="strong">{late === 1 ? "1 day overdue" : `${late} days overdue`}</Badge>}
+      {/* Always shows "Send reminder": the menu triggers an action rather than keeping a choice. */}
+      <Dropdown
+        aria-label={`Send ${inv.clientName} a reminder`}
+        options={options}
+        value=""
+        placeholder="Send reminder"
+        onChange={(pick) => void send(pick)}
+        labels="name"
+        className="min-w-0 flex-1"
+      />
     </div>
   );
 }

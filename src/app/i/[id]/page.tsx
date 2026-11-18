@@ -3,7 +3,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { InvoiceDoc } from "@/components/InvoiceDoc";
-import { RemindActions, ViewedStatus, daysOverdue } from "@/components/InvoiceReminder";
+import { RemindActions, RemindMenu, ViewedStatus, daysOverdue } from "@/components/InvoiceReminder";
 import { PayPanel } from "@/components/PayPanel";
 import { StakeCard } from "@/components/StakeCard";
 import {
@@ -346,15 +346,7 @@ function SharePanel({
       />
       <ViewedStatus viewedAt={viewedAt} />
       {/* Overdue: the reminder comes first, it's the one thing to do now. */}
-      {late > 0 && (
-        <div className="space-y-2 border border-ink p-3">
-          <div>
-            <h3 className="font-bold">Overdue by {late === 1 ? "1 day" : `${late} days`}</h3>
-            <p className="mt-1 text-sm text-muted">Send {inv.clientName} a friendly reminder with the payment link.</p>
-          </div>
-          <RemindActions inv={inv} clientEmail={clientEmail} />
-        </div>
-      )}
+      {late > 0 && <RemindMenu inv={inv} clientEmail={clientEmail} />}
       <CodeBlock>{nimiqPayUrl || "…"}</CodeBlock>
       <div className="grid grid-cols-2 gap-2">
         {canShare ? (
