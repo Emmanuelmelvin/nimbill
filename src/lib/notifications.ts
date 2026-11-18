@@ -20,6 +20,18 @@ const escapeHtml = (s: string) =>
 /** Client and merchant names are user-supplied; keep them on one line in subjects. */
 const oneLine = (s: string) => s.replace(/\s+/g, " ").trim();
 
+/** End a sentence with one full stop, even when it ends in a name like "Mercichidi and Co." */
+const endSentence = (s: string) => (/[.!?]$/.test(s) ? s : `${s}.`);
+
+/**
+ * Every email's opening: a short heading (a few words, never a name-length sentence) and the
+ * personal line under it at body size, so long client or merchant names never fill the screen.
+ */
+export function emailHeadingHtml(heading: string, intro: string): string {
+  return `<h1 style="margin:0 0 8px;font-size:20px;line-height:1.3;">${escapeHtml(heading)}</h1>
+<p style="margin:0 0 16px;font-size:15px;line-height:1.5;color:#000000;">${escapeHtml(intro)}</p>`;
+}
+
 /**
  * Shared top banner image (the first image in README.md, served from `/email-banner.png`) placed at
  * the top of every outgoing email.
@@ -122,6 +134,7 @@ export function paidEmail(inv: Invoice): Omit<MailMessage, "to"> {
   if (paidAt) rows.push(["Paid", paidAt]);
 
   const subject = `${inv.number} paid: ${amount} from ${client}`;
+  const heading = `Invoice ${inv.number} was paid`;
   const intro =
     tip > 0
       ? `${client} paid invoice ${inv.number} and added a ${formatFiat(tip, inv.currency)} tip.`
@@ -139,7 +152,7 @@ export function paidEmail(inv: Invoice): Omit<MailMessage, "to"> {
 <div style="max-width:480px;margin:0 auto;">
 ${emailBannerHtml()}
 <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666666;">NimBill</p>
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">${escapeHtml(intro)}</h1>
+${emailHeadingHtml(heading, intro)}
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:1px solid #000000;">
 ${rows
   .map(
@@ -204,6 +217,7 @@ export function payerReceiptEmail(inv: Invoice): Omit<MailMessage, "to"> {
   );
 
   const subject = `Receipt for ${inv.number}: ${totalPaidFormatted} paid to ${merchant}`;
+  const heading = `Payment confirmed: ${totalPaidFormatted}`;
   const intro =
     tip > 0
       ? `Hi ${client}, your payment of ${totalPaidFormatted} (including a ${formatFiat(tip, inv.currency)} tip) for invoice ${inv.number} to ${merchant} is confirmed on-chain.`
@@ -246,7 +260,7 @@ ${inv.items
 <div style="max-width:480px;margin:0 auto;">
 ${emailBannerHtml()}
 <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666666;">NimBill · Payment Receipt</p>
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">${escapeHtml(intro)}</h1>
+${emailHeadingHtml(heading, intro)}
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:1px solid #000000;">
 ${rows
   .map(
@@ -378,7 +392,8 @@ export function recurringClientEmail(
   if (inv.dueDate) rows.push(["Due date", inv.dueDate]);
 
   const subject = `Invoice ${inv.number} from ${merchant} (${amount})`;
-  const intro = `Hi ${client}, here is your ${cadence} invoice ${inv.number} from ${merchant}.`;
+  const heading = `Your ${cadence} invoice ${inv.number}`;
+  const intro = endSentence(`Hi ${client}, here is your ${cadence} invoice ${inv.number} from ${merchant}`);
   const outro = `You can pay ${amount} in ${assets} at the live rate using the link above, or by entering Nimbill number ${nbNumber} in Nimiq Pay.`;
   const unsubText = `Don't want to receive future ${cadence} invoices from ${merchant}? Unsubscribe here: ${unsubUrl}`;
 
@@ -391,7 +406,7 @@ export function recurringClientEmail(
 <div style="max-width:480px;margin:0 auto;">
 ${emailBannerHtml()}
 <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666666;">NimBill</p>
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">${escapeHtml(intro)}</h1>
+${emailHeadingHtml(heading, intro)}
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:1px solid #000000;">
 ${rows
   .map(
@@ -430,10 +445,11 @@ export function recurringMerchantEmail(
   if (inv.dueDate) rows.push(["Due date", inv.dueDate]);
 
   const subject = `${inv.number} created for ${client} (${amount})`;
+  const heading = `Invoice ${inv.number} is ready`;
   const intro = `Your ${cadence} invoice ${inv.number} for ${client} is ready.`;
   const deliveryNote = inv.clientEmail
     ? `A copy was also emailed to ${inv.clientEmail}. You can still share the payment link directly on WhatsApp or in person.`
-    : `Open the invoice to share the payment link or Nimbill number with ${client}.`;
+    : endSentence(`Open the invoice to share the payment link or Nimbill number with ${client}`);
   const why = "You get this email because your address is saved in NimBill Settings. Remove it there to stop these emails.";
 
   const text = [intro, "", ...rows.map(([k, v]) => `${k}: ${v}`), "", `Open invoice: ${url}`, "", deliveryNote, "", why].join("\n");
@@ -445,7 +461,7 @@ export function recurringMerchantEmail(
 <div style="max-width:480px;margin:0 auto;">
 ${emailBannerHtml()}
 <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666666;">NimBill</p>
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">${escapeHtml(intro)}</h1>
+${emailHeadingHtml(heading, intro)}
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:1px solid #000000;">
 ${rows
   .map(
@@ -515,6 +531,7 @@ export function recurringUnsubscribedEmail(
   ];
 
   const subject = `${client} unsubscribed from your ${cadence} invoice (${amount})`;
+  const heading = "Recurring invoices stopped";
   const intro = `${client} opted out of future ${cadence} invoices.`;
   const outro = "Any invoices already sent stay open as they are, and no new recurring invoices will be generated for this schedule.";
   const why = "You get this email because your address is saved in NimBill Settings. Remove it there to stop these emails.";
@@ -528,7 +545,7 @@ export function recurringUnsubscribedEmail(
 <div style="max-width:480px;margin:0 auto;">
 ${emailBannerHtml()}
 <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666666;">NimBill</p>
-<h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">${escapeHtml(intro)}</h1>
+${emailHeadingHtml(heading, intro)}
 <table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-top:1px solid #000000;">
 ${rows
   .map(
