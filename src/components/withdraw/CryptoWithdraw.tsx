@@ -79,6 +79,7 @@ export function CryptoWithdraw() {
   const [receive, setReceive] = useState("");
   const [quote, setQuote] = useState<QuoteView | null>(null);
   const [withdrawal, setWithdrawal] = useState<WithdrawalView | null>(null); // a real one, once approved
+  const [recent, setRecent] = useState<WithdrawalView[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nimBalance, setNimBalance] = useState<number | null>(null);
@@ -86,13 +87,23 @@ export function CryptoWithdraw() {
   const chain = chainId ? getChain(chainId) : undefined;
   const tokens = chain ? tokensFor(chain, payWith) : [];
 
-  // NIM balance, to show next to "Pay with". Read by the server from the Nimiq network: Nimiq
-  // Pay's getBalance() can answer 0 before its light client has synced. Hidden if it fails.
+  const loadRecent = useCallback(() => {
+    if (!merchant?.address) return;
+    api<{ withdrawals: WithdrawalView[] }>("/api/withdraw")
+      .then((r) => setRecent(r.withdrawals))
+      .catch(() => {});
+  }, [merchant?.address]);
+
+  // NIM balance and recent withdrawals, shown on Step 1. Read by the server from the Nimiq network:
+  // Nimiq Pay's getBalance() can answer 0 before its light client has synced. Hidden if it fails.
   useEffect(() => {
     if (!merchant?.address) return;
     let alive = true;
     api<{ nim: number }>("/api/withdraw/balance")
       .then((r) => alive && setNimBalance(r.nim))
+      .catch(() => {});
+    api<{ withdrawals: WithdrawalView[] }>("/api/withdraw")
+      .then((r) => alive && setRecent(r.withdrawals))
       .catch(() => {});
     return () => {
       alive = false;
@@ -189,7 +200,14 @@ export function CryptoWithdraw() {
       created = (
         await api<{ withdrawal: WithdrawalView }>("/api/withdraw", {
           method: "POST",
-          body: { payWith, chain: chainId, asset, receive: receive.trim(), destination },
+          body: {
+            payWith,
+            chain: chainId,
+            asset,
+            receive: receive.trim(),
+            destination,
+            expectedSendEstimate: quote.sendEstimate,
+          },
         })
       ).withdrawal;
       if (!created.lightningInvoice) throw Errors.internal(null, "The withdrawal came back without an invoice.");
@@ -211,15 +229,45 @@ export function CryptoWithdraw() {
       }
       const message = walletErrorMessage(e); // null: the user declined
       if (created) {
-        await api(`/api/withdraw/${created.id}/cancel`, {
+        const cancelled = await api<{ withdrawal: WithdrawalView }>(`/api/withdraw/${created.id}/cancel`, {
           method: "POST",
           body: { reason: message ?? "Cancelled in Nimiq Pay. Nothing was spent." },
-        }).catch(() => {});
+        }).catch(() => null);
+        // If the provider already saw the Lightning payment before Nimiq Pay threw, `markCancelled`
+        // rescues the swap and advances it — take the user to the tracking screen instead of an error.
+        if (cancelled?.withdrawal && cancelled.withdrawal.status !== "cancelled") {
+          setWithdrawal(cancelled.withdrawal);
+          return go("tracking");
+        }
       }
       setError(message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const openExisting = (w: WithdrawalView) => {
+    setError(null);
+    setPayWith(w.payWith);
+    setChainId(w.chain as ChainId);
+    setAsset(w.asset);
+    setDestination(w.destination);
+    setWithdrawal(w);
+    setQuote({
+      sample: false,
+      providerName: w.providerName,
+      payWith: w.payWith,
+      chain: w.chain as ChainId,
+      asset: w.asset,
+      destination: w.destination,
+      receiveAmount: w.receiveAmount,
+      receiveMin: w.receiveAmount,
+      sendEstimate: w.sendEstimate ?? "0",
+      fees: w.fees,
+      expiresAt: w.expiresAt ?? new Date().toISOString(),
+      etaSeconds: 120,
+    });
+    setStep(w.status === "delivered" ? "receipt" : "tracking");
   };
 
   const reset = () => {
@@ -232,6 +280,7 @@ export function CryptoWithdraw() {
     setQuote(null);
     setWithdrawal(null);
     setError(null);
+    loadRecent();
   };
 
   const formIndex = FORM_STEPS.indexOf(step);
@@ -249,26 +298,29 @@ export function CryptoWithdraw() {
       )}
 
       {step === "send" && (
-        <Card>
-          <h2 className="text-lg font-bold">Pay with</h2>
-          <p className="mt-1 text-sm text-muted">Move your money to the wallet you already use, as USDC or USDT on the chain you pick.</p>
-          <div role="radiogroup" aria-label="Pay with" className="mt-4 space-y-2">
-            <Choice selected={payWith === "NIM"} onClick={() => pickPayWith("NIM")}>
-              <TokenLogo asset="NIM" />
-              <span className="flex-1 font-medium">NIM</span>
-              {nimBalance !== null && <span className="text-sm text-muted tabular-nums">{formatAsset(nimBalance, "NIM")}</span>}
-            </Choice>
-            <Choice selected={payWith === "USDT"} onClick={() => pickPayWith("USDT")}>
-              <TokenLogo asset="USDT" />
-              <span className="flex-1 font-medium">
-                USDT <span className="font-normal text-muted">on Polygon</span>
-              </span>
-            </Choice>
-          </div>
-          <Button block className="mt-4" onClick={() => go("chain")}>
-            Continue
-          </Button>
-        </Card>
+        <>
+          <Card>
+            <h2 className="text-lg font-bold">Pay with</h2>
+            <p className="mt-1 text-sm text-muted">Move your money to the wallet you already use, as USDC or USDT on the chain you pick.</p>
+            <div role="radiogroup" aria-label="Pay with" className="mt-4 space-y-2">
+              <Choice selected={payWith === "NIM"} onClick={() => pickPayWith("NIM")}>
+                <TokenLogo asset="NIM" />
+                <span className="flex-1 font-medium">NIM</span>
+                {nimBalance !== null && <span className="text-sm text-muted tabular-nums">{formatAsset(nimBalance, "NIM")}</span>}
+              </Choice>
+              <Choice selected={payWith === "USDT"} onClick={() => pickPayWith("USDT")}>
+                <TokenLogo asset="USDT" />
+                <span className="flex-1 font-medium">
+                  USDT <span className="font-normal text-muted">on Polygon</span>
+                </span>
+              </Choice>
+            </div>
+            <Button block className="mt-4" onClick={() => go("chain")}>
+              Continue
+            </Button>
+          </Card>
+          {recent && recent.length > 0 && <RecentWithdrawals list={recent} onSelect={openExisting} />}
+        </>
       )}
 
       {step === "chain" && (
@@ -573,7 +625,10 @@ function Review({
           { term: "Via", detail: `${quote.providerName} · about ${Math.round(quote.etaSeconds / 60)} min` },
         ]}
       />
-      <p className="mt-3 text-xs text-muted">Nimiq Pay shows the exact amount when you approve, including its own fee.</p>
+      <p className="mt-3 text-xs text-muted">
+        Nimiq Pay shows the exact amount when you approve, including its own fee. Swaps are executed non-custodially by{" "}
+        {quote.providerName} via a Lightning hold invoice; NimBill never holds your funds.
+      </p>
       <div className="mt-4 flex items-center justify-between border-t border-line pt-4 text-sm">
         <span className="text-muted">Quote valid for</span>
         {stuck ? (
@@ -711,6 +766,66 @@ function Tracking({
       )}
       {withdrawal && <p className="mt-3 text-xs text-muted">Reference: {withdrawal.id}</p>}
       {quote.sample && <p className="mt-3 text-xs text-muted">Sample: these steps are simulated.</p>}
+    </Card>
+  );
+}
+
+const STATUS_BADGE: Record<WithdrawalView["status"], { label: string; variant: "solid" | "outline" | "muted" }> = {
+  requested: { label: "Requested", variant: "muted" },
+  quoted: { label: "Awaiting approval", variant: "outline" },
+  paying: { label: "Paying…", variant: "solid" },
+  swapping: { label: "Swapping…", variant: "solid" },
+  delivering: { label: "Delivering…", variant: "solid" },
+  delivered: { label: "Delivered ✓", variant: "outline" },
+  expired: { label: "Expired", variant: "muted" },
+  cancelled: { label: "Cancelled", variant: "muted" },
+  refund_pending: { label: "Refunding…", variant: "outline" },
+  refunded: { label: "Refunded", variant: "muted" },
+  failed: { label: "Needs check", variant: "solid" },
+};
+
+function RecentWithdrawals({ list, onSelect }: { list: WithdrawalView[]; onSelect: (w: WithdrawalView) => void }) {
+  return (
+    <Card padding="none" as="section" aria-label="Recent withdrawals">
+      <div className="border-b border-line px-4 py-3">
+        <h3 className="font-mono text-xs font-semibold tracking-wider text-muted uppercase">Your withdrawals</h3>
+      </div>
+      <ul className="divide-y divide-line">
+        {list.map((w) => {
+          const chain = getChain(w.chain);
+          const badge = STATUS_BADGE[w.status] ?? { label: w.status, variant: "muted" as const };
+          return (
+            <li key={w.id}>
+              <button
+                type="button"
+                onClick={() => onSelect(w)}
+                className="flex w-full items-center justify-between gap-3 p-4 text-left transition-colors hover:bg-subtle"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-1.5 font-semibold tabular-nums">
+                    <TokenLogo asset={w.asset} className="h-4 w-4" />
+                    {stable(w.receiveAmount)} {w.asset}
+                    {chain && (
+                      <span className="font-normal text-muted">
+                        on {chain.name}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 truncate font-mono text-xs text-muted">
+                    {shortHex(w.destination)} · {w.id}
+                  </p>
+                </div>
+                <div className="shrink-0 text-right">
+                  <Badge variant={badge.variant}>{badge.label}</Badge>
+                  <p className="mt-1 text-[11px] text-muted">
+                    {new Date(w.createdAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" })}
+                  </p>
+                </div>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
     </Card>
   );
 }

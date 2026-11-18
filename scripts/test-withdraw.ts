@@ -2,6 +2,8 @@
 import { getAddress } from "viem";
 import { checkDestination } from "../src/lib/withdraw/address.ts";
 import { CHAINS, findRoute, getChain, offerNimiqPayAddress, tokensFor } from "../src/lib/withdraw/chains.ts";
+import { QuoteBody } from "../src/lib/withdraw/schemas.ts";
+import { hasExcessiveQuoteDrift } from "../src/lib/withdraw/service.ts";
 
 let failed = 0;
 const ok = (c: unknown, m: string) => {
@@ -68,6 +70,23 @@ ok(!short.ok && /42 characters/.test(short.message), "a cut-off address is refus
 ok(!checkDestination("polygon", "   ").ok, "an empty address is refused");
 ok(!checkDestination("base", evm).ok, "a chain that is not live is refused");
 ok(!checkDestination("mars", evm).ok, "an unknown chain is refused");
+
+// ---- quote drift protection & schema ----
+ok(!hasExcessiveQuoteDrift("100000", undefined), "no expectedSendEstimate -> no drift flagged");
+ok(!hasExcessiveQuoteDrift("102000", "100000"), "2% upward move is within MAX_QUOTE_DRIFT");
+ok(hasExcessiveQuoteDrift("102001", "100000"), ">2% upward move is flagged by hasExcessiveQuoteDrift");
+ok(!hasExcessiveQuoteDrift("95000", "100000"), "downward move (cheaper for user) is never flagged");
+ok(
+  QuoteBody.safeParse({
+    payWith: "NIM",
+    chain: "polygon",
+    asset: "USDC",
+    receive: "10",
+    destination: evm,
+    expectedSendEstimate: "250000000",
+  }).success,
+  "QuoteBody accepts optional expectedSendEstimate",
+);
 
 if (failed) {
   console.error(`\n${failed} failed`);

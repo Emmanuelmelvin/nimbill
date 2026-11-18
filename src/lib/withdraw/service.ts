@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, lt, or } from "drizzle-orm";
 import { LUNA_PER_NIM } from "../currencies";
 import { getDb, schema } from "../db";
 import type { Withdrawal, WithdrawalFee, WithdrawalStatus } from "../db/schema";
@@ -25,8 +25,30 @@ const UNITS = 1_000_000; // USDC / USDT: 6 decimals
 /** Room for Nimiq Pay's own NIM → Lightning fee, which NimBill can't know in advance. */
 const NIMIQ_PAY_ALLOWANCE = 0.01;
 const QUOTE_FRESH_MS = 3 * 60_000; // the screen offers Approve until 1 minute before this
+/** Maximum upward drift (2%) allowed between the Review screen's quote and the swap created on Approve. */
+export const MAX_QUOTE_DRIFT = 0.02;
+/** Window during which a "cancelled" withdrawal is still checked in case Nimiq Pay sent the Lightning payment before throwing. */
+const CANCEL_RESCUE_MS = 30 * 60_000;
 /** A withdrawal that has been paid but not delivered after this long gets flagged in the logs. */
 export const STUCK_AFTER_MS = 30 * 60_000;
+
+const FUNDED_PROVIDER_STATUSES = new Set([
+  "clientfundingseen",
+  "clientfunded",
+  "serverfunded",
+  "clientredeeming",
+  "clientredeemed",
+  "serverredeemed",
+]);
+
+/** True when the swap's fresh `sendEstimate` drifted upward by more than `MAX_QUOTE_DRIFT` (2%) from `expectedSendEstimate`. */
+export function hasExcessiveQuoteDrift(freshEstimate: string | number | bigint, expectedEstimate?: string | null): boolean {
+  if (!expectedEstimate) return false;
+  const fresh = Number(freshEstimate);
+  const expected = Number(expectedEstimate);
+  if (!Number.isFinite(fresh) || !Number.isFinite(expected) || expected <= 0) return false;
+  return fresh > Math.ceil(expected * (1 + MAX_QUOTE_DRIFT));
+}
 
 export const withdrawalsLive = () => env.WITHDRAW_LIVE === "true";
 
@@ -87,6 +109,9 @@ export async function createWithdrawal(nimiqAddress: string, body: QuoteBody): P
   const r = resolve(body);
   const q = await lendaswap.quote(r.chain, r.token, r.receiveUnits);
   const { fees, sendEstimate } = await price(body, q, body.asset);
+  if (hasExcessiveQuoteDrift(sendEstimate, body.expectedSendEstimate)) {
+    throw Errors.conflict("The exchange rate moved since your quote was shown. Please review the updated quote before approving.");
+  }
   const id = `wd_${newId(12)}`;
   const swap = await lendaswap.create(r.chain, r.token, r.receiveUnits, r.destination);
 
@@ -159,24 +184,48 @@ async function setStatus(w: Withdrawal, status: WithdrawalStatus, changes: Parti
 /** Nimiq Pay accepted the payment (`payLightningInvoice` resolved). */
 export async function markPaid(nimiqAddress: string, id: string, pay: { hash?: string; swapId?: string }): Promise<Withdrawal> {
   const w = await load(id, nimiqAddress);
-  if (w.status !== "quoted") return w; // already moved on (the worker may have seen the payment first)
-  return setStatus(w, "paying", { payTxHash: pay.hash ?? null, paySwapId: pay.swapId ?? null });
+  if (w.status !== "quoted" && w.status !== "cancelled") return w; // already moved on (the worker may have seen the payment first)
+  return setStatus(w, "paying", { payTxHash: pay.hash ?? null, paySwapId: pay.swapId ?? null, failureReason: null });
 }
 
-/** The user declined in Nimiq Pay, or Nimiq Pay refused: nothing was spent. */
+/**
+ * The user declined in Nimiq Pay, or Nimiq Pay refused: nothing was spent.
+ * Checks the provider first in case Nimiq Pay actually submitted the Lightning payment right before
+ * throwing a bridge/timeout error — if the provider already saw the payment, advances the swap instead
+ * of stranding it in `cancelled`.
+ */
 export async function markCancelled(nimiqAddress: string, id: string, reason: string): Promise<Withdrawal> {
   const w = await load(id, nimiqAddress);
   if (w.status !== "quoted") return w;
+  if (w.providerId === PROVIDER_ID && w.providerSwapId) {
+    try {
+      const swap = await lendaswap.get(w.providerSwapId);
+      if (FUNDED_PROVIDER_STATUSES.has(swap.status)) {
+        logger.warn("markCancelled called on a funded swap; advancing instead of cancelling", {
+          id: w.id,
+          swapId: w.providerSwapId,
+          providerStatus: swap.status,
+        });
+        return await advance(w);
+      }
+    } catch (e) {
+      logger.warn("markCancelled provider check failed; worker will re-verify", { id: w.id, error: (e as Error).message });
+    }
+  }
   return setStatus(w, "cancelled", {}, reason);
 }
 
 /** Look at the provider (and the chain) and move the withdrawal forward. Safe to run any time. */
 export async function advance(w: Withdrawal): Promise<Withdrawal> {
-  if (isFinal(w.status) || w.providerId !== PROVIDER_ID || !w.providerSwapId) return w;
+  const canRescueCancelled = w.status === "cancelled" && Date.now() - w.createdAt.getTime() < CANCEL_RESCUE_MS;
+  if ((isFinal(w.status) && !canRescueCancelled) || w.providerId !== PROVIDER_ID || !w.providerSwapId) return w;
   const route = findRoute(w.chain, w.asset, w.payWith);
-  if (!route) return setStatus(w, "failed", {}, "This chain or token is no longer offered.");
+  if (!route) return w.status === "cancelled" ? w : setStatus(w, "failed", {}, "This chain or token is no longer offered.");
   const swap = await lendaswap.get(w.providerSwapId);
   const status = swap.status as LendaswapSwap["status"];
+  if (w.status === "cancelled" && !FUNDED_PROVIDER_STATUSES.has(status)) {
+    return w;
+  }
 
   switch (status) {
     case "pending": {
@@ -244,13 +293,49 @@ export async function getWithdrawal(nimiqAddress: string, id: string): Promise<W
 
 const OPEN: WithdrawalStatus[] = ["quoted", "paying", "swapping", "delivering"];
 
-/** Worker job: bring every open withdrawal forward. Returns how many were looked at. */
+/** Recent withdrawals for the signed-in user (newest first), bringing any open ones up to date. */
+export async function listWithdrawals(nimiqAddress: string, limit = 15): Promise<Withdrawal[]> {
+  const db = await getDb();
+  const rows = await db
+    .select()
+    .from(schema.withdrawals)
+    .where(eq(schema.withdrawals.nimiqAddress, nimiqAddress))
+    .orderBy(desc(schema.withdrawals.createdAt))
+    .limit(limit);
+
+  const out: Withdrawal[] = [];
+  for (const w of rows) {
+    const recentlyCancelled = w.status === "cancelled" && Date.now() - w.createdAt.getTime() < CANCEL_RESCUE_MS;
+    const needsAdvance = (!isFinal(w.status) || recentlyCancelled) && Date.now() - w.updatedAt.getTime() >= 3_000;
+    if (needsAdvance) {
+      try {
+        out.push(await advance(w));
+        continue;
+      } catch (e) {
+        logger.warn("withdrawal list advance failed", { id: w.id, error: (e as Error).message });
+      }
+    }
+    out.push(w);
+  }
+  return out;
+}
+
+/** Worker job: bring every open withdrawal (plus recently cancelled ones in case Nimiq Pay paid before throwing) forward. */
 export async function advanceOpenWithdrawals(limit = 25): Promise<number> {
   const db = await getDb();
+  const rescueSince = new Date(Date.now() - CANCEL_RESCUE_MS);
   const open = await db
     .select()
     .from(schema.withdrawals)
-    .where(and(inArray(schema.withdrawals.status, OPEN), lt(schema.withdrawals.updatedAt, new Date(Date.now() - 4_000))))
+    .where(
+      and(
+        or(
+          inArray(schema.withdrawals.status, OPEN),
+          and(eq(schema.withdrawals.status, "cancelled"), gt(schema.withdrawals.createdAt, rescueSince)),
+        ),
+        lt(schema.withdrawals.updatedAt, new Date(Date.now() - 4_000)),
+      ),
+    )
     .limit(limit);
   for (const w of open) {
     try {

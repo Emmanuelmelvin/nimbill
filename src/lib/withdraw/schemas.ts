@@ -20,6 +20,15 @@ export const QuoteBody = z.object({
   /** Whole units, e.g. "10.50". */
   receive: StableAmount,
   destination: z.string().trim().min(1, "Paste an address").max(120),
+  /**
+   * Optional `sendEstimate` (smallest units of `payWith`) that the user saw on the Review screen.
+   * When provided on `POST /api/withdraw`, `createWithdrawal` refuses to create a swap if the fresh
+   * quote's required amount drifted upward by more than 2%, so the user is never surprised by a jump.
+   */
+  expectedSendEstimate: z
+    .string()
+    .regex(/^[1-9][0-9]{0,20}$/, "Invalid expected send estimate")
+    .optional(),
 });
 export type QuoteBody = z.infer<typeof QuoteBody>;
 
