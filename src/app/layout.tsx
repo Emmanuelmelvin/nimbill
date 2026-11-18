@@ -22,13 +22,18 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   themeColor: "#000000",
+  // Lets the page see the real safe areas. Android 15 runs apps edge to edge, so a web view can
+  // sit under the system gesture bar; without "cover" the browser reports a 0 bottom inset and the
+  // tab bar's labels end up under that bar. The tab bar and toasts pad by env(safe-area-inset-bottom).
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     // Nimiq Pay injects --safe-area-inset-* styles on <html> before React hydrates; ignore that attribute mismatch.
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
-      <body className="min-h-full overflow-x-clip font-sans">
+      {/* Top inset: with viewport-fit=cover a full-screen web view could otherwise draw under the status bar. 0 elsewhere. */}
+      <body className="min-h-full overflow-x-clip pt-[env(safe-area-inset-top,0px)] font-sans">
         {/* Pages are a narrow column, except pages with full-width sections (.bleed: the landing page,
             the docs), where the column opens up to the whole width and the page sets its own. */}
         <div className="mx-auto flex min-h-full w-full max-w-xl flex-col px-4 pb-12 has-[.bleed]:max-w-none has-[.bleed]:px-0">

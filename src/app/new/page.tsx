@@ -15,7 +15,6 @@ import {
   Label,
   OpenInNimiqPay,
   PageTitle,
-  SegmentedControl,
   Select,
   Textarea,
 } from "@/components/ui";
@@ -29,12 +28,6 @@ import type { RecurringIntervalInput } from "@/lib/schemas";
 type Row = { description: string; quantity: string; unitPrice: string };
 const emptyRow = (): Row => ({ description: "", quantity: "1", unitPrice: "" });
 const LAST_CURRENCY = "nimbill:currency";
-
-const BILLING_TYPES = [
-  { value: "once", label: "One-time" },
-  { value: "repeat", label: "Repeat" },
-] as const;
-type BillingType = (typeof BILLING_TYPES)[number]["value"];
 
 const INTERVAL_OPTIONS: { value: RecurringIntervalInput; label: string; short: string }[] = [
   { value: "weekly", label: "Weekly", short: "wk" },
@@ -63,7 +56,7 @@ export default function NewInvoice() {
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [note, setNote] = useState("");
   const [dueDate, setDueDate] = useState("");
-  const [billingType, setBillingType] = useState<BillingType>("once");
+  const [isRepeat, setIsRepeat] = useState(false);
   const [interval, setInterval] = useState<RecurringIntervalInput>("monthly");
   const [dueDays, setDueDays] = useState("7");
   const [busy, setBusy] = useState(false);
@@ -91,7 +84,7 @@ export default function NewInvoice() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time sync from browser URL query
-    if (params.get("recurring") === "1") setBillingType("repeat");
+    if (params.get("recurring") === "1") setIsRepeat(true);
     const from = params.get("from");
     if (!from || !/^[a-z0-9]{6,20}$/.test(from)) return;
     api<{ invoice: PublicInvoice; isOwner: boolean; clientEmail: string | null }>(`/api/invoices/${from}`)
@@ -141,7 +134,6 @@ export default function NewInvoice() {
   }));
 
   const update = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const isRepeat = billingType === "repeat";
   const intervalMeta = INTERVAL_OPTIONS.find((o) => o.value === interval) ?? INTERVAL_OPTIONS[2];
 
   return (
@@ -180,8 +172,6 @@ export default function NewInvoice() {
           }
         }}
       >
-        <SegmentedControl label="Billing type" options={BILLING_TYPES} value={billingType} onChange={setBillingType} size="md" block />
-
         <Card className="space-y-4">
           {book.length > 0 && (
             <Field label="Saved clients" htmlFor="saved-client">
@@ -238,31 +228,10 @@ export default function NewInvoice() {
             />
           )}
           {isRepeat ? (
-            <>
-              <Field label="Currency" htmlFor="currency">
-                <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
-              </Field>
-              <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
-                <Field label="Repeat every" htmlFor="interval">
-                  <Select id="interval" value={interval} onChange={(e) => setInterval(e.target.value as RecurringIntervalInput)}>
-                    {INTERVAL_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-                <Field label="Payment terms" htmlFor="due-days">
-                  <Select id="due-days" value={dueDays} onChange={(e) => setDueDays(e.target.value)}>
-                    {DUE_DAYS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-              </div>
-            </>
+            // Each repeated invoice gets its own due date from the payment terms below.
+            <Field label="Currency" htmlFor="currency">
+              <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
+            </Field>
           ) : (
             <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
               <Field label="Currency" htmlFor="currency">
@@ -364,6 +333,43 @@ export default function NewInvoice() {
               placeholder="Thanks for your business!"
             />
           </Field>
+        </Card>
+
+        {/* Repeating is an option on the same form: ticking it shows only the extra fields it needs. */}
+        <Card className="space-y-4">
+          <Checkbox
+            label="Repeat this invoice"
+            description="NimBill sends your client a new copy automatically, on a schedule you choose."
+            checked={isRepeat}
+            onChange={(e) => setIsRepeat(e.target.checked)}
+          />
+          {isRepeat && (
+            <>
+              <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
+                <Field label="Repeat every" htmlFor="interval">
+                  <Select id="interval" value={interval} onChange={(e) => setInterval(e.target.value as RecurringIntervalInput)}>
+                    {INTERVAL_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Payment terms" htmlFor="due-days">
+                  <Select id="due-days" value={dueDays} onChange={(e) => setDueDays(e.target.value)}>
+                    {DUE_DAYS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+              {!clientEmail.trim() && (
+                <p className="text-xs text-muted">Add your client&apos;s email above: each new invoice is emailed there.</p>
+              )}
+            </>
+          )}
         </Card>
 
         <Alert>
