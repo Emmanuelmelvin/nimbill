@@ -302,6 +302,15 @@ export function CryptoWithdraw() {
           </span>
         </div>
       )}
+      {/* A withdrawal opened from the list (or one just sent) always has a way back to Step 1 and the
+          list. Leaving never stops it: the server keeps it moving, and it can be reopened. */}
+      {(step === "tracking" || step === "receipt") && (
+        <div className="flex min-h-9 items-center text-sm text-muted">
+          <TextButton onClick={reset} disabled={busy}>
+            ← Back to withdrawals
+          </TextButton>
+        </div>
+      )}
 
       {step === "send" && (
         <>
