@@ -5,6 +5,7 @@ import { getDb, schema } from "./db";
 import type { WebhookEndpoint } from "./db/schema";
 import { AppError } from "./errors";
 import { logger } from "./logger";
+import { emailBannerHtml } from "./notifications";
 import { siteUrl } from "./site";
 import {
   FAILING_MIN_ATTEMPTS,
@@ -183,6 +184,7 @@ function layout({
 <html lang="en">
 <body style="margin:0;padding:24px;background:#ffffff;color:#000000;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;">
 <div style="max-width:480px;margin:0 auto;">
+${emailBannerHtml()}
 <p style="margin:0 0 4px;font-size:12px;letter-spacing:0.08em;text-transform:uppercase;color:#666666;">NimBill · Webhooks</p>
 <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">${escapeHtml(heading)}</h1>
 ${paragraphs.map((p) => `<p style="margin:0 0 12px;font-size:15px;line-height:1.5;">${escapeHtml(p)}</p>`).join("\n")}

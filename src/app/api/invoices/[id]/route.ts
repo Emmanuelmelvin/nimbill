@@ -4,6 +4,7 @@ import { getSessionAddress, requireSessionAddress } from "@/lib/auth";
 import { corsPreflight, withCors } from "@/lib/cors";
 import { Errors } from "@/lib/errors";
 import { cancelInvoice, getInvoice, markViewed, publicInvoice, reconcileMerchant } from "@/lib/invoices";
+import { getRecurringInvoice, invoiceRecurringSummary } from "@/lib/recurring";
 
 // Reading an invoice is open to other sites (CORS), for agents; cancelling it (DELETE) is not.
 export const OPTIONS = corsPreflight(["GET"]);
@@ -22,9 +23,11 @@ export const GET = withCors(
     // "?view=1" is sent only by the invoice page, so API callers, link-preview bots and the
     // merchant themselves never count as the client opening it.
     if (!isOwner && req.nextUrl.searchParams.get("view") === "1") inv = await markViewed(inv);
+    const rec = inv.recurringId ? await getRecurringInvoice(inv.recurringId) : null;
     return json({
       invoice: publicInvoice(inv),
       isOwner,
+      recurring: rec ? invoiceRecurringSummary(rec) : null,
       // Private to the merchant: when the client first opened the invoice, and their email (for reminders).
       viewedAt: isOwner ? (inv.viewedAt?.toISOString() ?? null) : null,
       clientEmail: isOwner ? inv.clientEmail : null,

@@ -24,6 +24,7 @@ import { api, type PublicInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { formatFiat } from "@/lib/currencies";
 import { AppError } from "@/lib/errors";
+import { PayerEmail } from "@/lib/schemas";
 import type { PublicBoard } from "@/lib/board-server";
 
 type Tab = "pay" | "products";
@@ -190,14 +191,24 @@ function OpenAmount({ board, own }: { board: PublicBoard; own: boolean }) {
   const [currency, setCurrency] = useState(board.products[0]?.currency ?? "USD");
   const [description, setDescription] = useState("");
   const [payerName, setPayerName] = useState("");
+  const [payerEmail, setPayerEmail] = useState("");
+  const cleanEmail = payerEmail.trim();
+  const emailInvalid = cleanEmail.length > 0 && !PayerEmail.safeParse(cleanEmail).success;
   const value = Number(amount);
-  const ready = value > 0 && description.trim() !== "" && payerName.trim() !== "";
+  const ready = value > 0 && description.trim() !== "" && payerName.trim() !== "" && !emailInvalid;
 
   return (
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (ready && !own) void start({ amount: value, currency, description: description.trim(), payerName: payerName.trim() });
+        if (ready && !own)
+          void start({
+            amount: value,
+            currency,
+            description: description.trim(),
+            payerName: payerName.trim(),
+            ...(cleanEmail ? { payerEmail: cleanEmail } : {}),
+          });
       }}
     >
       <div className="space-y-4 px-5 pb-5">
@@ -235,6 +246,28 @@ function OpenAmount({ board, own }: { board: PublicBoard; own: boolean }) {
             autoComplete="name"
           />
         </Field>
+        <Field
+          label="Your email"
+          optional
+          htmlFor="pay-email"
+          hint={
+            emailInvalid ? (
+              <span className="font-medium text-ink">Enter a valid email address, or leave this blank.</span>
+            ) : (
+              "Receive the paid invoice and a receipt you can download as PDF."
+            )
+          }
+        >
+          <Input
+            id="pay-email"
+            type="email"
+            inputMode="email"
+            value={payerEmail}
+            onChange={(e) => setPayerEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+        </Field>
       </div>
       <Stub>
         {value > 0 && (
@@ -260,6 +293,9 @@ function ProductPicker({ board, own }: { board: PublicBoard; own: boolean }) {
   const [picked, setPicked] = useState<string | null>(board.products.length === 1 ? board.products[0].id : null);
   const [quantity, setQuantity] = useState(1);
   const [payerName, setPayerName] = useState("");
+  const [payerEmail, setPayerEmail] = useState("");
+  const cleanEmail = payerEmail.trim();
+  const emailInvalid = cleanEmail.length > 0 && !PayerEmail.safeParse(cleanEmail).success;
   // The product being looked at up close, if any.
   const [previewId, setPreviewId] = useState<string | null>(null);
   const product = board.products.find((p) => p.id === picked) ?? null;
@@ -270,7 +306,13 @@ function ProductPicker({ board, own }: { board: PublicBoard; own: boolean }) {
     <form
       onSubmit={(e) => {
         e.preventDefault();
-        if (product && payerName.trim() && !own) void start({ productId: product.id, quantity, payerName: payerName.trim() });
+        if (product && payerName.trim() && !emailInvalid && !own)
+          void start({
+            productId: product.id,
+            quantity,
+            payerName: payerName.trim(),
+            ...(cleanEmail ? { payerEmail: cleanEmail } : {}),
+          });
       }}
     >
       <ul className="divide-y divide-line border-t border-line">
@@ -368,6 +410,28 @@ function ProductPicker({ board, own }: { board: PublicBoard; own: boolean }) {
             autoComplete="name"
           />
         </Field>
+        <Field
+          label="Your email"
+          optional
+          htmlFor="buy-email"
+          hint={
+            emailInvalid ? (
+              <span className="font-medium text-ink">Enter a valid email address, or leave this blank.</span>
+            ) : (
+              "Receive the paid invoice and a receipt you can download as PDF."
+            )
+          }
+        >
+          <Input
+            id="buy-email"
+            type="email"
+            inputMode="email"
+            value={payerEmail}
+            onChange={(e) => setPayerEmail(e.target.value)}
+            placeholder="you@example.com"
+            autoComplete="email"
+          />
+        </Field>
       </div>
       <Stub>
         {product && (
@@ -379,7 +443,7 @@ function ProductPicker({ board, own }: { board: PublicBoard; own: boolean }) {
           </div>
         )}
         {error && <Alert kind="error">{error}</Alert>}
-        <Button type="submit" size="lg" block loading={busy} disabled={!product || !payerName.trim() || own}>
+        <Button type="submit" size="lg" block loading={busy} disabled={!product || !payerName.trim() || emailInvalid || own}>
           {product ? "Buy and pay →" : "Pick a product"}
         </Button>
       </Stub>

@@ -37,6 +37,9 @@ export const invoices = pgTable("invoices", {
   merchantEvmAddress: text("merchant_evm_address"),
   clientName: text("client_name").notNull(),
   clientEmail: text("client_email"),
+  // Optional email entered by the invoice payer to receive their payment confirmation and PDF receipt.
+  // Private: never exposed on PublicInvoice.
+  payerEmail: text("payer_email"),
   items: jsonb("items").$type<LineItem[]>().notNull(),
   currency: text("currency").notNull(),
   total: text("total").notNull(), // decimal string in `currency`
@@ -100,6 +103,7 @@ export const recurringInvoices = pgTable("recurring_invoices", {
   lastInvoiceId: text("last_invoice_id"),
   generatedCount: integer("generated_count").notNull().default(0),
   status: text("status").$type<RecurringStatus>().notNull().default("active"),
+  cancelledBy: text("cancelled_by").$type<"merchant" | "client">(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -124,6 +128,7 @@ export const quotes = pgTable("quotes", {
   amount: text("amount").notNull(), // smallest units; covers the invoice total plus `tip`
   rate: text("rate").notNull(), // fiat per 1 coin
   tip: text("tip").notNull().default("0"), // the client's tip, decimal string in the invoice currency
+  payerEmail: text("payer_email"), // optional email entered by the payer when locking the quote
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
 });
@@ -374,6 +379,7 @@ export type Cheque = typeof cheques.$inferSelect;
 export type Product = typeof products.$inferSelect;
 export type Transfer = typeof transfers.$inferSelect;
 export type Invoice = typeof invoices.$inferSelect;
+export type RecurringInvoice = typeof recurringInvoices.$inferSelect;
 export type Client = typeof clients.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type Quote = typeof quotes.$inferSelect;
@@ -629,4 +635,33 @@ ALTER TABLE cheques ADD COLUMN IF NOT EXISTS refund_address text;
 ALTER TABLE cheques ADD COLUMN IF NOT EXISTS htlc_address text;
 ALTER TABLE cheques ADD COLUMN IF NOT EXISTS htlc_tx_hash text;
 ALTER TABLE cheques ADD COLUMN IF NOT EXISTS htlc_timeout_at timestamptz;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS recurring_id text;
+CREATE INDEX IF NOT EXISTS invoices_recurring_idx ON invoices (recurring_id, created_at DESC);
+CREATE TABLE IF NOT EXISTS recurring_invoices (
+  id text PRIMARY KEY,
+  merchant_address text NOT NULL,
+  merchant_name text NOT NULL,
+  merchant_evm_address text,
+  client_name text NOT NULL,
+  client_email text,
+  items jsonb NOT NULL,
+  currency text NOT NULL,
+  total text NOT NULL,
+  note text,
+  interval text NOT NULL,
+  due_days integer NOT NULL DEFAULT 7,
+  next_run_date text NOT NULL,
+  last_run_date text,
+  last_invoice_id text,
+  generated_count integer NOT NULL DEFAULT 0,
+  status text NOT NULL DEFAULT 'active',
+  cancelled_by text,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE recurring_invoices ADD COLUMN IF NOT EXISTS cancelled_by text;
+CREATE INDEX IF NOT EXISTS recurring_invoices_merchant_idx ON recurring_invoices (merchant_address, created_at DESC);
+CREATE INDEX IF NOT EXISTS recurring_invoices_due_idx ON recurring_invoices (status, next_run_date);
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payer_email text;
+ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payer_email text;
 `;

@@ -13,10 +13,10 @@ export const POST = withCors(
   ["POST"],
   handle(async (req: NextRequest, ctx: RouteContext<"/api/invoices/[id]/quote">) => {
     const { id } = await ctx.params;
-    const { asset, tip } = QuoteBody.parse(await req.json());
+    const { asset, tip, payerEmail } = QuoteBody.parse(await req.json());
     const inv = await getInvoice(id);
     if (!inv) throw Errors.notFound("Invoice not found.");
-    const q = await createQuote(inv, asset, tip);
+    const q = await createQuote(inv, asset, tip, payerEmail);
     metrics.quoteCreated(asset);
     return json({
       quote: {

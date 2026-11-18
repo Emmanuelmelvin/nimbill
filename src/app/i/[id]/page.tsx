@@ -16,7 +16,9 @@ import {
   CoinAmount,
   CopyButton,
   Disclosure,
+  Field,
   Header,
+  Input,
   LinkButton,
   Loader,
   TextButton,
@@ -25,11 +27,19 @@ import {
   useCanShare,
   useOrigin,
 } from "@/components/ui";
-import { api, type PublicInvoice } from "@/lib/client/api";
+import { api, type InvoiceRecurringSummary, type PublicInvoice } from "@/lib/client/api";
 import { nimExplorerTx, openInNimiqPayLink, polygonExplorerTx } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { toast } from "@/lib/client/toast";
 import { formatFiat } from "@/lib/currencies";
+
+const INTERVAL_ADJECTIVE: Record<InvoiceRecurringSummary["interval"], string> = {
+  weekly: "weekly",
+  biweekly: "bi-weekly",
+  monthly: "monthly",
+  quarterly: "quarterly",
+  yearly: "yearly",
+};
 
 export default function InvoicePage() {
   return (
@@ -45,19 +55,28 @@ function InvoiceScreen() {
   const { merchant } = useSession();
   const [inv, setInv] = useState<PublicInvoice | null>(null);
   const [isOwner, setIsOwner] = useState(false);
+  const [recurring, setRecurring] = useState<InvoiceRecurringSummary | null>(null);
   const [viewedAt, setViewedAt] = useState<string | null>(null);
   const [clientEmail, setClientEmail] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [justPaid, setJustPaid] = useState(false);
+  const [paidPayerEmail, setPaidPayerEmail] = useState<string | null>(null);
   const [preview, setPreview] = useState(false);
 
   const load = useCallback(() => {
     // view=1: this is the invoice page, so a visit by anyone but the owner marks it "Viewed".
-    api<{ invoice: PublicInvoice; isOwner: boolean; viewedAt: string | null; clientEmail: string | null }>(`/api/invoices/${id}?view=1`)
+    api<{
+      invoice: PublicInvoice;
+      isOwner: boolean;
+      recurring: InvoiceRecurringSummary | null;
+      viewedAt: string | null;
+      clientEmail: string | null;
+    }>(`/api/invoices/${id}?view=1`)
       .then((r) => {
         setError(null);
         setInv(r.invoice);
         setIsOwner(r.isOwner);
+        setRecurring(r.recurring);
         setViewedAt(r.viewedAt);
         setClientEmail(r.clientEmail);
       })
@@ -72,9 +91,10 @@ function InvoiceScreen() {
     return () => clearInterval(t);
   }, [inv, isOwner, load]);
 
-  const onPaid = useCallback((p: PublicInvoice) => {
+  const onPaid = useCallback((p: PublicInvoice, payerEmail?: string) => {
     setInv(p);
     setJustPaid(true);
+    if (payerEmail) setPaidPayerEmail(payerEmail);
   }, []);
 
   if (error) {
@@ -112,7 +132,9 @@ function InvoiceScreen() {
           <Alert kind="success">Invoice created. Send the link or the Nimbill number to your client.</Alert>
         )}
 
-        {inv.status === "paid" && inv.payment && <PaidBanner inv={inv} fresh={justPaid} isOwner={isOwner} />}
+        {inv.status === "paid" && inv.payment && (
+          <PaidBanner inv={inv} fresh={justPaid} isOwner={isOwner} initialPayerEmail={paidPayerEmail} />
+        )}
 
         <InvoiceDoc inv={inv} />
 
@@ -120,15 +142,43 @@ function InvoiceScreen() {
           <SharePanel inv={inv} viewedAt={viewedAt} clientEmail={clientEmail} onCancelled={setInv} />
         )}
         {inv.status === "unpaid" && !ownerView && <PayPanel inv={inv} onPaid={onPaid} selfPreview={isOwner} />}
+        {recurring && !ownerView && (
+          <Card tone="subtle" className="text-sm text-muted">
+            {recurring.status === "cancelled" ? (
+              <p>
+                This was a {INTERVAL_ADJECTIVE[recurring.interval]} recurring invoice from{" "}
+                <span className="font-semibold text-ink">{inv.merchantName}</span>. Future recurring invoices for this schedule have been
+                stopped.
+              </p>
+            ) : (
+              <p>
+                This is a {INTERVAL_ADJECTIVE[recurring.interval]} recurring invoice from{" "}
+                <span className="font-semibold text-ink">{inv.merchantName}</span>. Don&apos;t want to receive future invoices?{" "}
+                <TextLink href={recurring.unsubscribePath}>Unsubscribe from this schedule</TextLink>.
+              </p>
+            )}
+          </Card>
+        )}
         {isOwner && inv.status === "unpaid" && (
           <TextButton className="w-full" onClick={() => setPreview((p) => !p)}>
             {preview ? "Back to my view" : "Preview as client"}
           </TextButton>
         )}
         {isOwner && !inv.isDemo && !preview && (
-          <LinkButton href={`/new?from=${inv.id}`} variant="secondary" block>
-            Duplicate this invoice
-          </LinkButton>
+          <div className="grid gap-2 min-[420px]:grid-cols-2">
+            <LinkButton href={`/new?from=${inv.id}`} variant="secondary" block>
+              Duplicate this invoice
+            </LinkButton>
+            {inv.recurringId ? (
+              <LinkButton href="/invoices?view=recurring" variant="secondary" block>
+                Manage recurring schedule
+              </LinkButton>
+            ) : (
+              <LinkButton href={`/new?from=${inv.id}&recurring=1`} variant="secondary" block>
+                Make recurring
+              </LinkButton>
+            )}
+          </div>
         )}
         {inv.status === "cancelled" && <Alert>This invoice was cancelled by {inv.merchantName}. No payment is due.</Alert>}
 
@@ -146,9 +196,24 @@ function InvoiceScreen() {
   );
 }
 
-function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolean; isOwner: boolean }) {
+function PaidBanner({
+  inv,
+  fresh,
+  isOwner,
+  initialPayerEmail,
+}: {
+  inv: PublicInvoice;
+  fresh: boolean;
+  isOwner: boolean;
+  initialPayerEmail?: string | null;
+}) {
   const p = inv.payment!;
   const explorer = p.asset === "NIM" ? nimExplorerTx(p.txHash) : polygonExplorerTx(p.txHash);
+  const pdfHref = `/api/invoices/${inv.id}/receipt`;
+  const [email, setEmail] = useState(initialPayerEmail ?? "");
+  const [sending, setSending] = useState(false);
+  const [sentTo, setSentTo] = useState<string | null>(initialPayerEmail ?? null);
+
   return (
     <Card tone="strong" className={cx("text-center", fresh && "animate-[pop_.4s_ease-out]")}>
       <div aria-hidden className="mx-auto flex h-14 w-14 items-center justify-center bg-ink text-3xl text-paper">
@@ -166,7 +231,23 @@ function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolea
         <LinkButton href={`/i/${inv.id}/receipt`} size="sm" className="min-h-11">
           View receipt
         </LinkButton>
-        <AnchorButton href={explorer} target="_blank" rel="noreferrer" variant="secondary" size="sm" className="min-h-11">
+        <AnchorButton
+          href={pdfHref}
+          download={`NimBill-Receipt-${inv.number}.pdf`}
+          variant="secondary"
+          size="sm"
+          className="min-h-11"
+        >
+          Download PDF
+        </AnchorButton>
+        <AnchorButton
+          href={explorer}
+          target="_blank"
+          rel="noreferrer"
+          variant="secondary"
+          size="sm"
+          className="col-span-2 min-h-11"
+        >
           On-chain proof ↗
         </AnchorButton>
         {/* "Pay with NimBill": back to the store that sent the payer here (its address is checked server-side). */}
@@ -176,6 +257,59 @@ function PaidBanner({ inv, fresh, isOwner }: { inv: PublicInvoice; fresh: boolea
           </AnchorButton>
         )}
       </div>
+      {!isOwner && !inv.isDemo && (
+        <div className="mt-4 border-t border-line pt-4 text-left">
+          {sentTo ? (
+            <p className="text-center text-xs text-muted">
+              Receipt and PDF emailed to <span className="font-semibold text-ink">{sentTo}</span>.
+            </p>
+          ) : (
+            <form
+              className="space-y-2"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const target = email.trim();
+                if (!target) return;
+                setSending(true);
+                try {
+                  await api(`/api/invoices/${inv.id}/receipt`, { body: { email: target } });
+                  setSentTo(target);
+                  toast.success("Receipt sent", { description: `Emailed to ${target} with a PDF receipt.` });
+                } catch (err) {
+                  toast.error("Couldn't send receipt", { description: (err as Error).message });
+                } finally {
+                  setSending(false);
+                }
+              }}
+            >
+              <Field
+                label={
+                  <>
+                    Email me this receipt &amp; PDF <span className="font-normal text-muted">(optional)</span>
+                  </>
+                }
+                htmlFor="paid-receipt-email"
+                size="sm"
+              >
+                <div className="flex gap-2">
+                  <Input
+                    id="paid-receipt-email"
+                    type="email"
+                    inputMode="email"
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="you@example.com"
+                  />
+                  <Button type="submit" size="sm" variant="secondary" loading={sending} disabled={!email.trim()}>
+                    Send
+                  </Button>
+                </div>
+              </Field>
+            </form>
+          )}
+        </div>
+      )}
     </Card>
   );
 }

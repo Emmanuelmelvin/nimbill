@@ -103,6 +103,8 @@ export async function createBoardInvoice(
     merchantName: m.name,
     merchantEvmAddress: m.evmAddress,
     clientName: input.payerName,
+    clientEmail: input.payerEmail || null,
+    payerEmail: input.payerEmail || null,
     source: "board" as const,
     integration: endpoint ? { id: endpoint.id, reference: input.reference ?? null, metadata: input.metadata ?? null, returnUrl } : null,
   };

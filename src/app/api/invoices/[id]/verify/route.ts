@@ -12,10 +12,10 @@ export const POST = withCors(
   ["POST"],
   handle(async (req: NextRequest, ctx: RouteContext<"/api/invoices/[id]/verify">) => {
     const { id } = await ctx.params;
-    const { asset, txHash } = VerifyBody.parse(await req.json());
+    const { asset, txHash, payerEmail } = VerifyBody.parse(await req.json());
     const inv = await getInvoice(id);
     if (!inv) throw Errors.notFound("Invoice not found.");
-    const r = await verifyPayment(inv, asset, txHash);
+    const r = await verifyPayment(inv, asset, txHash, payerEmail);
     if (r.status === "paid") return json({ status: "paid", invoice: publicInvoice(r.invoice) });
     return json(r);
   }),

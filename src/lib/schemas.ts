@@ -12,21 +12,50 @@ export const LineItemInput = z.object({
   unitPrice: z.coerce.number().positive("Price must be more than 0").max(1e12),
 });
 
-export const NewInvoiceBody = z.object({
-  clientName: z.string().trim().min(1, "Who is this invoice for?").max(80),
-  clientEmail: z.union([z.literal(""), z.email("That email does not look right")]).optional(),
-  currency: z.enum(CURRENCY_CODES),
-  items: z.array(LineItemInput).min(1, "Add at least one line item").max(30),
-  /** Remember this client (name and email) for the next invoice. */
-  saveClient: z.boolean().optional(),
-  note: z.string().trim().max(500).optional(),
-  dueDate: z
+export const RECURRING_INTERVALS = ["weekly", "biweekly", "monthly", "quarterly", "yearly"] as const;
+export type RecurringIntervalInput = (typeof RECURRING_INTERVALS)[number];
+
+export const RecurringConfigInput = z.object({
+  interval: z.enum(RECURRING_INTERVALS, { error: "Pick how often to repeat" }),
+  dueDays: z.coerce.number().int("Due days must be a whole number").min(0).max(365).default(7),
+  startDate: z
     .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid due date")
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid start date")
     .optional()
     .or(z.literal("")),
 });
+
+export const NewInvoiceBody = z
+  .object({
+    clientName: z.string().trim().min(1, "Who is this invoice for?").max(80),
+    clientEmail: z.union([z.literal(""), z.email("That email does not look right")]).optional(),
+    currency: z.enum(CURRENCY_CODES),
+    items: z.array(LineItemInput).min(1, "Add at least one line item").max(30),
+    /** Remember this client (name and email) for the next invoice. */
+    saveClient: z.boolean().optional(),
+    note: z.string().trim().max(500).optional(),
+    dueDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, "Pick a valid due date")
+      .optional()
+      .or(z.literal("")),
+    /** Optional schedule to repeat this invoice automatically. */
+    recurring: RecurringConfigInput.optional(),
+  })
+  .refine((b) => !b.recurring || (!!b.clientEmail && b.clientEmail.trim().length > 0), {
+    message: "Enter your client's email so NimBill can send each recurring invoice",
+    path: ["clientEmail"],
+  });
 export type NewInvoiceInput = z.input<typeof NewInvoiceBody>;
+
+export const RecurringPatchBody = z.object({
+  action: z.enum(["pause", "resume", "cancel", "issue_now"]),
+});
+export type RecurringPatchInput = z.input<typeof RecurringPatchBody>;
+
+export const RecurringUnsubscribeBody = z.object({
+  token: z.string().trim().min(16, "Invalid unsubscribe link").max(128),
+});
 
 /**
  * The merchant's own email for "invoice paid" notifications. Optional: leaving it out keeps the
@@ -42,6 +71,18 @@ export const MerchantEmail = z
 
 export const AssetInput = z.enum(["NIM", "USDT"]);
 
+/** Optional email entered by the invoice payer to receive the paid invoice and PDF receipt. */
+export const PayerEmail = z
+  .string()
+  .trim()
+  .max(254, "That email is too long")
+  .pipe(z.union([z.literal(""), z.email("That email does not look right")]))
+  .optional();
+
+export const ReceiptEmailBody = z.object({
+  email: z.string().trim().max(254, "That email is too long").pipe(z.email("That email does not look right")),
+});
+
 /** The most a client can add as a tip, in the invoice currency. */
 export const MAX_TIP = 1e9;
 
@@ -54,9 +95,15 @@ export const QuoteBody = z.object({
     .max(MAX_TIP, "That tip is too large")
     .default(0)
     .transform((n) => Math.round(n * 100) / 100),
+  /** Optional email where the payer receives a copy of the paid invoice and downloadable PDF receipt. */
+  payerEmail: PayerEmail,
 });
 
-export const VerifyBody = z.object({ asset: AssetInput, txHash: z.string().trim().max(80) });
+export const VerifyBody = z.object({
+  asset: AssetInput,
+  txHash: z.string().trim().max(80),
+  payerEmail: PayerEmail,
+});
 
 export const RatesQuery = z.object({
   currency: z
@@ -154,6 +201,7 @@ export const BoardInvoiceBody = z
       .trim()
       .min(1, "Enter your name, so they know who paid")
       .max(80),
+    payerEmail: PayerEmail,
     productId: z.string().trim().max(20).optional(),
     quantity: z.coerce.number().int("Quantity must be a whole number").min(1).max(100).optional(),
     amount: z.coerce

@@ -3,12 +3,13 @@
 // A separate long-running process, hosted apart from the web app (which runs on Vercel). It never
 // listens on a port: it only reads the same Postgres database and makes outgoing requests.
 //
-//   deliver  every 2 s   send queued webhook_events to stores, signed, with retries
-//   watch    every 15 s  look on-chain for payments to store invoices nobody is watching
-//   sweep    every 60 s  queue webhooks for paid store invoices that are missing one
-//   health   every 5 min warn merchants whose URL keeps failing, then remove it (webhook-health.ts)
-//   withdraw every 5 s   move open withdrawals forward: claim swaps, confirm delivery on-chain
-//   stuck    every 5 min log withdrawals paid but not delivered after 30 minutes
+//   deliver   every 2 s   send queued webhook_events to stores, signed, with retries
+//   watch     every 15 s  look on-chain for payments to store invoices nobody is watching
+//   sweep     every 60 s  queue webhooks for paid store invoices that are missing one
+//   recurring every 5 min generate due invoices for active recurring schedules and email them
+//   health    every 5 min warn merchants whose URL keeps failing, then remove it (webhook-health.ts)
+//   withdraw  every 5 s   move open withdrawals forward: claim swaps, confirm delivery on-chain
+//   stuck     every 5 min log withdrawals paid but not delivered after 30 minutes
 //
 // It runs the app's own code from src/lib (one set of payment rules, one schema), loaded by
 // worker/loader.mjs. Start it with `npm run worker`, or `npm run worker -- --once` to run every
@@ -16,6 +17,7 @@
 import { env, isProd } from "../src/lib/env";
 import { getDb } from "../src/lib/db";
 import { logger } from "../src/lib/logger";
+import { advanceDueRecurring } from "../src/lib/recurring";
 import { deliverDue, sweepMissedEvents } from "../src/lib/webhook-delivery";
 import { checkEndpointHealth } from "../src/lib/webhook-health";
 import { watchStoreInvoices } from "../src/lib/webhook-watch";
@@ -34,6 +36,7 @@ const JOBS: Job[] = [
   },
   { name: "watch", everyMs: 15_000, run: watchStoreInvoices },
   { name: "sweep", everyMs: 60_000, run: sweepMissedEvents },
+  { name: "recurring", everyMs: 5 * 60_000, run: () => advanceDueRecurring() },
   { name: "health", everyMs: 5 * 60_000, run: () => checkEndpointHealth() },
   // Withdrawals only run where they are switched on (WITHDRAW_LIVE). They also advance whenever
   // the Withdraw screen asks for a status, but only this job finishes them once the app is closed.

@@ -33,11 +33,19 @@ const http = serviceHttp({
 
 const Sent = z.object({ id: z.string() });
 
+export type MailAttachment = {
+  filename: string;
+  /** Base64-encoded file bytes. */
+  content: string;
+  contentType?: string;
+};
+
 export type MailMessage = {
   to: string;
   subject: string;
   text: string;
   html?: string;
+  attachments?: MailAttachment[];
   /** Same key = same email: the provider drops repeats, so a retry can never deliver twice. */
   idempotencyKey?: string;
 };
@@ -46,11 +54,24 @@ export const mail = {
   /** False when no email provider is set up. Callers skip sending instead of treating it as an error. */
   configured: !!env.RESEND_API_KEY,
 
-  async send({ idempotencyKey, to, ...message }: MailMessage): Promise<void> {
+  async send({ idempotencyKey, to, attachments, ...message }: MailMessage): Promise<void> {
     if (!mail.configured) throw Errors.config("Email is not configured: set RESEND_API_KEY.");
     await http.post(
       "emails",
-      { from: env.MAIL_FROM || DEFAULT_FROM, to: [to], ...message },
+      {
+        from: env.MAIL_FROM || DEFAULT_FROM,
+        to: [to],
+        ...message,
+        ...(attachments?.length
+          ? {
+              attachments: attachments.map((a) => ({
+                filename: a.filename,
+                content: a.content,
+                ...(a.contentType ? { content_type: a.contentType } : {}),
+              })),
+            }
+          : {}),
+      },
       {
         schema: Sent,
         ...(idempotencyKey ? { headers: { "idempotency-key": idempotencyKey }, retries: 1 } : {}),
