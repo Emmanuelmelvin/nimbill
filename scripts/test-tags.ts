@@ -194,7 +194,7 @@ ok(
 
 // ---- cheques: Nimiq Albatross HTLC contract creation, RegularTransfer (2-of-2), and TimeoutResolve (client-only) ----
 // The refund secret is the writer's own, separate from the link secret handed to the recipient.
-const sampleRefundSecret = "k7m2p9q4r8s3t6v5w2x9y4z7";
+const sampleRefundSecret = newChequeSecret();
 const refundKey = refundKeyFromSecret(sampleRefundSecret);
 ok(/^NQ\d{2}(\s[0-9A-Z]{4}){8}$/.test(refundKey.address), "refundKeyFromSecret derives a valid Nimiq refund address");
 ok(

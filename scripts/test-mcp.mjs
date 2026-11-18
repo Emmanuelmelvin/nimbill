@@ -160,7 +160,7 @@ ok(
   ok(!app.isValidPointHex("00".repeat(32)) && app.isValidPointHex(lk.publicKey), "isValidPointHex rejects bad points");
 
   // 3c-htlc. MCP + app HTLC contract creation, RegularTransfer (2-of-2), and TimeoutResolve (client-only) match byte-for-byte.
-  const refundSecret = "k7m2p9q4r8s3t6v5w2x9y4z7";
+  const refundSecret = newChequeSecret();
   const rk = refundKeyFromSecret(refundSecret);
   ok(rk.address === app.refundKeyFromSecret(refundSecret).address, "MCP refundKeyFromSecret matches the app");
   ok(rk.address !== refundKeyFromSecret(secret).address, "MCP refund key is independent of the link secret");
