@@ -1,7 +1,7 @@
 "use client";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { Alert, Button, Card, Eyebrow, Header, LinkButton, Loader, PageTitle } from "@/components/ui";
+import { Alert, Badge, Button, Card, Eyebrow, Header, LinkButton, Loader, PageTitle } from "@/components/ui";
 import { api } from "@/lib/client/api";
 import { formatFiat } from "@/lib/currencies";
 import type { RecurringInterval } from "@/lib/db/schema";
@@ -95,9 +95,7 @@ function UnsubscribeScreen() {
                 {amount} <span className="font-mono text-sm font-normal text-muted">/ {cadence}</span>
               </p>
             </div>
-            <span className="inline-block border border-line bg-subtle px-2 py-0.5 font-mono text-[11px] tracking-wider text-muted uppercase">
-              {stopped ? "Stopped" : info.status}
-            </span>
+            <Badge variant={stopped ? "muted" : "outline"}>{stopped ? "Stopped" : info.status}</Badge>
           </div>
 
           <div className="grid grid-cols-2 gap-4 border-y border-line py-3 text-sm">

@@ -26,6 +26,7 @@ import {
   SegmentedControl,
   Spinner,
   TabBar,
+  TextButton,
 } from "@/components/ui";
 import { WriterShareCard } from "@/app/c/[id]/page";
 import { formatChequeCode, linkKeyFromSecret, newChequeSecret, parseChequeInput, refundKeyFromSecret } from "@/lib/cheque-crypto";
@@ -206,9 +207,9 @@ function EmergencyReclaimCard() {
     return (
       <p className="text-center text-xs text-muted">
         Wrote a cheque whose 30-day HTLC timelock has passed?{" "}
-        <button type="button" onClick={() => setOpen(true)} className="font-medium underline underline-offset-4">
+        <TextButton onClick={() => setOpen(true)} muted={false} className="text-xs font-medium">
           Reclaim directly on-chain (no server needed) →
-        </button>
+        </TextButton>
       </p>
     );
   }
@@ -224,9 +225,9 @@ function EmergencyReclaimCard() {
             node. The refund key is in your cheque key backup. The cheque link can&apos;t do this.
           </p>
         </div>
-        <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted underline">
+        <TextButton onClick={() => setOpen(false)} className="text-xs">
           Hide
-        </button>
+        </TextButton>
       </div>
       <Field label="Refund key (from your cheque key backup)" htmlFor="reclaim-code">
         <Input
