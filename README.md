@@ -104,7 +104,8 @@ A NimBill cheque lets you hand someone NIM (or an amount priced in any of the 19
 
 - **Two ways to write one.** Make it a **free cheque** (the first person with the link or code claims the full amount) or lock it to a specific **`@tag`** (pinned to that user's wallet at the moment the cheque is written).
 - **2-of-2 Ed25519 key splitting (`A_cheque = A_link + A_server`).** Every cheque is its own throwaway Nimiq wallet whose public key combines a browser-generated link half (`A_link`) and a deterministic server half (`A_server`). The 24-character link secret lives only in the URL `#fragment`, so it never reaches NimBill's server. That means NimBill can never move a cheque's funds on its own, while nobody can bypass `@tag` rules with a raw RPC call.
-- **Two-party Schnorr signing (`prepare` → `broadcast`).** Cashing (or the writer tapping **Cancel & take back** to reclaim an uncashed cheque) co-signs a standard, zero-fee **139-byte Nimiq Basic Transaction** in the browser with no smart contracts required.
+- **Two-party Schnorr signing (`prepare` → `broadcast`).** Cashing (or the writer tapping **Cancel & take back** to reclaim an uncashed cheque) co-signs a zero-fee Nimiq transaction in the browser with no custom smart contracts required.
+- **30-day on-chain HTLC timeout refund.** Once funded, the cheque locks its NIM in a native Nimiq **Hashed Time-Locked Contract (HTLC)** (`recipient = A_cheque`, `sender = A_refund` derived from the link secret alone). Even if NimBill's server went offline forever, after 30 days the writer can broadcast a Nimiq `TimeoutResolve` transaction directly to any RPC node to reclaim 100% of their NIM without NimBill.
 
 > **Want to know more about how we built the cheque system?** Read the full deep-dive blog post: [**How we built non-custodial cheques on Nimiq →**](https://nimbill.mblob.me/blog/how-we-built-cheques) (also readable right in this repo at [`docs/cheques.md`](docs/cheques.md)).
 

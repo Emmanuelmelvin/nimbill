@@ -4,6 +4,7 @@ import { z } from "zod";
 import { isValidPointHex } from "./cheque-crypto";
 import { CURRENCY_CODES } from "./currencies";
 import { UNIT_CODES } from "./money";
+import { normalizeAddress } from "./nimiq-address";
 
 export const LineItemInput = z.object({
   description: z.string().trim().min(1, "Each line needs a description").max(120),
@@ -189,12 +190,37 @@ export const NewChequeBody = z.object({
   amount: z.coerce.number("Enter the amount as a number").positive("Enter an amount above 0").max(1e12, "That amount is too large"),
   currency: z.enum([...CURRENCY_CODES, "NIM"], { error: "Unsupported currency" }),
   linkPublicKey: z.string().refine(isValidPointHex, "Invalid cheque public key"),
+  /** Optional HTLC timeout-refund address (`A_refund`, derived from the link secret in the browser). */
+  refundAddress: z
+    .string()
+    .trim()
+    .refine((a) => !!normalizeAddress(a), "Invalid cheque refund address")
+    .optional(),
   recipientTag: z.string().trim().max(60).nullish(),
   note: z.string().trim().max(80, "Keep the note under 80 characters").optional(),
 });
 export type NewChequeInput = z.input<typeof NewChequeBody>;
 
 export const ChequeVerifyBody = z.object({ txHash: z.string().trim().max(80).optional() });
+
+const HtlcLockCommon = {
+  validityStartHeight: z.coerce.number().int().positive().max(0xffffffff),
+  value: z.string().regex(/^[1-9][0-9]{0,18}$/, "Invalid amount"),
+};
+
+/** Two-step 2-of-2 lock that moves a funded cheque's balance into its Nimiq HTLC contract. */
+export const ChequeHtlcBody = z.discriminatedUnion("step", [
+  z.object({
+    step: z.literal("prepare"),
+    ...HtlcLockCommon,
+    clientNoncePublicKey: z.string().refine(isValidPointHex, "Invalid nonce public key"),
+  }),
+  z.object({
+    step: z.literal("broadcast"),
+    ...HtlcLockCommon,
+    rawTx: z.string().regex(/^[0-9a-f]{496}$/i, "Invalid signed HTLC creation transaction"),
+  }),
+]);
 
 const ClaimCommon = {
   action: z.enum(["cash", "cancel"]),
@@ -203,6 +229,8 @@ const ClaimCommon = {
   validityStartHeight: z.coerce.number().int().positive().max(0xffffffff),
   /** Luna moved out of the cheque: its whole on-chain balance (`balance` from GET /api/cheques/[id]). */
   value: z.string().regex(/^[1-9][0-9]{0,18}$/, "Invalid amount"),
+  /** Whether the spend transaction spends from the cheque's HTLC contract ("htlc") or its Basic wallet ("basic"). */
+  spendFrom: z.enum(["basic", "htlc"]).optional(),
 };
 
 export const ChequeClaimBody = z.discriminatedUnion("step", [
@@ -214,6 +242,7 @@ export const ChequeClaimBody = z.discriminatedUnion("step", [
   z.object({
     step: z.literal("broadcast"),
     ...ClaimCommon,
-    rawTx: z.string().regex(/^[0-9a-f]{278}$/i, "Invalid signed transaction"),
+    // 278 hex chars = 139-byte Basic tx; 470 hex chars = 235-byte HTLC RegularTransfer Extended tx.
+    rawTx: z.string().regex(/^([0-9a-f]{278}|[0-9a-f]{470})$/i, "Invalid signed transaction"),
   }),
 ]);

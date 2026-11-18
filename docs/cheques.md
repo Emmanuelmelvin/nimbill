@@ -48,6 +48,7 @@ Every single NimBill cheque gets its own brand-new, temporary wallet on the Nimi
 >
 > - **NimBill cannot touch your cheque** because we only have Key 2. Without the link you hold on your phone, the safe stays locked.
 > - **A stranger cannot hijack a tag-locked cheque** because even if they find the link (Key 1), NimBill will refuse to turn Key 2 unless the money is going straight into the recipient's wallet.
+> - **NimBill cannot freeze your cheque either (30-day HTLC timeout refund).** What if NimBill's servers ever went offline permanently before a cheque was cashed? Right after funding, your browser and NimBill lock the cheque's NIM inside a native Nimiq **Hashed Time-Locked Contract (HTLC)** whose recipient is the 2-of-2 cheque key and whose timeout refund address is derived from your link secret alone. If a cheque is still uncashed after **30 days**, anyone holding the link or code can broadcast a standard Nimiq `TimeoutResolve` transaction directly to any Nimiq RPC node—with zero help from NimBill—to return 100% of the NIM to the writer's wallet.
 
 ---
 

@@ -77,7 +77,15 @@ export function ChequeCard({ cheque }: { cheque: PublicCheque }) {
         </div>
 
         <div className="mt-4 flex items-center justify-between gap-2 pt-1 font-mono text-[10px] tracking-wider text-muted">
-          <span className="truncate">⑆ {shortAddress(cheque.chequeAddress)} ⑈</span>
+          <span className="truncate">
+            ⑆ {shortAddress(cheque.htlc?.contractAddress ?? cheque.chequeAddress)} ⑈
+            {cheque.htlc?.timeoutAt && cheque.status === "funded" && (
+              <>
+                {" · "}HTLC REFUND{" "}
+                {new Date(cheque.htlc.timeoutAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toUpperCase()}
+              </>
+            )}
+          </span>
           <Badge variant={status.variant}>{status.text}</Badge>
         </div>
       </div>

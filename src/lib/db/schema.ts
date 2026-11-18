@@ -74,6 +74,34 @@ export const invoices = pgTable("invoices", {
   reference: text("reference"), // the store's own order id; private to the merchant and the store
   metadata: jsonb("metadata").$type<Record<string, string>>(), // the store's key/values, sent back in webhooks
   returnUrl: text("return_url"), // where the payer goes back to after paying, on the store's allowed origin
+  // Set when this invoice was generated from a recurring schedule (`recurring_invoices.id`).
+  recurringId: text("recurring_id"),
+});
+
+export type RecurringInterval = "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+export type RecurringStatus = "active" | "paused" | "cancelled";
+
+// A schedule that automatically creates and sends a new invoice on a fixed cadence.
+export const recurringInvoices = pgTable("recurring_invoices", {
+  id: text("id").primaryKey(), // "rec_…"
+  merchantAddress: text("merchant_address").notNull(),
+  merchantName: text("merchant_name").notNull(),
+  merchantEvmAddress: text("merchant_evm_address"),
+  clientName: text("client_name").notNull(),
+  clientEmail: text("client_email"),
+  items: jsonb("items").$type<LineItem[]>().notNull(),
+  currency: text("currency").notNull(),
+  total: text("total").notNull(), // decimal string in `currency`
+  note: text("note"),
+  interval: text("interval").$type<RecurringInterval>().notNull(),
+  dueDays: integer("due_days").notNull().default(7), // days after issue date the invoice is due (0 = due on issue date)
+  nextRunDate: text("next_run_date").notNull(), // YYYY-MM-DD when the next invoice will be generated
+  lastRunDate: text("last_run_date"), // YYYY-MM-DD of the most recent generated cycle
+  lastInvoiceId: text("last_invoice_id"),
+  generatedCount: integer("generated_count").notNull().default(0),
+  status: text("status").$type<RecurringStatus>().notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
 // An earnings target for a period. Progress is computed from paid invoices, never stored.
@@ -199,6 +227,14 @@ export const cheques = pgTable("cheques", {
   status: text("status").$type<"pending" | "funded" | "settling" | "cashed" | "cancelled">().notNull().default("pending"),
   fundTxHash: text("fund_tx_hash").unique(),
   settleTxHash: text("settle_tx_hash").unique(),
+  // Optional Nimiq HTLC contract protection: once funded, the 2-of-2 cheque wallet moves the funds into
+  // an on-chain HTLC (`htlcAddress`) where `recipient` = chequeAddress (2-of-2) and `sender` = `refundAddress`
+  // (derived from the link secret alone). After `htlcTimeoutAt` (30 days), the writer can reclaim 100% of
+  // the NIM directly on-chain via `TimeoutResolve` even if NimBill's server is offline forever.
+  refundAddress: text("refund_address"),
+  htlcAddress: text("htlc_address"),
+  htlcTxHash: text("htlc_tx_hash"),
+  htlcTimeoutAt: timestamp("htlc_timeout_at", { withTimezone: true }),
   claimedByAddress: text("claimed_by_address"),
   claimedByName: text("claimed_by_name"),
   claimedByTag: text("claimed_by_tag"),
@@ -589,4 +625,8 @@ CREATE TABLE IF NOT EXISTS fiat_waitlist (
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );
+ALTER TABLE cheques ADD COLUMN IF NOT EXISTS refund_address text;
+ALTER TABLE cheques ADD COLUMN IF NOT EXISTS htlc_address text;
+ALTER TABLE cheques ADD COLUMN IF NOT EXISTS htlc_tx_hash text;
+ALTER TABLE cheques ADD COLUMN IF NOT EXISTS htlc_timeout_at timestamptz;
 `;

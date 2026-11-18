@@ -28,10 +28,10 @@ import {
   TabBar,
 } from "@/components/ui";
 import { WriterShareCard } from "@/app/c/[id]/page";
-import { formatChequeCode, linkKeyFromSecret, newChequeSecret, parseChequeInput } from "@/lib/cheque-crypto";
+import { formatChequeCode, linkKeyFromSecret, newChequeSecret, parseChequeInput, refundKeyFromSecret } from "@/lib/cheque-crypto";
 import type { PublicCheque } from "@/lib/cheques";
 import { api } from "@/lib/client/api";
-import { allSavedChequeSecrets, getSavedChequeSecret, saveChequeSecret } from "@/lib/client/cheque-secrets";
+import { allSavedChequeSecrets, getSavedChequeSecret, lockChequeInHtlc, saveChequeSecret } from "@/lib/client/cheque-secrets";
 import { getNimiq, useNimiq, walletErrorMessage } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { formatAsset, formatFiat, LUNA_PER_NIM } from "@/lib/currencies";
@@ -174,7 +174,134 @@ function CashByCode() {
           </Button>
         </form>
       </Card>
+      <EmergencyReclaimCard />
     </section>
+  );
+}
+
+/**
+ * Direct on-chain HTLC timeout reclaim (`OutgoingHTLCTransactionProof::TimeoutResolve`).
+ * Talks straight to a public Nimiq RPC node from the browser and uses zero NimBill server calls,
+ * so a writer can always recover an expired HTLC-protected cheque even if NimBill is unreachable.
+ */
+function EmergencyReclaimCard() {
+  const { merchant } = useSession();
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("");
+  const [htlcAddr, setHtlcAddr] = useState("");
+  const [destAddr, setDestAddr] = useState("");
+  const [rpcUrl, setRpcUrl] = useState("https://rpc.nimiqwatch.com");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [done, setDone] = useState<{ txHash: string; valueLuna: string } | null>(null);
+
+  if (!open) {
+    return (
+      <p className="text-center text-xs text-muted">
+        Wrote a cheque whose 30-day HTLC timelock has passed?{" "}
+        <button type="button" onClick={() => setOpen(true)} className="font-medium underline underline-offset-4">
+          Reclaim directly on-chain (no server needed) →
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <Card tone="subtle" className="space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <p className="text-sm font-semibold">Emergency on-chain HTLC timeout reclaim</p>
+          <p className="text-xs text-muted">
+            After a cheque&apos;s 30-day HTLC timelock expires, your browser can sign a Nimiq{" "}
+            <span className="font-mono">TimeoutResolve</span> transaction with the link secret alone and broadcast it directly to any Nimiq RPC node.
+          </p>
+        </div>
+        <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted underline">
+          Hide
+        </button>
+      </div>
+      <Field label="Cheque link or full CHQ-… code" htmlFor="reclaim-code">
+        <Input
+          id="reclaim-code"
+          mono
+          value={code}
+          onChange={(e) => {
+            setCode(e.target.value);
+            setError(null);
+          }}
+          placeholder="CHQ-XXXXX-XXXXX-XXXXXX-… or https://…/c/…#…"
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </Field>
+      <Field label="HTLC contract address (shown on the cheque face)" htmlFor="reclaim-htlc">
+        <Input
+          id="reclaim-htlc"
+          mono
+          value={htlcAddr}
+          onChange={(e) => setHtlcAddr(e.target.value)}
+          placeholder="NQxx xxxx …"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </Field>
+      <Field label="Your Nimiq wallet address to receive the refund" htmlFor="reclaim-dest">
+        <Input
+          id="reclaim-dest"
+          mono
+          value={destAddr || merchant?.address || ""}
+          onChange={(e) => setDestAddr(e.target.value)}
+          placeholder="NQxx xxxx …"
+          autoCapitalize="characters"
+          autoCorrect="off"
+          spellCheck={false}
+        />
+      </Field>
+      <Field label="Nimiq JSON-RPC node" htmlFor="reclaim-rpc" optional>
+        <Input id="reclaim-rpc" mono value={rpcUrl} onChange={(e) => setRpcUrl(e.target.value)} />
+      </Field>
+      {error && <Alert kind="error">{error}</Alert>}
+      {done && (
+        <Alert kind="info">
+          <CoinText>
+            Reclaimed {formatAsset(done.valueLuna, "NIM")} on-chain (tx {done.txHash.slice(0, 12)}…).
+          </CoinText>
+        </Alert>
+      )}
+      <Button
+        variant="secondary"
+        block
+        loading={busy}
+        disabled={!code.trim() || !htlcAddr.trim()}
+        onClick={async () => {
+          const parsed = parseChequeInput(code);
+          const secret = parsed?.secret ?? code.trim();
+          const recipientAddress = (destAddr || merchant?.address || "").trim();
+          setBusy(true);
+          setError(null);
+          setDone(null);
+          try {
+            const { reclaimExpiredHtlcCheque } = await import("@/lib/client/cheque-secrets");
+            const res = await reclaimExpiredHtlcCheque({
+              id: parsed?.id,
+              secret,
+              htlcAddress: htlcAddr,
+              recipientAddress,
+              rpcUrl,
+            });
+            setDone(res);
+          } catch (e) {
+            setError((e as Error).message);
+          } finally {
+            setBusy(false);
+          }
+        }}
+      >
+        Sign &amp; broadcast HTLC TimeoutResolve
+      </Button>
+    </Card>
   );
 }
 
@@ -281,7 +408,17 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
           body: hash ? { txHash: hash } : {},
         });
         if ((r.status === "funded" || r.status === "cashed") && r.cheque) {
-          return setPhase({ k: "done", cheque: r.cheque, secret });
+          let finalCheque = r.cheque;
+          if (r.status === "funded" && r.cheque.htlc?.refundAddress && !r.cheque.htlc.contractAddress) {
+            setPhase({ k: "verifying", cheque: r.cheque, secret, message: "Activating 30-day HTLC timeout refund…" });
+            try {
+              const locked = await lockChequeInHtlc({ id: r.cheque.id, secret });
+              finalCheque = locked.cheque;
+            } catch {
+              // If locking fails for any transient reason, the cheque is still funded and can be locked/cashed from its page.
+            }
+          }
+          return setPhase({ k: "done", cheque: finalCheque, secret });
         }
         if (r.status === "rejected") {
           setError(r.message ?? "This cheque could not be confirmed.");
@@ -302,6 +439,7 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
     setPhase({ k: "creating" });
     const secret = newChequeSecret();
     const { publicKey: linkPublicKey } = linkKeyFromSecret(secret);
+    const { address: refundAddress } = refundKeyFromSecret(secret);
     let created: { cheque: PublicCheque; payment: Payment };
     try {
       created = await api<{ cheque: PublicCheque; payment: Payment }>("/api/cheques", {
@@ -309,6 +447,7 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
           amount: value,
           currency,
           linkPublicKey,
+          refundAddress,
           recipientTag: kind === "tag" ? recipient.owner?.tag : undefined,
           note: note.trim() || undefined,
         },

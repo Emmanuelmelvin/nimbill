@@ -25,7 +25,7 @@ import {
 import { formatChequeCode, isValidChequeSecret, normalizeChequeSecret, parseChequeInput } from "@/lib/cheque-crypto";
 import type { PublicCheque } from "@/lib/cheques";
 import { api } from "@/lib/client/api";
-import { getSavedChequeSecret, saveChequeSecret, settleCheque } from "@/lib/client/cheque-secrets";
+import { getSavedChequeSecret, lockChequeInHtlc, reclaimExpiredHtlcCheque, saveChequeSecret, settleCheque } from "@/lib/client/cheque-secrets";
 import { getNimiq, nimExplorerTx, useNimiq } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { formatAsset, formatFiat } from "@/lib/currencies";
@@ -134,8 +134,10 @@ function ChequeScreen({
   const [claimerName, setClaimerName] = useState("");
   const [codeInput, setCodeInput] = useState("");
   const [codeError, setCodeError] = useState<string | null>(null);
-  const [busy, setBusy] = useState<"cash" | "cancel" | null>(null);
+  const [busy, setBusy] = useState<"cash" | "cancel" | "lock" | "reclaim" | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [reclaimTxHash, setReclaimTxHash] = useState<string | null>(null);
+  const [nowMs] = useState<number>(() => Date.now());
 
   // If inside Nimiq Pay and not signed in, ask the wallet for the active Nimiq address.
   useEffect(() => {
@@ -174,10 +176,14 @@ function ChequeScreen({
         : defaultMyAddress;
 
   const displayAmount = cheque.currency === "NIM" ? formatAsset(cheque.amount, "NIM") : formatFiat(cheque.fiatAmount, cheque.currency);
+  const htlcExpired = !!cheque.htlc?.timeoutMs && nowMs >= cheque.htlc.timeoutMs;
+  const htlcTimeoutDate = cheque.htlc?.timeoutAt
+    ? new Date(cheque.htlc.timeoutAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })
+    : null;
 
   async function runAction(action: "cash" | "cancel") {
     if (!secret) return;
-    const target = action === "cancel" ? (me?.address ?? "") : (resolvedRecipient ?? "");
+    const target = action === "cancel" ? (me?.address ?? cheque.writer.address) : (resolvedRecipient ?? "");
     if (!target) {
       setActionError("Enter your NimBill tag or Nimiq wallet address to receive the funds.");
       return;
@@ -194,6 +200,41 @@ function ChequeScreen({
         claimerName: claimerName.trim() || me?.name || tagLookup?.owner?.name || undefined,
       });
       onUpdated(res.cheque);
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runHtlcLock() {
+    if (!secret) return;
+    setBusy("lock");
+    setActionError(null);
+    try {
+      const res = await lockChequeInHtlc({ id: cheque.id, secret });
+      onUpdated(res.cheque);
+    } catch (e) {
+      setActionError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function runDirectReclaim() {
+    if (!secret || !cheque.htlc?.contractAddress) return;
+    setBusy("reclaim");
+    setActionError(null);
+    try {
+      const res = await reclaimExpiredHtlcCheque({
+        secret,
+        htlcAddress: cheque.htlc.contractAddress,
+        recipientAddress: me?.address ?? cheque.writer.address,
+      });
+      setReclaimTxHash(res.txHash);
+      api<{ cheque: PublicCheque }>(`/api/cheques/${encodeURIComponent(cheque.id)}`)
+        .then((r) => onUpdated(r.cheque))
+        .catch(() => {});
     } catch (e) {
       setActionError((e as Error).message);
     } finally {
@@ -386,23 +427,53 @@ function ChequeScreen({
       {cheque.status === "funded" && secret && cheque.isWriter && (
         <>
           <WriterShareCard cheque={cheque} secret={secret} />
+          {cheque.htlc && !cheque.htlc.contractAddress && (
+            <Card tone="subtle" className="space-y-2">
+              <p className="text-xs font-semibold">Finish activating 30-day HTLC timeout protection</p>
+              <p className="text-xs text-muted">
+                Lock this cheque inside its Nimiq HTLC contract so that after {htlcTimeoutDate ?? "30 days"} you can reclaim the NIM on-chain even if NimBill is unreachable.
+              </p>
+              <Button variant="secondary" size="sm" block loading={busy === "lock"} disabled={!!busy} onClick={() => void runHtlcLock()}>
+                Activate HTLC timeout lock
+              </Button>
+            </Card>
+          )}
           <Card className="space-y-3">
             <p className="text-sm font-semibold">Changed your mind?</p>
             <p className="text-xs text-muted">
               <CoinText>
                 Cancel this cheque before it&apos;s cashed to sweep the {formatAsset(cheque.amount, "NIM")} back into your wallet.
+                {cheque.htlc?.contractAddress && htlcTimeoutDate && (
+                  <>
+                    {" "}Protected by a Nimiq HTLC contract ({shortAddress(cheque.htlc.contractAddress)}): after {htlcTimeoutDate}, you can also reclaim directly on-chain without NimBill.
+                  </>
+                )}
               </CoinText>
             </p>
             {actionError && <Alert kind="error">{actionError}</Alert>}
+            {reclaimTxHash && (
+              <Alert kind="info">
+                Direct on-chain HTLC timeout refund broadcast.{" "}
+                <a href={nimExplorerTx(reclaimTxHash)} target="_blank" rel="noreferrer" className="underline">
+                  View transaction ↗
+                </a>
+              </Alert>
+            )}
             <Button variant="danger" block loading={busy === "cancel"} disabled={!!busy} onClick={() => void runAction("cancel")}>
               Cancel &amp; take back {displayAmount}
             </Button>
+            {cheque.htlc?.contractAddress && htlcExpired && (
+              <Button variant="secondary" block loading={busy === "reclaim"} disabled={!!busy} onClick={() => void runDirectReclaim()}>
+                Reclaim directly on-chain (no server)
+              </Button>
+            )}
           </Card>
         </>
       )}
 
       <p className="text-center text-xs text-muted">
-        Non-custodial: NimBill never holds the key to this cheque.{" "}
+        Non-custodial: NimBill never holds the key to this cheque
+        {cheque.htlc?.timeoutAt ? `, and an on-chain HTLC refunds the writer after ${htlcTimeoutDate}` : ""}.{" "}
         <TextLink href="/cheques" muted>
           Write a cheque
         </TextLink>

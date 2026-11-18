@@ -2,9 +2,13 @@
 import { agentStepsText, agentUrl } from "../src/lib/agent-docs.ts";
 import { ENDPOINTS, openApiSpec, skillMarkdown } from "../src/lib/api-reference.ts";
 import {
+  buildAndSignHtlcTimeoutResolveTx,
+  chequeHtlcPreImage,
   chequeNumber,
   clientNonceForTx,
   combinePublicKeys,
+  completeDualHtlcCreationSignature,
+  completeDualHtlcRegularTransferSignature,
   completeDualSignature,
   formatChequeCode,
   hashBasicTxContent,
@@ -13,11 +17,16 @@ import {
   linkKeyFromSecret,
   newChequeSecret,
   parseChequeInput,
+  refundKeyFromSecret,
   serializeBasicTxContent,
+  serializeHtlcCreationTxContent,
+  serializeHtlcSpendTxContent,
   serverPartialSignTx,
   verifyRawBasicTx,
+  verifyRawHtlcCreationTx,
+  verifyRawHtlcRegularTransferTx,
 } from "../src/lib/cheque-crypto.ts";
-import { BoardInvoiceBody, ChequeClaimBody, NewChequeBody, NewTransferBody, ProductBody } from "../src/lib/schemas.ts";
+import { BoardInvoiceBody, ChequeClaimBody, ChequeHtlcBody, NewChequeBody, NewTransferBody, ProductBody } from "../src/lib/schemas.ts";
 import { TagInput, avatarUrl, formatTag, normalizeTag, suggestTag, tagProblem } from "../src/lib/tags.ts";
 
 let failed = 0;
@@ -181,6 +190,93 @@ ok(
     clientNoncePublicKey: "00".repeat(32),
   }).success,
   "ChequeClaimBody rejects a nonce that is not a valid curve point",
+);
+
+// ---- cheques: Nimiq Albatross HTLC contract creation, RegularTransfer (2-of-2), and TimeoutResolve (client-only) ----
+const refundKey = refundKeyFromSecret(sampleSecret);
+ok(/^NQ\d{2}(\s[0-9A-Z]{4}){8}$/.test(refundKey.address), "refundKeyFromSecret derives a valid Nimiq refund address");
+const { preImage, hashRoot } = chequeHtlcPreImage(sampleId);
+ok(preImage.length === 64 && hashRoot.length === 64, "chequeHtlcPreImage derives 32-byte pre-image and SHA-256 root");
+
+const htlcCreateFields = {
+  senderPublicKey: chequeWallet.publicKey,
+  htlcSenderAddress: refundKey.address,
+  htlcRecipientAddress: chequeWallet.address,
+  hashRoot,
+  timeoutMs: 1_800_000_000_000,
+  value: 2_500_000,
+  fee: 0,
+  validityStartHeight: 40123456,
+};
+const htlcCreateInfo = serializeHtlcCreationTxContent(htlcCreateFields);
+ok(
+  htlcCreateInfo.txContent.length === 67 + 82 && /^NQ\d{2}(\s[0-9A-Z]{4}){8}$/.test(htlcCreateInfo.contractAddress),
+  "serializeHtlcCreationTxContent builds 149-byte content and deterministic HTLC contract address",
+);
+const htlcCreateNonce = clientNonceForTx(sampleSecret, htlcCreateInfo.txContent);
+const htlcCreateServerPart = serverPartialSignTx({
+  serverScalar: serverKey.scalar,
+  chequePublicKey: chequeWallet.publicKey,
+  clientNoncePublicKey: htlcCreateNonce.noncePublicKey,
+  txContent: htlcCreateInfo.txContent,
+});
+const signedHtlcCreate = completeDualHtlcCreationSignature({
+  secret: sampleSecret,
+  tx: htlcCreateFields,
+  nonceScalar: htlcCreateNonce.nonceScalar,
+  ...htlcCreateServerPart,
+});
+const verifiedHtlcCreate = verifyRawHtlcCreationTx(signedHtlcCreate.rawTx, htlcCreateFields);
+ok(
+  verifiedHtlcCreate.valid && verifiedHtlcCreate.contractAddress === htlcCreateInfo.contractAddress,
+  "verifyRawHtlcCreationTx validates 248-byte 2-of-2 HTLC creation transaction",
+);
+ok(
+  ChequeHtlcBody.safeParse({ step: "broadcast", validityStartHeight: 40123456, value: "2500000", rawTx: signedHtlcCreate.rawTx }).success,
+  "ChequeHtlcBody accepts valid 248-byte (496 hex) HTLC creation transaction",
+);
+
+const htlcSpendFields = {
+  htlcAddress: htlcCreateInfo.contractAddress,
+  recipient: "NQ07 0000 0000 0000 0000 0000 0000 0000 0000",
+  value: 2_500_000,
+  fee: 0,
+  validityStartHeight: 40123460,
+};
+const htlcSpendContent = serializeHtlcSpendTxContent(htlcSpendFields);
+const htlcSpendNonce = clientNonceForTx(sampleSecret, htlcSpendContent);
+const htlcSpendServerPart = serverPartialSignTx({
+  serverScalar: serverKey.scalar,
+  chequePublicKey: chequeWallet.publicKey,
+  clientNoncePublicKey: htlcSpendNonce.noncePublicKey,
+  txContent: htlcSpendContent,
+});
+const signedHtlcRedeem = completeDualHtlcRegularTransferSignature({
+  secret: sampleSecret,
+  chequeId: sampleId,
+  chequePublicKey: chequeWallet.publicKey,
+  tx: htlcSpendFields,
+  nonceScalar: htlcSpendNonce.nonceScalar,
+  ...htlcSpendServerPart,
+});
+const verifiedHtlcRedeem = verifyRawHtlcRegularTransferTx(signedHtlcRedeem.rawTx, {
+  tx: htlcSpendFields,
+  chequePublicKey: chequeWallet.publicKey,
+  preImage,
+  hashRoot,
+});
+ok(
+  verifiedHtlcRedeem.valid && signedHtlcRedeem.rawTx.length === 470,
+  "verifyRawHtlcRegularTransferTx validates 235-byte 2-of-2 HTLC RegularTransfer transaction",
+);
+
+const timeoutRefund = buildAndSignHtlcTimeoutResolveTx({
+  secret: sampleSecret,
+  tx: htlcSpendFields,
+});
+ok(
+  timeoutRefund.rawTx.startsWith("01") && timeoutRefund.refundAddress === refundKey.address && timeoutRefund.txHash.length === 64,
+  "buildAndSignHtlcTimeoutResolveTx produces client-only TimeoutResolve transaction with no server key needed",
 );
 
 if (failed) {
