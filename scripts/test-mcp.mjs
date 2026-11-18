@@ -160,8 +160,10 @@ ok(
   ok(!app.isValidPointHex("00".repeat(32)) && app.isValidPointHex(lk.publicKey), "isValidPointHex rejects bad points");
 
   // 3c-htlc. MCP + app HTLC contract creation, RegularTransfer (2-of-2), and TimeoutResolve (client-only) match byte-for-byte.
-  const rk = refundKeyFromSecret(secret);
-  ok(rk.address === app.refundKeyFromSecret(secret).address, "MCP refundKeyFromSecret matches the app");
+  const refundSecret = "k7m2p9q4r8s3t6v5w2x9y4z7";
+  const rk = refundKeyFromSecret(refundSecret);
+  ok(rk.address === app.refundKeyFromSecret(refundSecret).address, "MCP refundKeyFromSecret matches the app");
+  ok(rk.address !== refundKeyFromSecret(secret).address, "MCP refund key is independent of the link secret");
   ok(
     JSON.stringify(chequeHtlcPreImage("c9f8e7d6c5")) === JSON.stringify(app.chequeHtlcPreImage("c9f8e7d6c5")),
     "MCP chequeHtlcPreImage matches the app",
@@ -226,8 +228,8 @@ ok(
     "MCP + app produce a valid 2-of-2 HTLC RegularTransfer transaction",
   );
 
-  const mcpTimeout = buildAndSignHtlcTimeoutResolveTx({ secret, tx: htlcSpendTx });
-  const appTimeout = app.buildAndSignHtlcTimeoutResolveTx({ secret, tx: htlcSpendTx });
+  const mcpTimeout = buildAndSignHtlcTimeoutResolveTx({ refundSecret, tx: htlcSpendTx });
+  const appTimeout = app.buildAndSignHtlcTimeoutResolveTx({ refundSecret, tx: htlcSpendTx });
   ok(
     mcpTimeout.rawTx === appTimeout.rawTx && mcpTimeout.txHash === appTimeout.txHash,
     "MCP buildAndSignHtlcTimeoutResolveTx matches app byte-for-byte",

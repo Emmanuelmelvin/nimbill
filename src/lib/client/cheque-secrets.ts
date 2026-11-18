@@ -8,6 +8,7 @@ import {
   completeDualSignature,
   isValidChequeSecret,
   normalizeChequeSecret,
+  refundKeyFromSecret,
   serializeBasicTxContent,
   serializeHtlcCreationTxContent,
   serializeHtlcSpendTxContent,
@@ -48,6 +49,43 @@ export function saveChequeSecret(chequeId: string, rawSecret: string): void {
 export function getSavedChequeSecret(chequeId: string): string | null {
   const map = readStore();
   const s = map[chequeId.toLowerCase()];
+  return s && isValidChequeSecret(s) ? s : null;
+}
+
+// The writer's refund secrets (HTLC timeout refund, see refundKeyFromSecret). Kept apart from the
+// link secrets: a link secret is shared with the recipient, a refund secret never leaves the writer.
+const REFUND_STORAGE_KEY = "nimbill:cheque-refund-secrets:v1";
+
+function readRefundStore(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(REFUND_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function saveChequeRefundSecret(chequeId: string, rawSecret: string): void {
+  if (typeof window === "undefined") return;
+  const secret = normalizeChequeSecret(rawSecret);
+  if (!isValidChequeSecret(secret)) return;
+  try {
+    const map = readRefundStore();
+    map[chequeId.toLowerCase()] = secret;
+    window.localStorage.setItem(REFUND_STORAGE_KEY, JSON.stringify(map));
+  } catch {
+    // Private browsing or full storage: the writer can still cancel through NimBill.
+  }
+}
+
+/** Every refund secret saved in this browser, for the writer's key backup. */
+export function allSavedChequeRefundSecrets(): Record<string, string> {
+  return Object.fromEntries(Object.entries(readRefundStore()).filter(([, s]) => isValidChequeSecret(s)));
+}
+
+export function getSavedChequeRefundSecret(chequeId: string): string | null {
+  const s = readRefundStore()[chequeId.toLowerCase()];
   return s && isValidChequeSecret(s) ? s : null;
 }
 
@@ -251,15 +289,16 @@ async function directNimiqRpc<T>(rpcUrl: string, method: string, params: unknown
 
 /**
  * Reclaim an expired HTLC-protected cheque directly from the Nimiq blockchain using only the
- * link secret (`OutgoingHTLCTransactionProof::TimeoutResolve`).
+ * writer's refund secret (`OutgoingHTLCTransactionProof::TimeoutResolve`). The link secret can't.
  *
- * Works with zero NimBill server calls when `htlcAddress` and `recipientAddress` are provided.
+ * Works with zero NimBill server calls. Pass `expectedRefundAddress` (the cheque's
+ * `htlc.refundAddress`) when known, to catch a wrong refund key before broadcasting.
  */
 export async function reclaimExpiredHtlcCheque(params: {
-  id?: string;
-  secret: string;
+  refundSecret: string;
   htlcAddress: string;
   recipientAddress: string;
+  expectedRefundAddress?: string | null;
   rpcUrl?: string;
 }): Promise<{ txHash: string; rawTx: string; valueLuna: string }> {
   const rpcUrl = params.rpcUrl || PUBLIC_NIMIQ_RPC_URL;
@@ -267,6 +306,15 @@ export async function reclaimExpiredHtlcCheque(params: {
   const recipient = normalizeAddress(params.recipientAddress);
   if (!htlcAddress) throw new Error("Enter a valid HTLC contract address (NQ…).");
   if (!recipient) throw new Error("Enter a valid Nimiq wallet address (NQ…) to receive the refund.");
+  if (!isValidChequeSecret(normalizeChequeSecret(params.refundSecret))) {
+    throw new Error("Enter the cheque's refund key (from your cheque key backup), not the cheque link.");
+  }
+  if (params.expectedRefundAddress) {
+    const { address } = refundKeyFromSecret(params.refundSecret);
+    if (normalizeAddress(params.expectedRefundAddress) !== address) {
+      throw new Error("This refund key doesn't belong to this cheque.");
+    }
+  }
 
   const [acc, currentBlock] = await Promise.all([
     directNimiqRpc<{ balance?: number }>(rpcUrl, "getAccountByAddress", [htlcAddress]),
@@ -281,8 +329,7 @@ export async function reclaimExpiredHtlcCheque(params: {
   }
 
   const built = buildAndSignHtlcTimeoutResolveTx({
-    secret: params.secret,
-    chequeId: params.id,
+    refundSecret: params.refundSecret,
     tx: {
       htlcAddress,
       recipient,

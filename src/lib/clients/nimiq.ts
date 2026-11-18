@@ -25,6 +25,7 @@ export const NimTx = z
     to: z.string(),
     value: z.number(), // Luna
     recipientData: z.string(), // hex
+    proof: z.string().nullish(), // hex; for HTLC spends the first byte is the proof variant
     executionResult: z.boolean(),
   })
   .loose();

@@ -31,7 +31,14 @@ import { WriterShareCard } from "@/app/c/[id]/page";
 import { formatChequeCode, linkKeyFromSecret, newChequeSecret, parseChequeInput, refundKeyFromSecret } from "@/lib/cheque-crypto";
 import type { PublicCheque } from "@/lib/cheques";
 import { api } from "@/lib/client/api";
-import { allSavedChequeSecrets, getSavedChequeSecret, lockChequeInHtlc, saveChequeSecret } from "@/lib/client/cheque-secrets";
+import {
+  allSavedChequeRefundSecrets,
+  allSavedChequeSecrets,
+  getSavedChequeSecret,
+  lockChequeInHtlc,
+  saveChequeRefundSecret,
+  saveChequeSecret,
+} from "@/lib/client/cheque-secrets";
 import { getNimiq, useNimiq, walletErrorMessage } from "@/lib/client/nimiq";
 import { useSession } from "@/lib/client/session";
 import { formatAsset, formatFiat, LUNA_PER_NIM } from "@/lib/currencies";
@@ -213,14 +220,15 @@ function EmergencyReclaimCard() {
           <p className="text-sm font-semibold">Emergency on-chain HTLC timeout reclaim</p>
           <p className="text-xs text-muted">
             After a cheque&apos;s 30-day HTLC timelock expires, your browser can sign a Nimiq{" "}
-            <span className="font-mono">TimeoutResolve</span> transaction with the link secret alone and broadcast it directly to any Nimiq RPC node.
+            <span className="font-mono">TimeoutResolve</span> transaction with the cheque&apos;s refund key and broadcast it directly to any Nimiq RPC
+            node. The refund key is in your cheque key backup. The cheque link can&apos;t do this.
           </p>
         </div>
         <button type="button" onClick={() => setOpen(false)} className="text-xs text-muted underline">
           Hide
         </button>
       </div>
-      <Field label="Cheque link or full CHQ-… code" htmlFor="reclaim-code">
+      <Field label="Refund key (from your cheque key backup)" htmlFor="reclaim-code">
         <Input
           id="reclaim-code"
           mono
@@ -229,7 +237,7 @@ function EmergencyReclaimCard() {
             setCode(e.target.value);
             setError(null);
           }}
-          placeholder="CHQ-XXXXX-XXXXX-XXXXXX-… or https://…/c/…#…"
+          placeholder="24-character refund key"
           autoCapitalize="none"
           autoCorrect="off"
           spellCheck={false}
@@ -276,8 +284,7 @@ function EmergencyReclaimCard() {
         loading={busy}
         disabled={!code.trim() || !htlcAddr.trim()}
         onClick={async () => {
-          const parsed = parseChequeInput(code);
-          const secret = parsed?.secret ?? code.trim();
+          const refundSecret = code.trim();
           const recipientAddress = (destAddr || merchant?.address || "").trim();
           setBusy(true);
           setError(null);
@@ -285,8 +292,7 @@ function EmergencyReclaimCard() {
           try {
             const { reclaimExpiredHtlcCheque } = await import("@/lib/client/cheque-secrets");
             const res = await reclaimExpiredHtlcCheque({
-              id: parsed?.id,
-              secret,
+              refundSecret,
               htlcAddress: htlcAddr,
               recipientAddress,
               rpcUrl,
@@ -439,7 +445,9 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
     setPhase({ k: "creating" });
     const secret = newChequeSecret();
     const { publicKey: linkPublicKey } = linkKeyFromSecret(secret);
-    const { address: refundAddress } = refundKeyFromSecret(secret);
+    // A separate secret for the 30-day refund: it stays with the writer, unlike the link secret.
+    const refundSecret = newChequeSecret();
+    const { address: refundAddress } = refundKeyFromSecret(refundSecret);
     let created: { cheque: PublicCheque; payment: Payment };
     try {
       created = await api<{ cheque: PublicCheque; payment: Payment }>("/api/cheques", {
@@ -458,6 +466,7 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
     }
 
     saveChequeSecret(created.cheque.id, secret);
+    saveChequeRefundSecret(created.cheque.id, refundSecret);
     setPhase({ k: "wallet", ...created, secret });
 
     try {
@@ -660,10 +669,20 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
 
   // The link secret only lives in this browser. Let the writer copy every open cheque's code
   // somewhere safe, since without it a cheque can't be cancelled.
+  // The refund key (for the 30-day on-chain refund) is backed up too: it is never in the link.
   const saved = allSavedChequeSecrets();
+  const refunds = allSavedChequeRefundSecrets();
   const backup = cheques
-    .filter((c) => c.direction === "written" && (c.status === "funded" || c.status === "pending") && saved[c.id])
-    .map((c) => `${c.number} · ${amountText(c)}: ${formatChequeCode(c.id, saved[c.id])}`)
+    .filter((c) => c.direction === "written" && (c.status === "funded" || c.status === "pending") && (saved[c.id] || refunds[c.id]))
+    .map((c) =>
+      [
+        `${c.number} · ${amountText(c)}`,
+        saved[c.id] ? formatChequeCode(c.id, saved[c.id]) : null,
+        refunds[c.id] ? `refund key ${refunds[c.id]}` : null,
+      ]
+        .filter(Boolean)
+        .join(": "),
+    )
     .join("\n");
 
   const counts = {

@@ -564,11 +564,12 @@ export function linkKeyFromSecret(rawSecret) {
   return { scalar, publicKey: bytesToHex(point.toBytes()) };
 }
 
-export function refundKeyFromSecret(rawSecret, chequeId) {
-  const secret = normalizeChequeSecret(rawSecret);
-  if (!SECRET_RE.test(secret)) throw new Error("Invalid cheque secret");
-  const domain = chequeId ? `nimbill-cheque-refund-key-v1:${String(chequeId).toLowerCase()}:` : "nimbill-cheque-refund-key-v1:";
-  const secretKey = sha256(concatBytes(utf8ToBytes(domain), utf8ToBytes(secret)));
+// Same as the app's refundKeyFromSecret: the refund secret is separate from the link secret and
+// never shared, so whoever holds the cheque link can't take the 30-day timeout refund.
+export function refundKeyFromSecret(rawRefundSecret) {
+  const secret = normalizeChequeSecret(rawRefundSecret);
+  if (!SECRET_RE.test(secret)) throw new Error("Invalid cheque refund key");
+  const secretKey = sha256(concatBytes(utf8ToBytes("nimbill-cheque-refund-key-v2:"), utf8ToBytes(secret)));
   const pubBytes = ed25519.getPublicKey(secretKey);
   return {
     secretKey,
@@ -897,8 +898,8 @@ export function completeDualHtlcRegularTransferSignature({
   };
 }
 
-export function buildAndSignHtlcTimeoutResolveTx({ secret, chequeId, tx }) {
-  const refund = refundKeyFromSecret(secret, chequeId);
+export function buildAndSignHtlcTimeoutResolveTx({ refundSecret, tx }) {
+  const refund = refundKeyFromSecret(refundSecret);
   const txContent = serializeHtlcSpendTxContent(tx);
   const sigBytes = ed25519.sign(txContent, refund.secretKey);
   const pubKey = hexToBytes(refund.publicKey);

@@ -193,8 +193,14 @@ ok(
 );
 
 // ---- cheques: Nimiq Albatross HTLC contract creation, RegularTransfer (2-of-2), and TimeoutResolve (client-only) ----
-const refundKey = refundKeyFromSecret(sampleSecret);
+// The refund secret is the writer's own, separate from the link secret handed to the recipient.
+const sampleRefundSecret = "k7m2p9q4r8s3t6v5w2x9y4z7";
+const refundKey = refundKeyFromSecret(sampleRefundSecret);
 ok(/^NQ\d{2}(\s[0-9A-Z]{4}){8}$/.test(refundKey.address), "refundKeyFromSecret derives a valid Nimiq refund address");
+ok(
+  refundKeyFromSecret(sampleSecret).address !== refundKey.address,
+  "the cheque link secret does not give the cheque's refund key",
+);
 const { preImage, hashRoot } = chequeHtlcPreImage(sampleId);
 ok(preImage.length === 64 && hashRoot.length === 64, "chequeHtlcPreImage derives 32-byte pre-image and SHA-256 root");
 
@@ -271,12 +277,17 @@ ok(
 );
 
 const timeoutRefund = buildAndSignHtlcTimeoutResolveTx({
-  secret: sampleSecret,
+  refundSecret: sampleRefundSecret,
   tx: htlcSpendFields,
 });
 ok(
   timeoutRefund.rawTx.startsWith("01") && timeoutRefund.refundAddress === refundKey.address && timeoutRefund.txHash.length === 64,
   "buildAndSignHtlcTimeoutResolveTx produces client-only TimeoutResolve transaction with no server key needed",
+);
+// Someone holding only the link can sign a TimeoutResolve, but not as the HTLC's refund sender.
+ok(
+  buildAndSignHtlcTimeoutResolveTx({ refundSecret: sampleSecret, tx: htlcSpendFields }).refundAddress !== htlcCreateFields.htlcSenderAddress,
+  "a TimeoutResolve signed with the link secret is not from the HTLC's refund address",
 );
 
 if (failed) {

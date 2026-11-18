@@ -255,19 +255,31 @@ export async function reconcileCheque(c: Cheque): Promise<Cheque> {
 
   // Look for a settlement spend: either from the HTLC contract (`htlcAddress`) or a direct Basic spend from `chequeAddress`.
   let outTx = txs.find((tx) => tx.executionResult && sameNimAddress(tx.from, current.chequeAddress) && !isHtlcLockTx(current, tx));
+  let spentFromHtlc = false;
   if (!outTx && current.htlcAddress) {
     try {
       const htlcTxs = await nimiq.getTransactionsByAddress(current.htlcAddress, 20);
       outTx = htlcTxs.find((tx) => tx.executionResult && sameNimAddress(tx.from, current.htlcAddress!));
+      spentFromHtlc = !!outTx;
     } catch {
       // ignore RPC blip on HTLC lookup
     }
   }
 
   if (outTx) {
-    const isCancel = sameNimAddress(outTx.to, current.writerAddress);
-    const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, outTx.to));
     const ownBroadcast = current.settleTxHash === outTx.hash.toLowerCase();
+    // A TimeoutResolve is the writer's refund (only the writer holds the refund key), wherever they
+    // sent it: record it as a cancel, not as "cashed by Someone". The proof's first byte is the
+    // OutgoingHTLCTransactionProof variant (2 = TimeoutResolve). Without a proof from the node, a
+    // spend after the timeout that NimBill didn't broadcast can only be that refund in practice.
+    const proof = typeof outTx.proof === "string" ? outTx.proof.toLowerCase().replace(/^0x/, "") : "";
+    const isTimeoutRefund =
+      spentFromHtlc &&
+      (proof
+        ? proof.startsWith("02")
+        : !ownBroadcast && !!current.htlcTimeoutAt && outTx.timestamp >= current.htlcTimeoutAt.getTime());
+    const isCancel = isTimeoutRefund || sameNimAddress(outTx.to, current.writerAddress);
+    const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, outTx.to));
     const [updated] = await db
       .update(schema.cheques)
       .set({
@@ -392,6 +404,11 @@ export async function handleChequeHtlcLock(id: string, input: z.output<typeof Ch
   }
   if (!c.refundAddress || !c.htlcTimeoutAt) {
     throw Errors.badRequest("This cheque was created without an HTLC refund key.");
+  }
+  // A cheque funded after its timeout would be locked into an already-expired contract: pointless,
+  // and the refund would be open straight away. The writer can simply cancel it instead.
+  if (c.htlcTimeoutAt.getTime() <= Date.now() + HOUR) {
+    throw Errors.badRequest("This cheque's 30-day protection window has passed. Cancel it to take the NIM back instead.");
   }
 
   const value = BigInt(input.value);

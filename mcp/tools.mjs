@@ -570,7 +570,10 @@ export async function executeTool(name, args = {}, client) {
     case "write_cheque": {
       const secret = newChequeSecret();
       const { publicKey: linkPublicKey } = linkKeyFromSecret(secret);
-      const { address: refundAddress } = refundKeyFromSecret(secret);
+      // A separate refund secret for the 30-day timeout refund: it stays in the agent's data dir
+      // and is never part of the link or code handed to the recipient.
+      const refundSecret = newChequeSecret();
+      const { address: refundAddress } = refundKeyFromSecret(refundSecret);
       const created = await client.request("/api/cheques", {
         method: "POST",
         auth: true,
@@ -588,7 +591,7 @@ export async function executeTool(name, args = {}, client) {
       const code = formatChequeCode(cheque.id, secret);
 
       // Save the secret before any money moves: without it the cheque can't be cancelled.
-      saveChequeSecret(dataDir, cheque.id, secret, { number: cheque.number, amount: cheque.amount });
+      saveChequeSecret(dataDir, cheque.id, secret, { number: cheque.number, amount: cheque.amount, refundSecret });
 
       if (payment?.recipient !== cheque.chequeAddress || payment?.amount !== cheque.amount || payment?.memo !== `NimBill C ${cheque.id}`) {
         throw new Error("The server's funding details don't match the cheque. Nothing was sent.");

@@ -14,12 +14,15 @@
 // Contract (HTLC, AccountType 2):
 // - HTLC `recipient` = A_cheque (2-of-2), so normal cashing and early writer cancellation still
 //   require NimBill's rule check + the link secret (via `OutgoingHTLCTransactionProof::RegularTransfer`).
-// - HTLC `sender` = a deterministic writer refund key (`A_refund`) derived from the link secret and
-//   the cheque ID (`refundKeyFromSecret`), and `timeout` = 30 days after the cheque is written.
+// - HTLC `sender` = the writer's refund key (`A_refund`, `refundKeyFromSecret`), derived from a
+//   SEPARATE refund secret the writer's browser generates and keeps. It is never part of the link
+//   or code: whoever holds the link (the recipient, or anyone it was forwarded to) must never be
+//   able to sign the refund, or a @tag-locked cheque could be taken after the timeout.
+//   `timeout` = 30 days after the cheque is written.
 // - If NimBill's server ever goes offline permanently or loses its secret, the cheque is never
-//   frozen forever: once `timeout` passes, anyone holding the cheque link or code can broadcast an
-//   `OutgoingHTLCTransactionProof::TimeoutResolve` transaction that returns 100% of the NIM directly
-//   to the writer's wallet (`writerAddress`) without any server involvement.
+//   frozen forever: once `timeout` passes, the writer (holding the refund secret) can broadcast an
+//   `OutgoingHTLCTransactionProof::TimeoutResolve` transaction that moves 100% of the NIM to their
+//   own wallet without any server involvement.
 //
 // Signing is a two-party Schnorr signature. Each side's nonce MUST be fresh for every signing
 // attempt: if one side ever answers twice with the same nonce but a different challenge, its key
@@ -200,20 +203,19 @@ export function linkKeyFromSecret(rawSecret: string): { scalar: bigint; publicKe
 }
 
 /**
- * Derive the writer's independent HTLC timeout-refund keypair (`A_refund`) from the link secret.
- * This key is the HTLC's `sender` (the refund authority after `timeout`): after the timelock expires,
- * anyone with the cheque link/code can sign a `TimeoutResolve` transaction returning the funds to the
- * writer's wallet without needing NimBill's server half.
+ * Derive the writer's HTLC timeout-refund keypair (`A_refund`) from the writer's REFUND secret
+ * (`newChequeSecret()`, generated separately from the link secret and never shared). This key is
+ * the HTLC's `sender`: once the timelock expires, only its holder can sign a `TimeoutResolve`.
+ * Never pass the link secret here: the link is handed to the recipient.
  */
-export function refundKeyFromSecret(rawSecret: string, chequeId?: string): {
+export function refundKeyFromSecret(rawRefundSecret: string): {
   secretKey: Uint8Array;
   publicKey: string;
   address: string;
 } {
-  const secret = normalizeChequeSecret(rawSecret);
-  if (!SECRET_RE.test(secret)) throw new Error("Invalid cheque secret");
-  const domain = chequeId ? `nimbill-cheque-refund-key-v1:${chequeId.toLowerCase()}:` : "nimbill-cheque-refund-key-v1:";
-  const secretKey = sha256(concatBytes(utf8ToBytes(domain), utf8ToBytes(secret)));
+  const secret = normalizeChequeSecret(rawRefundSecret);
+  if (!SECRET_RE.test(secret)) throw new Error("Invalid cheque refund key");
+  const secretKey = sha256(concatBytes(utf8ToBytes("nimbill-cheque-refund-key-v2:"), utf8ToBytes(secret)));
   const pubBytes = ed25519.getPublicKey(secretKey);
   return {
     secretKey,
@@ -719,18 +721,17 @@ export function verifyRawHtlcRegularTransferTx(
 
 /**
  * Build and sign an `OutgoingHTLCTransactionProof::TimeoutResolve` transaction (variant 2)
- * **entirely in the browser / client** using only the cheque link secret.
+ * **entirely in the browser / client** using only the writer's refund secret (never the link secret).
  *
  * Requires zero participation from NimBill's server: once the HTLC's `timeout` timestamp has passed,
- * anyone with the link secret can broadcast this transaction directly to any Nimiq RPC node to
- * return the full balance to `recipient` (normally the writer's wallet).
+ * the writer can broadcast this transaction directly to any Nimiq RPC node to move the full balance
+ * to `recipient` (their own wallet).
  */
 export function buildAndSignHtlcTimeoutResolveTx(params: {
-  secret: string;
-  chequeId?: string;
+  refundSecret: string;
   tx: HtlcSpendTxFields;
 }): { rawTx: string; txHash: string; refundAddress: string } {
-  const refund = refundKeyFromSecret(params.secret, params.chequeId);
+  const refund = refundKeyFromSecret(params.refundSecret);
   const txContent = serializeHtlcSpendTxContent(params.tx);
   const sig = ed25519.sign(txContent, refund.secretKey);
   const pubKey = hexToBytes(refund.publicKey);
