@@ -206,9 +206,9 @@ function EmergencyReclaimCard() {
   if (!open) {
     return (
       <p className="text-center text-xs text-muted">
-        Wrote a cheque whose 30-day HTLC timelock has passed?{" "}
+        Wrote a cheque nobody cashed in 30 days, and NimBill isn&apos;t working?{" "}
         <TextButton onClick={() => setOpen(true)} muted={false} className="text-xs font-medium">
-          Reclaim directly on-chain (no server needed) →
+          Get your money back →
         </TextButton>
       </p>
     );
@@ -218,11 +218,11 @@ function EmergencyReclaimCard() {
     <Card tone="subtle" className="space-y-3">
       <div className="flex items-start justify-between gap-2">
         <div>
-          <p className="text-sm font-semibold">Emergency on-chain HTLC timeout reclaim</p>
+          <p className="text-sm font-semibold">Get back an uncashed cheque</p>
           <p className="text-xs text-muted">
-            After a cheque&apos;s 30-day HTLC timelock expires, your browser can sign a Nimiq{" "}
-            <span className="font-mono">TimeoutResolve</span> transaction with the cheque&apos;s refund key and broadcast it directly to any Nimiq RPC
-            node. The refund key is in your cheque key backup. The cheque link can&apos;t do this.
+            30 days after you write a cheque, you can take back money nobody cashed, even if NimBill is down. This goes straight to the
+            Nimiq network, without NimBill. You need the cheque&apos;s refund key from your cheque key backup. The cheque link won&apos;t work
+            here, so nobody you sent it to can do this.
           </p>
         </div>
         <TextButton onClick={() => setOpen(false)} className="text-xs">
@@ -244,7 +244,7 @@ function EmergencyReclaimCard() {
           spellCheck={false}
         />
       </Field>
-      <Field label="HTLC contract address (shown on the cheque face)" htmlFor="reclaim-htlc">
+      <Field label="Safety refund address" hint="Shown on the cheque, and in your cheque key backup." htmlFor="reclaim-htlc">
         <Input
           id="reclaim-htlc"
           mono
@@ -256,7 +256,7 @@ function EmergencyReclaimCard() {
           spellCheck={false}
         />
       </Field>
-      <Field label="Your Nimiq wallet address to receive the refund" htmlFor="reclaim-dest">
+      <Field label="Send the money to (your Nimiq wallet)" htmlFor="reclaim-dest">
         <Input
           id="reclaim-dest"
           mono
@@ -268,14 +268,19 @@ function EmergencyReclaimCard() {
           spellCheck={false}
         />
       </Field>
-      <Field label="Nimiq JSON-RPC node" htmlFor="reclaim-rpc" optional>
+      <Field
+        label="Nimiq network server"
+        hint="Advanced. Leave this as it is unless it doesn't respond."
+        htmlFor="reclaim-rpc"
+        optional
+      >
         <Input id="reclaim-rpc" mono value={rpcUrl} onChange={(e) => setRpcUrl(e.target.value)} />
       </Field>
       {error && <Alert kind="error">{error}</Alert>}
       {done && (
         <Alert kind="info">
           <CoinText>
-            Reclaimed {formatAsset(done.valueLuna, "NIM")} on-chain (tx {done.txHash.slice(0, 12)}…).
+            Done: {formatAsset(done.valueLuna, "NIM")} is on its way back to your wallet.
           </CoinText>
         </Alert>
       )}
@@ -306,7 +311,7 @@ function EmergencyReclaimCard() {
           }
         }}
       >
-        Sign &amp; broadcast HTLC TimeoutResolve
+        Get my money back
       </Button>
     </Card>
   );
@@ -417,7 +422,7 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
         if ((r.status === "funded" || r.status === "cashed") && r.cheque) {
           let finalCheque = r.cheque;
           if (r.status === "funded" && r.cheque.htlc?.refundAddress && !r.cheque.htlc.contractAddress) {
-            setPhase({ k: "verifying", cheque: r.cheque, secret, message: "Activating 30-day HTLC timeout refund…" });
+            setPhase({ k: "verifying", cheque: r.cheque, secret, message: "Turning on the 30-day safety refund…" });
             try {
               const locked = await lockChequeInHtlc({ id: r.cheque.id, secret });
               finalCheque = locked.cheque;
@@ -670,7 +675,7 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
 
   // The link secret only lives in this browser. Let the writer copy every open cheque's code
   // somewhere safe, since without it a cheque can't be cancelled.
-  // The refund key (for the 30-day on-chain refund) is backed up too: it is never in the link.
+  // The refund key and address (for the 30-day safety refund) are backed up too: they are never in the link.
   const saved = allSavedChequeSecrets();
   const refunds = allSavedChequeRefundSecrets();
   const backup = cheques
@@ -680,6 +685,7 @@ function ChequeList({ onSwitchToCash }: { onSwitchToCash: () => void }) {
         `${c.number} · ${amountText(c)}`,
         saved[c.id] ? formatChequeCode(c.id, saved[c.id]) : null,
         refunds[c.id] ? `refund key ${refunds[c.id]}` : null,
+        refunds[c.id] && c.htlc?.contractAddress ? `safety refund address ${c.htlc.contractAddress}` : null,
       ]
         .filter(Boolean)
         .join(": "),

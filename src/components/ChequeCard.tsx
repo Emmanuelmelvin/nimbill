@@ -81,7 +81,7 @@ export function ChequeCard({ cheque }: { cheque: PublicCheque }) {
             ⑆ {shortAddress(cheque.htlc?.contractAddress ?? cheque.chequeAddress)} ⑈
             {cheque.htlc?.timeoutAt && cheque.status === "funded" && (
               <>
-                {" · "}HTLC REFUND{" "}
+                {" · "}REFUND AFTER{" "}
                 {new Date(cheque.htlc.timeoutAt).toLocaleDateString("en-GB", { day: "numeric", month: "short" }).toUpperCase()}
               </>
             )}
