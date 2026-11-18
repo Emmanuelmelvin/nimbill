@@ -76,7 +76,9 @@ export function FiatWithdraw() {
           </div>
         ) : (
           <div className="mt-5 space-y-4">
-            <p className="text-sm">Join the waitlist and tell us how you&apos;d like to be paid. It helps us pick the first partner.</p>
+            <p className="text-sm">
+              Join the waitlist and tell us how you&apos;d like to be paid. It helps us pick the first licensed payout partner (NimBill is a non-custodial interface and never holds or converts fiat itself).
+            </p>
             <Field label="Country" htmlFor="waitlist-country">
               <Dropdown
                 id="waitlist-country"
