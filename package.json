@@ -17,6 +17,7 @@
     "test:address": "node --experimental-strip-types --no-warnings scripts/test-address.ts",
     "test:earnings": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-earnings.ts",
     "test:recurring": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-recurring.ts",
+    "test:recurring-lifecycle": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-recurring-lifecycle.ts",
     "test:tags": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/test-tags.ts",
     "withdraw:new-phrase": "node --experimental-strip-types --no-warnings scripts/withdraw-new-phrase.ts",
     "test:withdraw-live": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-withdraw-live.ts",

@@ -6,6 +6,7 @@ import { Errors } from "@/lib/errors";
 import { computeTotal, createInvoice, listInvoices, publicInvoice, reconcileMerchant } from "@/lib/invoices";
 import { saveClient } from "@/lib/clients-book";
 import { invoiceUsd, prepareLedger } from "@/lib/ledger";
+import { logger } from "@/lib/logger";
 import { metrics } from "@/lib/observability";
 import { advanceDueRecurring, createRecurringInvoice, listRecurringInvoices, publicRecurringInvoice } from "@/lib/recurring";
 import { NewInvoiceBody } from "@/lib/schemas";
@@ -13,7 +14,10 @@ import { NewInvoiceBody } from "@/lib/schemas";
 // Dashboard: my invoices. Also generates any due recurring invoices and picks up payments we haven't seen yet.
 export const GET = handle(async () => {
   const address = await requireSessionAddress();
-  await advanceDueRecurring(address);
+  // Best effort: the worker issues due cycles too, so a failure here must never break the dashboard.
+  await advanceDueRecurring(address).catch((e: Error) =>
+    logger.warn("recurring advance on dashboard load failed", { merchant: address, error: e.message }),
+  );
   await reconcileMerchant(address);
   // After reconciling, so a payment found just now gets its dollar value too.
   const { fx, currency } = await prepareLedger(address);

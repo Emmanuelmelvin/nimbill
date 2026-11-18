@@ -202,7 +202,7 @@ function RecurringList({ recurring, onChanged }: { recurring: PublicRecurringInv
       });
       if (action === "issue_now" && res.invoice) {
         toast.success(`Issued ${res.invoice.number}`, {
-          description: rec.clientEmail ? `Emailed to ${rec.clientEmail}.` : `Ready to share with ${rec.clientName}.`,
+          description: `${rec.clientEmail ? `Emailed to ${rec.clientEmail}.` : `Ready to share with ${rec.clientName}.`} Next invoice on ${res.recurring.nextRunDate}.`,
         });
       } else if (action === "pause") {
         toast.success("Schedule paused", { description: `No new invoices will be created for ${rec.clientName} until you resume.` });

@@ -99,6 +99,9 @@ export const recurringInvoices = pgTable("recurring_invoices", {
   interval: text("interval").$type<RecurringInterval>().notNull(),
   dueDays: integer("due_days").notNull().default(7), // days after issue date the invoice is due (0 = due on issue date)
   nextRunDate: text("next_run_date").notNull(), // YYYY-MM-DD when the next invoice will be generated
+  // Day of the month (1-31) that monthly/quarterly/yearly cycles land on, clamped in short months.
+  // Kept apart from nextRunDate so a schedule started on the 31st returns to the 31st after February.
+  anchorDay: integer("anchor_day"),
   lastRunDate: text("last_run_date"), // YYYY-MM-DD of the most recent generated cycle
   lastInvoiceId: text("last_invoice_id"),
   generatedCount: integer("generated_count").notNull().default(0),
@@ -651,6 +654,7 @@ CREATE TABLE IF NOT EXISTS recurring_invoices (
   interval text NOT NULL,
   due_days integer NOT NULL DEFAULT 7,
   next_run_date text NOT NULL,
+  anchor_day integer,
   last_run_date text,
   last_invoice_id text,
   generated_count integer NOT NULL DEFAULT 0,
@@ -660,6 +664,7 @@ CREATE TABLE IF NOT EXISTS recurring_invoices (
   updated_at timestamptz NOT NULL DEFAULT now()
 );
 ALTER TABLE recurring_invoices ADD COLUMN IF NOT EXISTS cancelled_by text;
+ALTER TABLE recurring_invoices ADD COLUMN IF NOT EXISTS anchor_day integer;
 CREATE INDEX IF NOT EXISTS recurring_invoices_merchant_idx ON recurring_invoices (merchant_address, created_at DESC);
 CREATE INDEX IF NOT EXISTS recurring_invoices_due_idx ON recurring_invoices (status, next_run_date);
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payer_email text;

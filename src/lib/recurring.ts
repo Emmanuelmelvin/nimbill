@@ -2,13 +2,14 @@ import "server-only";
 import { hmac } from "@noble/hashes/hmac.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
-import { and, asc, desc, eq, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, lte, ne, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
 import type { Invoice, LineItem, RecurringInterval, RecurringInvoice, RecurringStatus } from "./db/schema";
 import { env } from "./env";
 import { Errors } from "./errors";
 import { computeTotal, createInvoice, newId } from "./invoices";
 import { notifyRecurringInvoiceIssued, notifyRecurringUnsubscribed } from "./notifications";
+import { logger } from "./logger";
 import { metrics } from "./observability";
 
 function unsubscribeKey(): Uint8Array {
@@ -52,11 +53,17 @@ export function addDaysToDate(dateStr: string, days: number): string {
   return formatIsoDate(new Date(Date.UTC(y, m - 1, d + days)));
 }
 
+/** Day of the month (1-31) of a YYYY-MM-DD date. */
+export function dayOfMonth(dateStr: string): number {
+  return parseIsoDate(dateStr).d;
+}
+
 /**
- * Advance a YYYY-MM-DD date by one `interval`. Month-based intervals clamp to the last day of the
- * target month (e.g. 2026-01-31 + 1 month → 2026-02-28) so end-of-month schedules never skip ahead.
+ * Advance a YYYY-MM-DD date by one `interval`. Month-based intervals land on `anchorDay` (the
+ * schedule's day of the month, default: the day of `dateStr`), clamped to the last day of short
+ * months: with anchor 31, 2026-01-31 → 02-28 → 03-31 → 04-30, never drifting to the 28th for good.
  */
-export function addInterval(dateStr: string, interval: RecurringInterval): string {
+export function addInterval(dateStr: string, interval: RecurringInterval, anchorDay?: number | null): string {
   const { y, m, d } = parseIsoDate(dateStr);
   if (interval === "weekly") return addDaysToDate(dateStr, 7);
   if (interval === "biweekly") return addDaysToDate(dateStr, 14);
@@ -65,15 +72,21 @@ export function addInterval(dateStr: string, interval: RecurringInterval): strin
   const targetYear = y + Math.floor(targetMonthIndex / 12);
   const targetMonth = ((targetMonthIndex % 12) + 12) % 12;
   const daysInTargetMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0)).getUTCDate();
-  return formatIsoDate(new Date(Date.UTC(targetYear, targetMonth, Math.min(d, daysInTargetMonth))));
+  const day = anchorDay && anchorDay >= 1 && anchorDay <= 31 ? anchorDay : d;
+  return formatIsoDate(new Date(Date.UTC(targetYear, targetMonth, Math.min(day, daysInTargetMonth))));
 }
 
-/** Advance `dateStr` by `interval` until it is strictly after `afterDate`. */
-function nextFutureDate(dateStr: string, interval: RecurringInterval, afterDate: string): string {
-  let next = addInterval(dateStr, interval);
+/** Advance `dateStr` by `interval` (on `anchorDay`) until it is strictly after `afterDate`. */
+export function nextFutureDate(
+  dateStr: string,
+  interval: RecurringInterval,
+  afterDate: string,
+  anchorDay?: number | null,
+): string {
+  let next = addInterval(dateStr, interval, anchorDay);
   let guard = 0;
   while (next <= afterDate && guard++ < 500) {
-    next = addInterval(next, interval);
+    next = addInterval(next, interval, anchorDay);
   }
   return next;
 }
@@ -96,7 +109,8 @@ export async function createRecurringInvoice(input: {
   const start = input.startDate && input.startDate >= today ? input.startDate : today;
   const issueImmediately = start <= today;
   const id = `rec_${newId(10)}`;
-  const nextRunDate = issueImmediately ? addInterval(start, input.interval) : start;
+  const anchorDay = dayOfMonth(start);
+  const nextRunDate = issueImmediately ? addInterval(start, input.interval, anchorDay) : start;
 
   let firstInvoice: Invoice | null = null;
   if (issueImmediately) {
@@ -131,6 +145,7 @@ export async function createRecurringInvoice(input: {
       interval: input.interval,
       dueDays: input.dueDays,
       nextRunDate,
+      anchorDay,
       lastRunDate: issueImmediately ? today : null,
       lastInvoiceId: firstInvoice?.id ?? null,
       generatedCount: issueImmediately ? 1 : 0,
@@ -186,8 +201,34 @@ async function spawnInvoiceForSchedule(rec: RecurringInvoice, issueDate: string)
 }
 
 /**
+ * Give a claimed cycle back after its invoice could not be created, so the next run retries it
+ * instead of silently skipping a billing period. Only applies while nobody has moved the schedule
+ * since our claim. (The Neon HTTP driver has no interactive transactions, hence this compensation.)
+ */
+async function releaseClaim(rec: RecurringInvoice, claimedNextRunDate: string): Promise<void> {
+  const db = await getDb();
+  try {
+    await db
+      .update(schema.recurringInvoices)
+      .set({ nextRunDate: rec.nextRunDate, lastRunDate: rec.lastRunDate, updatedAt: new Date() })
+      .where(and(eq(schema.recurringInvoices.id, rec.id), eq(schema.recurringInvoices.nextRunDate, claimedNextRunDate)));
+  } catch (e) {
+    logger.error("recurring claim release failed: this cycle was skipped", {
+      recurringId: rec.id,
+      cycle: rec.nextRunDate,
+      error: (e as Error).message,
+    });
+  }
+}
+
+/**
  * Find active recurring schedules whose `nextRunDate <= today`, claim each one atomically, and
  * generate its next invoice. Safe to call from both the background worker and GET /api/invoices.
+ *
+ * Catch-up is deliberate: if several cycles were missed (the worker was down), one invoice is
+ * issued, dated today, and the schedule jumps to its next future date. Clients never get a burst of
+ * back-dated invoices. A schedule whose invoice fails to generate is retried on the next run and
+ * never stops the others.
  */
 export async function advanceDueRecurring(merchantAddress?: string): Promise<number> {
   const db = await getDb();
@@ -204,7 +245,7 @@ export async function advanceDueRecurring(merchantAddress?: string): Promise<num
 
   let issued = 0;
   for (const rec of due) {
-    const nextRunDate = nextFutureDate(rec.nextRunDate, rec.interval, today);
+    const nextRunDate = nextFutureDate(rec.nextRunDate, rec.interval, today, rec.anchorDay);
     // Claim the cycle first by advancing nextRunDate conditionally, so concurrent workers/requests
     // never generate two invoices for the same cycle.
     const [claimed] = await db
@@ -224,7 +265,18 @@ export async function advanceDueRecurring(merchantAddress?: string): Promise<num
       .returning();
     if (!claimed) continue;
 
-    const inv = await spawnInvoiceForSchedule(claimed, today);
+    let inv: Invoice;
+    try {
+      inv = await spawnInvoiceForSchedule(claimed, today);
+    } catch (e) {
+      logger.error("recurring invoice generation failed; will retry next run", {
+        recurringId: rec.id,
+        cycle: rec.nextRunDate,
+        error: (e as Error).message,
+      });
+      await releaseClaim(rec, nextRunDate);
+      continue;
+    }
     const [updated] = await db
       .update(schema.recurringInvoices)
       .set({
@@ -260,26 +312,54 @@ export async function updateRecurringSchedule(
   const today = todayDate();
 
   if (action === "issue_now") {
-    const inv = await spawnInvoiceForSchedule(rec, today);
-    const nextRunDate = rec.nextRunDate <= today ? nextFutureDate(rec.nextRunDate, rec.interval, today) : rec.nextRunDate;
+    // "Issue now" bills the upcoming cycle early: the schedule then moves one interval past it, so
+    // the client is never billed twice for one period. If that cycle is already due, it is the one
+    // the worker would have issued, and the schedule jumps to its next future date.
+    const nextRunDate =
+      rec.nextRunDate <= today
+        ? nextFutureDate(rec.nextRunDate, rec.interval, today, rec.anchorDay)
+        : addInterval(rec.nextRunDate, rec.interval, rec.anchorDay);
+    // Claim the cycle exactly like the worker does, so a concurrent run can't issue it too.
+    const [claimed] = await db
+      .update(schema.recurringInvoices)
+      .set({ nextRunDate, lastRunDate: today, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.recurringInvoices.id, rec.id),
+          ne(schema.recurringInvoices.status, "cancelled"),
+          eq(schema.recurringInvoices.nextRunDate, rec.nextRunDate),
+        ),
+      )
+      .returning();
+    if (!claimed) throw Errors.conflict("This schedule just changed. Refresh and try again.");
+
+    let inv: Invoice;
+    try {
+      inv = await spawnInvoiceForSchedule(claimed, today);
+    } catch (e) {
+      await releaseClaim(rec, nextRunDate);
+      throw e;
+    }
     const [updated] = await db
       .update(schema.recurringInvoices)
       .set({
-        lastRunDate: today,
         lastInvoiceId: inv.id,
-        nextRunDate,
         generatedCount: sql`${schema.recurringInvoices.generatedCount} + 1`,
         updatedAt: new Date(),
       })
       .where(eq(schema.recurringInvoices.id, rec.id))
       .returning();
-    notifyRecurringInvoiceIssued(inv, updated, { notifyMerchant: false });
-    return { recurring: updated, invoice: inv };
+    notifyRecurringInvoiceIssued(inv, updated ?? claimed, { notifyMerchant: false });
+    return { recurring: updated ?? claimed, invoice: inv };
   }
 
   const nextStatus: RecurringStatus = action === "pause" ? "paused" : action === "resume" ? "active" : "cancelled";
+  // Resuming keeps the schedule on its own dates (and day of the month); a cycle that fell due
+  // while paused is skipped, not billed late.
   const nextRunDate =
-    action === "resume" && rec.nextRunDate <= today ? addInterval(today, rec.interval) : rec.nextRunDate;
+    action === "resume" && rec.nextRunDate <= today
+      ? nextFutureDate(rec.nextRunDate, rec.interval, today, rec.anchorDay)
+      : rec.nextRunDate;
 
   const [updated] = await db
     .update(schema.recurringInvoices)
@@ -318,8 +398,13 @@ export async function unsubscribeRecurringSchedule(
       cancelledBy: "client",
       updatedAt: new Date(),
     })
-    .where(eq(schema.recurringInvoices.id, rec.id))
+    // Only the first of two simultaneous clicks cancels (and emails the merchant).
+    .where(and(eq(schema.recurringInvoices.id, rec.id), ne(schema.recurringInvoices.status, "cancelled")))
     .returning();
+  if (!updated) {
+    const current = await getRecurringInvoice(id);
+    return { recurring: current ?? rec, alreadyCancelled: true };
+  }
   notifyRecurringUnsubscribed(updated);
   return { recurring: updated, alreadyCancelled: false };
 }

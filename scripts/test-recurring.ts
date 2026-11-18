@@ -1,6 +1,6 @@
 // Unit & integration checks for recurring invoices (date math, schedule lifecycle, unsubscribe, email templates).
 // Run: npm run test:recurring
-import { addDaysToDate, addInterval, recurringUnsubscribeToken, verifyUnsubscribeToken } from "../src/lib/recurring.ts";
+import { addDaysToDate, addInterval, nextFutureDate, recurringUnsubscribeToken, verifyUnsubscribeToken } from "../src/lib/recurring.ts";
 import {
   paidEmail,
   payerReceiptEmail,
@@ -31,6 +31,21 @@ ok(addInterval("2028-01-31", "monthly") === "2028-02-29", "addInterval: clamps J
 ok(addInterval("2026-11-30", "quarterly") === "2027-02-28", "addInterval: quarterly clamps Nov 30 -> Feb 28");
 ok(addInterval("2026-11-18", "yearly") === "2027-11-18", "addInterval: yearly");
 ok(addInterval("2028-02-29", "yearly") === "2029-02-28", "addInterval: yearly clamps Feb 29 -> Feb 28");
+
+// Month-end schedules return to their anchor day instead of drifting to the 28th for good.
+{
+  const chain = ["2026-01-31"];
+  for (let i = 0; i < 5; i++) chain.push(addInterval(chain[chain.length - 1], "monthly", 31));
+  ok(
+    chain.join(",") === "2026-01-31,2026-02-28,2026-03-31,2026-04-30,2026-05-31,2026-06-30",
+    `addInterval: anchor 31 keeps month-end (${chain.join(" -> ")})`,
+  );
+}
+ok(addInterval("2026-02-28", "monthly", 30) === "2026-03-30", "addInterval: anchor 30 after February -> Mar 30");
+ok(addInterval("2027-02-28", "yearly", 29) === "2028-02-29", "addInterval: yearly anchor 29 lands on leap day");
+ok(addInterval("2026-11-18", "weekly", 31) === "2026-11-25", "addInterval: anchor ignored for weekly");
+ok(nextFutureDate("2026-01-31", "monthly", "2026-04-15", 31) === "2026-04-30", "nextFutureDate: skips missed cycles, keeps anchor");
+ok(nextFutureDate("2026-11-18", "weekly", "2026-11-18") === "2026-11-25", "nextFutureDate: strictly after the given date");
 
 // 2. Email templates
 const sampleInvoice: Invoice = {
