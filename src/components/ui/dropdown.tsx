@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { cx } from "./cx";
-import { CONTROL } from "./form";
+import { CONTROL, CONTROL_SM } from "./form";
 
 /** The open list's width (w-72) and the gap it keeps from the screen edge (the page's px-4). */
 const LIST_WIDTH = 288;
@@ -31,6 +31,7 @@ export function Dropdown<T extends string>({
   className,
   labels = "code",
   "aria-label": ariaLabel,
+  size = "md",
 }: {
   id?: string;
   options: readonly DropdownOption<T>[];
@@ -42,6 +43,8 @@ export function Dropdown<T extends string>({
   /** "code": short labels in a fixed column (USD · US Dollar). "name": long labels get the room, the detail sits on the right. */
   labels?: "code" | "name";
   "aria-label"?: string;
+  /** "md": a full-width form field. "sm": compact and only as wide as its text (next to a chip, in a list row). */
+  size?: "md" | "sm";
 }) {
   const listId = useId();
   const root = useRef<HTMLDivElement>(null);
@@ -138,9 +141,13 @@ export function Dropdown<T extends string>({
         // Space "clicks" a button on key-up; we already handled it on key-down.
         onKeyUp={(e) => e.key === " " && e.preventDefault()}
         onBlur={() => setOpen(false)}
-        className={cx(CONTROL, "cursor-pointer text-left", open && "border-ink shadow-[inset_0_0_0_1px_var(--color-ink)]")}
+        className={cx(
+          size === "sm" ? CONTROL_SM : CONTROL,
+          "cursor-pointer text-left",
+          open && "border-ink shadow-[inset_0_0_0_1px_var(--color-ink)]",
+        )}
       >
-        <span className="flex items-center gap-2.5">
+        <span className={cx("flex items-center", size === "sm" ? "gap-2" : "gap-2.5")}>
           {selected ? (
             <>
               {selected.icon}
@@ -150,7 +157,8 @@ export function Dropdown<T extends string>({
               </span>
             </>
           ) : (
-            <span className="min-w-0 flex-1 truncate text-muted/70">{placeholder}</span>
+            // Small menus are actions ("Send reminder"), so their label reads as a label, not a faded hint.
+            <span className={cx("min-w-0 flex-1 truncate", size === "sm" ? "font-medium" : "text-muted/70")}>{placeholder}</span>
           )}
           <svg aria-hidden className={cx("shrink-0 transition-transform", open && "rotate-180")} width="12" height="12" viewBox="0 0 12 12">
             <path d="M2 4l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" />
@@ -166,7 +174,8 @@ export function Dropdown<T extends string>({
           // Keep focus on the button while clicking or scrolling the list.
           onMouseDown={(e) => e.preventDefault()}
           className={cx(
-            "absolute top-full z-30 mt-1 max-h-72 w-72 max-w-[calc(100vw-2rem)] min-w-full origin-top animate-[pop_0.12s_ease-out] overflow-y-auto overscroll-contain border border-ink bg-paper py-1",
+            "absolute top-full z-30 mt-1 max-h-72 max-w-[calc(100vw-2rem)] min-w-full origin-top animate-[pop_0.12s_ease-out] overflow-y-auto overscroll-contain border border-ink bg-paper py-1",
+            size === "sm" ? "w-56" : "w-72",
             alignRight ? "right-0" : "left-0",
           )}
         >
@@ -180,7 +189,11 @@ export function Dropdown<T extends string>({
                 aria-selected={on}
                 onMouseMove={() => setActive(i)}
                 onClick={() => pick(i)}
-                className={cx("flex min-h-11 cursor-pointer items-center gap-3 px-4", i === active && "bg-subtle")}
+                className={cx(
+                  "flex cursor-pointer items-center gap-3",
+                  size === "sm" ? "min-h-10 px-3 text-sm" : "min-h-11 px-4",
+                  i === active && "bg-subtle",
+                )}
               >
                 {o.icon}
                 <span className={cx(labels === "code" ? "w-10 shrink-0" : "min-w-0 flex-1 truncate", on ? "font-bold" : "font-medium")}>

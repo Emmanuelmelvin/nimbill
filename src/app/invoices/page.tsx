@@ -21,7 +21,7 @@ import {
   TextLink,
 } from "@/components/ui";
 import { EarningsCard } from "@/components/EarningsCard";
-import { RemindActions, ViewedStatus } from "@/components/InvoiceReminder";
+import { RemindMenu, ViewedStatus } from "@/components/InvoiceReminder";
 import { TabPage } from "@/components/TabPage";
 import { TransferList } from "@/components/TransferList";
 import { api, type BookClient, type PublicInvoice, type PublicRecurringInvoice } from "@/lib/client/api";
@@ -200,12 +200,7 @@ function InvoiceList({
                   </div>
                 </Link>
                 {/* Outside the row's link: buttons can't sit inside an <a>. */}
-                {isOverdue(inv, today) && (
-                  <div className="flex items-center gap-3 px-4 pb-4">
-                    <p className="shrink-0 font-mono text-[11px] tracking-wider text-muted uppercase">Remind</p>
-                    <RemindActions inv={inv} clientEmail={inv.clientEmail} size="sm" className="min-w-0 flex-1" />
-                  </div>
-                )}
+                {isOverdue(inv, today) && <RemindMenu inv={inv} clientEmail={inv.clientEmail} className="px-4 pb-4" />}
               </li>
             ))}
           </ul>

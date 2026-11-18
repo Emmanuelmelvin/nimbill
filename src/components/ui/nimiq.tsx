@@ -70,6 +70,20 @@ export function Countdown({ until, onExpire }: { until: string; onExpire?: () =>
   );
 }
 
+/** Copy text to the clipboard, falling back to a hidden textarea where the Clipboard API is blocked (some web views). */
+export async function copyText(text: string): Promise<void> {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+  }
+}
+
 export function CopyButton({
   text,
   label = "Copy",
@@ -93,16 +107,7 @@ export function CopyButton({
       block={block}
       className={className}
       onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(text);
-        } catch {
-          const ta = document.createElement("textarea");
-          ta.value = text;
-          document.body.appendChild(ta);
-          ta.select();
-          document.execCommand("copy");
-          ta.remove();
-        }
+        await copyText(text);
         setDone(true);
         setTimeout(() => setDone(false), 1800);
       }}
