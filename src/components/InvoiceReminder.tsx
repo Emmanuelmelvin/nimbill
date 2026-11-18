@@ -152,7 +152,7 @@ export function RemindMenu({
         placeholder="Send reminder"
         onChange={(pick) => void send(pick)}
         labels="name"
-        className="min-w-0 flex-1"
+        size="sm"
       />
     </div>
   );

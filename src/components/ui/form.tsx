@@ -6,6 +6,9 @@ import { cx } from "./cx";
 export const CONTROL =
   "block min-h-12 w-full border border-edge bg-paper px-4 text-base text-ink outline-none transition-colors placeholder:text-muted/70 hover:border-ink focus:border-ink focus:shadow-[inset_0_0_0_1px_var(--color-ink)] disabled:cursor-not-allowed disabled:bg-subtle disabled:text-muted";
 
+/** A compact control, as wide as its content: for menus that sit next to a chip or in a list row. */
+export const CONTROL_SM = CONTROL.replace("min-h-12 w-full", "min-h-9 w-auto").replace("px-4 text-base", "px-3 text-sm");
+
 export function labelStyles(size: "md" | "sm" = "md") {
   return size === "sm" ? "mb-1 block text-xs font-medium text-muted" : "mb-1.5 block text-sm font-medium text-ink";
 }
