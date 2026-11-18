@@ -228,6 +228,12 @@ export function CryptoWithdraw() {
         return go("tracking");
       }
       const message = walletErrorMessage(e); // null: the user declined
+      // The price moved before any swap was paid: show the fresh quote, so the next Approve isn't
+      // refused again against the old one.
+      if (!created && AppError.is(e) && e.code === "CONFLICT") {
+        await getQuote();
+        return setError(message);
+      }
       if (created) {
         const cancelled = await api<{ withdrawal: WithdrawalView }>(`/api/withdraw/${created.id}/cancel`, {
           method: "POST",

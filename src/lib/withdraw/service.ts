@@ -50,6 +50,16 @@ export function hasExcessiveQuoteDrift(freshEstimate: string | number | bigint, 
   return fresh > Math.ceil(expected * (1 + MAX_QUOTE_DRIFT));
 }
 
+/**
+ * True when the created swap's Lightning invoice (`invoiceSats`, what Nimiq Pay actually pays)
+ * asks for more than `MAX_QUOTE_DRIFT` above the quote it was priced from (`quotedSats`).
+ */
+export function swapCostsMoreThanQuoted(invoiceSats: string | number, quotedSats: number): boolean {
+  const sats = Number(invoiceSats);
+  if (!Number.isFinite(sats) || !Number.isFinite(quotedSats) || quotedSats <= 0) return true;
+  return sats > Math.ceil(quotedSats * (1 + MAX_QUOTE_DRIFT));
+}
+
 export const withdrawalsLive = () => env.WITHDRAW_LIVE === "true";
 
 type Route = { chain: Chain; token: Token; destination: string; receiveUnits: string };
@@ -108,7 +118,7 @@ export async function createWithdrawal(nimiqAddress: string, body: QuoteBody): P
   if (!withdrawalsLive()) throw Errors.forbidden("Withdrawals aren't switched on yet. This was a sample quote.");
   const r = resolve(body);
   const q = await lendaswap.quote(r.chain, r.token, r.receiveUnits);
-  const { fees, sendEstimate } = await price(body, q, body.asset);
+  const { fees, sendEstimate, sats: quotedSats } = await price(body, q, body.asset);
   if (hasExcessiveQuoteDrift(sendEstimate, body.expectedSendEstimate)) {
     throw Errors.conflict("The exchange rate moved since your quote was shown. Please review the updated quote before approving.");
   }
@@ -124,6 +134,17 @@ export async function createWithdrawal(nimiqAddress: string, body: QuoteBody): P
   if (problems.length) {
     logger.error("lendaswap swap does not match the request; not paying it", { id, swapId: swap.id, problems });
     throw Errors.upstream("lendaswap", "The swap provider answered with a different swap. Nothing was paid; try again.");
+  }
+  // The quote check above covers the rate; this covers the invoice the user really pays, which the
+  // provider sets when the swap is created. An unpaid swap simply expires at the provider.
+  if (swapCostsMoreThanQuoted(swap.source_amount, quotedSats)) {
+    logger.warn("lendaswap invoice costs more than the quote; not paying it", {
+      id,
+      swapId: swap.id,
+      invoiceSats: swap.source_amount,
+      quotedSats,
+    });
+    throw Errors.conflict("The swap came back more expensive than quoted. Nothing was paid; review the new quote and try again.");
   }
 
   const expiresAt = swap.invoice_expires_at ? new Date(swap.invoice_expires_at * 1000) : new Date(Date.now() + 10 * 60_000);
@@ -167,16 +188,25 @@ async function load(id: string, nimiqAddress?: string): Promise<Withdrawal> {
 }
 
 /** Move a withdrawal to `status`, recording when (and why) in its history. */
-async function setStatus(w: Withdrawal, status: WithdrawalStatus, changes: Partial<Withdrawal> = {}, note?: string): Promise<Withdrawal> {
+/** Exported for scripts/test-withdraw-status.ts only; app code goes through advance/markPaid/markCancelled. */
+export async function setStatus(w: Withdrawal, status: WithdrawalStatus, changes: Partial<Withdrawal> = {}, note?: string): Promise<Withdrawal> {
   const db = await getDb();
   const now = new Date();
   const history =
     status === w.status ? w.statusHistory : [...w.statusHistory, { status, at: now.toISOString(), ...(note ? { note } : {}) }];
+  // Only from the status we read: the worker, the status screen, the history list and the cancel
+  // call can all advance the same withdrawal at once, and a slower one must never move it back
+  // (say "delivered" to "delivering") or cancel one that has moved on. The loser gets the current row.
   const [row] = await db
     .update(schema.withdrawals)
     .set({ ...changes, status, statusHistory: history, updatedAt: now, ...(note && status !== w.status ? { failureReason: note } : {}) })
-    .where(eq(schema.withdrawals.id, w.id))
+    .where(and(eq(schema.withdrawals.id, w.id), eq(schema.withdrawals.status, w.status)))
     .returning();
+  if (!row) {
+    const [current] = await db.select().from(schema.withdrawals).where(eq(schema.withdrawals.id, w.id));
+    logger.info("withdrawal moved on concurrently; keeping its newer status", { id: w.id, wanted: status, current: current?.status });
+    return current ?? w;
+  }
   if (status !== w.status) logger.info("withdrawal status", { id: w.id, from: w.status, to: status, note });
   return row;
 }
@@ -303,21 +333,20 @@ export async function listWithdrawals(nimiqAddress: string, limit = 15): Promise
     .orderBy(desc(schema.withdrawals.createdAt))
     .limit(limit);
 
-  const out: Withdrawal[] = [];
-  for (const w of rows) {
-    const recentlyCancelled = w.status === "cancelled" && Date.now() - w.createdAt.getTime() < CANCEL_RESCUE_MS;
-    const needsAdvance = (!isFinal(w.status) || recentlyCancelled) && Date.now() - w.updatedAt.getTime() >= 3_000;
-    if (needsAdvance) {
+  // In parallel: each open row asks the provider, and one slow answer shouldn't hold up the list.
+  return Promise.all(
+    rows.map(async (w) => {
+      const recentlyCancelled = w.status === "cancelled" && Date.now() - w.createdAt.getTime() < CANCEL_RESCUE_MS;
+      const needsAdvance = (!isFinal(w.status) || recentlyCancelled) && Date.now() - w.updatedAt.getTime() >= 3_000;
+      if (!needsAdvance) return w;
       try {
-        out.push(await advance(w));
-        continue;
+        return await advance(w);
       } catch (e) {
         logger.warn("withdrawal list advance failed", { id: w.id, error: (e as Error).message });
+        return w;
       }
-    }
-    out.push(w);
-  }
-  return out;
+    }),
+  );
 }
 
 /** Worker job: bring every open withdrawal (plus recently cancelled ones in case Nimiq Pay paid before throwing) forward. */
