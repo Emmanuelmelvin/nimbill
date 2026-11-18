@@ -1,5 +1,5 @@
 import "server-only";
-import { and, desc, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import { getDb, schema } from "./db";
 import type { Invoice, LineItem, Quote } from "./db/schema";
@@ -67,6 +67,7 @@ export async function createInvoice(input: {
   merchantEvmAddress?: string | null;
   clientName: string;
   clientEmail?: string | null;
+  payerEmail?: string | null;
   items: LineItem[];
   currency: string;
   note?: string | null;
@@ -77,6 +78,8 @@ export async function createInvoice(input: {
   productId?: string | null;
   /** "Pay with NimBill": set only for board invoices created by a signed store request. */
   integration?: { id: string; reference?: string | null; metadata?: Record<string, string> | null; returnUrl?: string | null } | null;
+  /** Set when this invoice was generated from a recurring schedule (`recurring_invoices.id`). */
+  recurringId?: string | null;
 }): Promise<Invoice> {
   const db = await getDb();
   await ensureMerchant(input.merchantAddress);
@@ -99,6 +102,7 @@ export async function createInvoice(input: {
       merchantEvmAddress: input.merchantEvmAddress ?? null,
       clientName: input.clientName,
       clientEmail: input.clientEmail || null,
+      payerEmail: input.payerEmail || null,
       items: input.items,
       currency: input.currency,
       total: computeTotal(input.items).toFixed(2),
@@ -109,6 +113,7 @@ export async function createInvoice(input: {
       reference: input.integration?.reference ?? null,
       metadata: input.integration?.metadata ?? null,
       returnUrl: input.integration?.returnUrl ?? null,
+      recurringId: input.recurringId ?? null,
     })
     .returning();
   return inv;
@@ -169,7 +174,7 @@ export async function markViewed(inv: Invoice): Promise<Invoice> {
  * invoice currency: it is priced into the amount, so the tip reaches the merchant in the same
  * transaction, and is recorded on the invoice when that payment is verified.
  */
-export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0): Promise<Quote> {
+export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0, payerEmail?: string | null): Promise<Quote> {
   if (inv.status !== "unpaid")
     throw Errors.badRequest(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
   if (asset === "USDT" && !inv.merchantEvmAddress) throw Errors.badRequest("This merchant does not accept USDT yet.");
@@ -183,6 +188,9 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0):
   let amount = BigInt(Math.max(step, Math.ceil((coins * unit) / step) * step));
   // USDT transfers can't carry a reference, so the amount itself identifies the invoice.
   if (asset === "USDT") amount = await uniqueUsdtAmount(inv.merchantEvmAddress!, amount);
+  // Kept on the quote only: the receipt goes to whoever locked the price that was actually paid,
+  // not to the last person who opened the invoice and typed an email.
+  const cleanPayerEmail = payerEmail?.trim() || null;
   const db = await getDb();
   const [q] = await db
     .insert(schema.quotes)
@@ -193,10 +201,32 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0):
       amount: amount.toString(),
       rate: String(rate),
       tip: tipFiat.toFixed(2),
+      payerEmail: cleanPayerEmail,
       expiresAt: new Date(Date.now() + QUOTE_TTL_MS),
     })
     .returning();
   return q;
+}
+
+/**
+ * Count one requested receipt email for a paid invoice and record where it goes, or return null
+ * once `max` have been sent. Counted before sending, in one conditional update, so parallel
+ * requests can't get past the cap.
+ */
+export async function claimReceiptEmail(invoiceId: string, email: string, max: number): Promise<Invoice | null> {
+  const db = await getDb();
+  const [claimed] = await db
+    .update(schema.invoices)
+    .set({ payerEmail: email, receiptEmailsSent: sql`${schema.invoices.receiptEmailsSent} + 1` })
+    .where(
+      and(
+        eq(schema.invoices.id, invoiceId),
+        eq(schema.invoices.status, "paid"),
+        lt(schema.invoices.receiptEmailsSent, max),
+      ),
+    )
+    .returning();
+  return claimed ?? null;
 }
 
 async function quotesFor(invoiceIds: string[]): Promise<Quote[]> {
@@ -228,11 +258,20 @@ async function usdValue(asset: "NIM" | "USDT", value: bigint): Promise<string | 
   }
 }
 
-async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, paidAt: Date, value: bigint): Promise<Invoice | null> {
+async function markPaid(
+  inv: Invoice,
+  q: Quote,
+  txHash: string,
+  from: string,
+  paidAt: Date,
+  value: bigint,
+  payerEmail?: string | null,
+): Promise<Invoice | null> {
   // Already counted as a tag transfer (or another invoice): it can't pay this invoice too.
   if (await txHashUsed(txHash)) return null;
   const db = await getDb();
   const paidUsd = await usdValue(q.asset, value);
+  const resolvedPayerEmail = payerEmail?.trim() || q.payerEmail || inv.payerEmail || null;
   let updated: Invoice | undefined;
   try {
     [updated] = await db
@@ -247,6 +286,7 @@ async function markPaid(inv: Invoice, q: Quote, txHash: string, from: string, pa
         paidAt,
         paidUsd,
         paidTip: Number(q.tip) > 0 ? q.tip : null,
+        ...(resolvedPayerEmail ? { payerEmail: resolvedPayerEmail } : {}),
       })
       .where(and(eq(schema.invoices.id, inv.id), eq(schema.invoices.status, "unpaid"), isNull(schema.invoices.paidTxHash)))
       .returning();
@@ -275,7 +315,12 @@ function nimTxMatches(inv: Invoice, tx: NimTx): boolean {
 }
 
 /** Verify a specific transaction hash the payer's wallet returned. */
-export async function verifyPayment(inv: Invoice, asset: "NIM" | "USDT", txHash: string): Promise<VerifyResult> {
+export async function verifyPayment(
+  inv: Invoice,
+  asset: "NIM" | "USDT",
+  txHash: string,
+  payerEmail?: string | null,
+): Promise<VerifyResult> {
   if (inv.status === "paid") return { status: "paid", invoice: inv };
   if (inv.status === "cancelled") return { status: "rejected", message: "This invoice was cancelled." };
   const quotes = await quotesFor([inv.id]);
@@ -288,7 +333,7 @@ export async function verifyPayment(inv: Invoice, asset: "NIM" | "USDT", txHash:
     if (!nimTxMatches(inv, tx)) return { status: "rejected", message: "This transaction does not pay this invoice." };
     const q = matchQuote(quotes, "NIM", BigInt(tx.value), tx.timestamp);
     if (!q) return { status: "rejected", message: "The amount paid is lower than the locked price, or the price lock expired." };
-    const updated = await markPaid(inv, q, tx.hash, tx.from, new Date(tx.timestamp), BigInt(tx.value));
+    const updated = await markPaid(inv, q, tx.hash, tx.from, new Date(tx.timestamp), BigInt(tx.value), payerEmail);
     if (updated) {
       metrics.invoicePaid("NIM", "hash");
       return { status: "paid", invoice: updated };
@@ -311,7 +356,7 @@ export async function verifyPayment(inv: Invoice, asset: "NIM" | "USDT", txHash:
   const q = matchQuote(quotes, "USDT", t.value, t.timestamp);
   if (!q)
     return { status: "rejected", message: "The amount paid doesn't match the locked price for this invoice, or the price lock expired." };
-  const updated = await markPaid(inv, q, txHash, t.from, new Date(t.timestamp), t.value);
+  const updated = await markPaid(inv, q, txHash, t.from, new Date(t.timestamp), t.value, payerEmail);
   if (updated) {
     metrics.invoicePaid("USDT", "hash");
     return { status: "paid", invoice: updated };
@@ -448,6 +493,7 @@ export function publicInvoice(inv: Invoice) {
     // Where the payer goes back to after paying ("Pay with NimBill"). Only ever set by a signed
     // store request, on the store's saved address. `reference` and `metadata` stay private.
     returnUrl: inv.returnUrl,
+    recurringId: inv.recurringId,
     memo: paymentMemo(inv.id),
     payment:
       inv.status === "paid"

@@ -6,8 +6,9 @@ import type { Merchant } from "@/lib/db/schema";
 import { AppError, Errors, type ErrorCode } from "@/lib/errors";
 import { createHttpClient } from "@/lib/http";
 import type { PublicInvoice } from "@/lib/invoices";
+import type { InvoiceRecurringSummary, PublicRecurringInvoice } from "@/lib/recurring";
 
-export type { BookClient, PublicInvoice };
+export type { BookClient, InvoiceRecurringSummary, PublicInvoice, PublicRecurringInvoice };
 // `email` is the signed-in merchant's own address (settings only); it is never part of PublicInvoice.
 export type MerchantInfo = Pick<
   Merchant,

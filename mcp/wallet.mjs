@@ -31,13 +31,13 @@ function ibanCheck(str) {
   return 98 - rem;
 }
 
-/** Derive a Nimiq "NQxx xxxx …" address from a 32-byte Ed25519 public key. */
-export function addressFromPublicKey(publicKeyBytes) {
-  const hash = blake2b(publicKeyBytes, { dkLen: 32 }).subarray(0, 20);
+/** Derive a Nimiq "NQxx xxxx …" address from a 20-byte raw address. */
+export function addressFromBytes(addrBytes) {
+  if (addrBytes.length !== 20) throw new Error("Address must be 20 bytes");
   let bits = 0;
   let value = 0;
   let base32 = "";
-  for (const byte of hash) {
+  for (const byte of addrBytes) {
     value = (value << 8) | byte;
     bits += 8;
     while (bits >= 5) {
@@ -48,6 +48,11 @@ export function addressFromPublicKey(publicKeyBytes) {
   const check = String(ibanCheck(base32 + "NQ00")).padStart(2, "0");
   const full = "NQ" + check + base32;
   return full.match(/.{1,4}/g).join(" ");
+}
+
+/** Derive a Nimiq "NQxx xxxx …" address from a 32-byte Ed25519 public key. */
+export function addressFromPublicKey(publicKeyBytes) {
+  return addressFromBytes(blake2b(publicKeyBytes, { dkLen: 32 }).subarray(0, 20));
 }
 
 /** Canonical "NQxx xxxx …" form of an address, or null if it is malformed or its checksum is wrong. */
@@ -559,6 +564,29 @@ export function linkKeyFromSecret(rawSecret) {
   return { scalar, publicKey: bytesToHex(point.toBytes()) };
 }
 
+// Same as the app's refundKeyFromSecret: the refund secret is separate from the link secret and
+// never shared, so whoever holds the cheque link can't take the 30-day timeout refund.
+export function refundKeyFromSecret(rawRefundSecret) {
+  const secret = normalizeChequeSecret(rawRefundSecret);
+  if (!SECRET_RE.test(secret)) throw new Error("Invalid cheque refund key");
+  const secretKey = sha256(concatBytes(utf8ToBytes("nimbill-cheque-refund-key-v2:"), utf8ToBytes(secret)));
+  const pubBytes = ed25519.getPublicKey(secretKey);
+  return {
+    secretKey,
+    publicKey: bytesToHex(pubBytes),
+    address: addressFromPublicKey(pubBytes),
+  };
+}
+
+export function chequeHtlcPreImage(chequeId) {
+  const preBytes = sha256(utf8ToBytes(`nimbill-cheque-htlc-preimage-v1:${String(chequeId).toLowerCase()}`));
+  const rootBytes = sha256(preBytes);
+  return {
+    preImage: bytesToHex(preBytes),
+    hashRoot: bytesToHex(rootBytes),
+  };
+}
+
 export function serializeBasicTxContent(tx) {
   const pubKey = hexToBytes(tx.senderPublicKey);
   if (pubKey.length !== 32) throw new Error("senderPublicKey must be 32 bytes");
@@ -588,6 +616,95 @@ export function serializeBasicTxContent(tx) {
   return out;
 }
 
+export function serializeHtlcCreationData(params) {
+  const senderBytes = addressToBytes(params.htlcSenderAddress);
+  const recipientBytes = addressToBytes(params.htlcRecipientAddress);
+  const rootBytes = hexToBytes(params.hashRoot.toLowerCase());
+  if (rootBytes.length !== 32) throw new Error("HTLC hashRoot must be 32 bytes");
+  const data = new Uint8Array(82);
+  const dv = new DataView(data.buffer);
+  let o = 0;
+  data.set(senderBytes, o);
+  o += 20;
+  data.set(recipientBytes, o);
+  o += 20;
+  data[o++] = 3; // Sha256
+  data.set(rootBytes, o);
+  o += 32;
+  data[o++] = 1; // hash_count = 1
+  dv.setBigUint64(o, BigInt(params.timeoutMs), false);
+  return data;
+}
+
+export function serializeHtlcCreationTxContent(tx) {
+  const pubKey = hexToBytes(tx.senderPublicKey);
+  if (pubKey.length !== 32) throw new Error("senderPublicKey must be 32 bytes");
+  const senderBytes = blake2b(pubKey, { dkLen: 32 }).subarray(0, 20);
+  const recipientData = serializeHtlcCreationData(tx);
+  const value = BigInt(tx.value);
+  const fee = BigInt(tx.fee ?? 0);
+  const networkId = tx.networkId ?? NIMIQ_MAINNET_ID;
+
+  const buildContent = (recipient20) => {
+    const out = new Uint8Array(67 + recipientData.length);
+    const view = new DataView(out.buffer);
+    let o = 0;
+    view.setUint16(o, recipientData.length, false);
+    o += 2;
+    out.set(recipientData, o);
+    o += recipientData.length;
+    out.set(senderBytes, o);
+    o += 20;
+    out[o++] = 0;
+    out.set(recipient20, o);
+    o += 20;
+    out[o++] = 2; // HTLC
+    view.setBigUint64(o, value, false);
+    o += 8;
+    view.setBigUint64(o, fee, false);
+    o += 8;
+    view.setUint32(o, tx.validityStartHeight >>> 0, false);
+    o += 4;
+    out[o++] = networkId & 0xff;
+    out[o++] = 1; // CONTRACT_CREATION
+    out[o++] = 0;
+    return out;
+  };
+
+  const zeroRecipient = new Uint8Array(20);
+  const contractAddressBytes = blake2b(buildContent(zeroRecipient), { dkLen: 32 }).subarray(0, 20);
+  const contractAddress = addressFromBytes(contractAddressBytes);
+  const txContent = buildContent(contractAddressBytes);
+  return { txContent, contractAddress, contractAddressBytes, recipientData };
+}
+
+export function serializeHtlcSpendTxContent(tx) {
+  const senderBytes = addressToBytes(tx.htlcAddress);
+  const recipientBytes = addressToBytes(tx.recipient);
+  const buf = new ArrayBuffer(67);
+  const view = new DataView(buf);
+  const out = new Uint8Array(buf);
+  let o = 0;
+  view.setUint16(o, 0, false);
+  o += 2;
+  out.set(senderBytes, o);
+  o += 20;
+  out[o++] = 2; // sender_type = HTLC (2)
+  out.set(recipientBytes, o);
+  o += 20;
+  out[o++] = 0; // recipient_type = Basic (0)
+  view.setBigUint64(o, BigInt(tx.value), false);
+  o += 8;
+  view.setBigUint64(o, BigInt(tx.fee ?? 0), false);
+  o += 8;
+  view.setUint32(o, tx.validityStartHeight >>> 0, false);
+  o += 4;
+  out[o++] = (tx.networkId ?? NIMIQ_MAINNET_ID) & 0xff;
+  out[o++] = 0;
+  out[o++] = 0;
+  return out;
+}
+
 /** A fresh nonce for one signing attempt (never reused, even for the same transaction). */
 export function clientNonceForTx(rawSecret, txContent) {
   const secret = normalizeChequeSecret(rawSecret);
@@ -597,15 +714,13 @@ export function clientNonceForTx(rawSecret, txContent) {
   return { nonceScalar, noncePublicKey: bytesToHex(point.toBytes()) };
 }
 
-/** Combine both halves of the signature over the agent's own `tx` and return the raw transaction. */
-export function completeDualSignature({ secret, tx, nonceScalar, serverNoncePublicKey, serverPartialSig }) {
-  const txContent = serializeBasicTxContent(tx);
+function combineDualSigBytes({ secret, senderPublicKey, txContent, nonceScalar, serverNoncePublicKey, serverPartialSig }) {
   const { scalar: a1 } = linkKeyFromSecret(secret);
   const r1 = nonceScalar;
   const R1 = Point.BASE.multiply(r1);
   const R2 = Point.fromHex(serverNoncePublicKey);
   const R = R1.add(R2).toBytes();
-  const A = hexToBytes(tx.senderPublicKey);
+  const A = hexToBytes(senderPublicKey);
   const k = bytesToNumberLE(sha512(concatBytes(R, A, txContent))) % CURVE_N;
   const s1 = (r1 + k * a1) % CURVE_N;
   const s2 = bytesToNumberLE(hexToBytes(serverPartialSig));
@@ -615,6 +730,21 @@ export function completeDualSignature({ secret, tx, nonceScalar, serverNoncePubl
   if (!ed25519.verify(sigBytes, txContent, A)) {
     throw new Error("Cheque 2-of-2 signature verification failed");
   }
+  return sigBytes;
+}
+
+/** Combine both halves of the signature over the agent's own `tx` and return the raw transaction. */
+export function completeDualSignature({ secret, tx, nonceScalar, serverNoncePublicKey, serverPartialSig }) {
+  const txContent = serializeBasicTxContent(tx);
+  const sigBytes = combineDualSigBytes({
+    secret,
+    senderPublicKey: tx.senderPublicKey,
+    txContent,
+    nonceScalar,
+    serverNoncePublicKey,
+    serverPartialSig,
+  });
+  const A = hexToBytes(tx.senderPublicKey);
   const recipientBytes = addressToBytes(tx.recipient);
   const buf = new ArrayBuffer(139);
   const view = new DataView(buf);
@@ -637,5 +767,183 @@ export function completeDualSignature({ secret, tx, nonceScalar, serverNoncePubl
   return {
     rawTx: bytesToHex(out),
     txHash: bytesToHex(blake2b(txContent, { dkLen: 32 })),
+  };
+}
+
+export function completeDualHtlcCreationSignature({ secret, tx, nonceScalar, serverNoncePublicKey, serverPartialSig }) {
+  const { txContent, contractAddress, contractAddressBytes, recipientData } = serializeHtlcCreationTxContent(tx);
+  const sigBytes = combineDualSigBytes({
+    secret,
+    senderPublicKey: tx.senderPublicKey,
+    txContent,
+    nonceScalar,
+    serverNoncePublicKey,
+    serverPartialSig,
+  });
+  const pubKey = hexToBytes(tx.senderPublicKey);
+  const senderBytes = blake2b(pubKey, { dkLen: 32 }).subarray(0, 20);
+  const sigProof = new Uint8Array(98);
+  sigProof[0] = 0;
+  sigProof.set(pubKey, 1);
+  sigProof[33] = 0;
+  sigProof.set(sigBytes, 34);
+
+  const dVar = encodeVarint(recipientData.length);
+  const pVar = encodeVarint(sigProof.length);
+  const raw = new Uint8Array(1 + 20 + 1 + 1 + 20 + 1 + dVar.length + recipientData.length + 8 + 8 + 4 + 1 + 1 + pVar.length + sigProof.length);
+  const dv = new DataView(raw.buffer);
+  let p = 0;
+  raw[p++] = 1;
+  raw.set(senderBytes, p);
+  p += 20;
+  raw[p++] = 0;
+  raw[p++] = 0;
+  raw.set(contractAddressBytes, p);
+  p += 20;
+  raw[p++] = 2; // HTLC
+  raw.set(dVar, p);
+  p += dVar.length;
+  raw.set(recipientData, p);
+  p += recipientData.length;
+  dv.setBigUint64(p, BigInt(tx.value), false);
+  p += 8;
+  dv.setBigUint64(p, BigInt(tx.fee ?? 0), false);
+  p += 8;
+  dv.setUint32(p, tx.validityStartHeight >>> 0, false);
+  p += 4;
+  raw[p++] = (tx.networkId ?? NIMIQ_MAINNET_ID) & 0xff;
+  raw[p++] = 1; // CONTRACT_CREATION
+  raw.set(pVar, p);
+  p += pVar.length;
+  raw.set(sigProof, p);
+
+  return {
+    rawTx: bytesToHex(raw),
+    txHash: bytesToHex(blake2b(txContent, { dkLen: 32 })),
+    contractAddress,
+  };
+}
+
+export function completeDualHtlcRegularTransferSignature({
+  secret,
+  chequeId,
+  chequePublicKey,
+  tx,
+  nonceScalar,
+  serverNoncePublicKey,
+  serverPartialSig,
+}) {
+  const txContent = serializeHtlcSpendTxContent(tx);
+  const sigBytes = combineDualSigBytes({
+    secret,
+    senderPublicKey: chequePublicKey,
+    txContent,
+    nonceScalar,
+    serverNoncePublicKey,
+    serverPartialSig,
+  });
+  const pubKey = hexToBytes(chequePublicKey);
+  const { preImage, hashRoot } = chequeHtlcPreImage(chequeId);
+  const preBytes = hexToBytes(preImage);
+  const rootBytes = hexToBytes(hashRoot);
+
+  const sigProof = new Uint8Array(98);
+  sigProof[0] = 0;
+  sigProof.set(pubKey, 1);
+  sigProof[33] = 0;
+  sigProof.set(sigBytes, 34);
+
+  const proof = new Uint8Array(1 + 1 + 1 + 32 + 1 + 32 + 98);
+  let o = 0;
+  proof[o++] = 0; // RegularTransfer
+  proof[o++] = 1; // hash_depth = 1
+  proof[o++] = 3; // Sha256
+  proof.set(rootBytes, o);
+  o += 32;
+  proof[o++] = 32; // PreImage32
+  proof.set(preBytes, o);
+  o += 32;
+  proof.set(sigProof, o);
+
+  const senderBytes = addressToBytes(tx.htlcAddress);
+  const recipientBytes = addressToBytes(tx.recipient);
+  const pVar = encodeVarint(proof.length);
+  const raw = new Uint8Array(1 + 20 + 1 + 1 + 20 + 1 + 1 + 8 + 8 + 4 + 1 + 1 + pVar.length + proof.length);
+  const dv = new DataView(raw.buffer);
+  let p = 0;
+  raw[p++] = 1;
+  raw.set(senderBytes, p);
+  p += 20;
+  raw[p++] = 2; // HTLC
+  raw[p++] = 0;
+  raw.set(recipientBytes, p);
+  p += 20;
+  raw[p++] = 0; // Basic
+  raw[p++] = 0;
+  dv.setBigUint64(p, BigInt(tx.value), false);
+  p += 8;
+  dv.setBigUint64(p, BigInt(tx.fee ?? 0), false);
+  p += 8;
+  dv.setUint32(p, tx.validityStartHeight >>> 0, false);
+  p += 4;
+  raw[p++] = (tx.networkId ?? NIMIQ_MAINNET_ID) & 0xff;
+  raw[p++] = 0;
+  raw.set(pVar, p);
+  p += pVar.length;
+  raw.set(proof, p);
+
+  return {
+    rawTx: bytesToHex(raw),
+    txHash: bytesToHex(blake2b(txContent, { dkLen: 32 })),
+  };
+}
+
+export function buildAndSignHtlcTimeoutResolveTx({ refundSecret, tx }) {
+  const refund = refundKeyFromSecret(refundSecret);
+  const txContent = serializeHtlcSpendTxContent(tx);
+  const sigBytes = ed25519.sign(txContent, refund.secretKey);
+  const pubKey = hexToBytes(refund.publicKey);
+
+  const sigProof = new Uint8Array(98);
+  sigProof[0] = 0;
+  sigProof.set(pubKey, 1);
+  sigProof[33] = 0;
+  sigProof.set(sigBytes, 34);
+
+  const proof = new Uint8Array(1 + 98);
+  proof[0] = 2; // TimeoutResolve
+  proof.set(sigProof, 1);
+
+  const senderBytes = addressToBytes(tx.htlcAddress);
+  const recipientBytes = addressToBytes(tx.recipient);
+  const pVar = encodeVarint(proof.length);
+  const raw = new Uint8Array(1 + 20 + 1 + 1 + 20 + 1 + 1 + 8 + 8 + 4 + 1 + 1 + pVar.length + proof.length);
+  const dv = new DataView(raw.buffer);
+  let p = 0;
+  raw[p++] = 1;
+  raw.set(senderBytes, p);
+  p += 20;
+  raw[p++] = 2; // HTLC
+  raw[p++] = 0;
+  raw.set(recipientBytes, p);
+  p += 20;
+  raw[p++] = 0;
+  raw[p++] = 0;
+  dv.setBigUint64(p, BigInt(tx.value), false);
+  p += 8;
+  dv.setBigUint64(p, BigInt(tx.fee ?? 0), false);
+  p += 8;
+  dv.setUint32(p, tx.validityStartHeight >>> 0, false);
+  p += 4;
+  raw[p++] = (tx.networkId ?? NIMIQ_MAINNET_ID) & 0xff;
+  raw[p++] = 0;
+  raw.set(pVar, p);
+  p += pVar.length;
+  raw.set(proof, p);
+
+  return {
+    rawTx: bytesToHex(raw),
+    txHash: bytesToHex(blake2b(txContent, { dkLen: 32 })),
+    refundAddress: refund.address,
   };
 }

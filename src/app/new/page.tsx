@@ -15,17 +15,41 @@ import {
   Label,
   OpenInNimiqPay,
   PageTitle,
+  SegmentedControl,
+  Select,
   Textarea,
 } from "@/components/ui";
 import { CurrencyLabel } from "@/components/CurrencyIcon";
 import { CurrencySelect } from "@/components/CurrencySelect";
-import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
+import { api, type BookClient, type PublicInvoice, type PublicRecurringInvoice } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { CURRENCIES, formatFiat } from "@/lib/currencies";
+import type { RecurringIntervalInput } from "@/lib/schemas";
 
 type Row = { description: string; quantity: string; unitPrice: string };
 const emptyRow = (): Row => ({ description: "", quantity: "1", unitPrice: "" });
 const LAST_CURRENCY = "nimbill:currency";
+
+const BILLING_TYPES = [
+  { value: "once", label: "One-time" },
+  { value: "repeat", label: "Repeat" },
+] as const;
+type BillingType = (typeof BILLING_TYPES)[number]["value"];
+
+const INTERVAL_OPTIONS: { value: RecurringIntervalInput; label: string; short: string }[] = [
+  { value: "weekly", label: "Weekly", short: "wk" },
+  { value: "biweekly", label: "Every 2 weeks", short: "2 wk" },
+  { value: "monthly", label: "Monthly", short: "mo" },
+  { value: "quarterly", label: "Every 3 months", short: "qtr" },
+  { value: "yearly", label: "Yearly", short: "yr" },
+];
+
+const DUE_DAYS_OPTIONS = [
+  { value: "0", label: "Due on issue date" },
+  { value: "7", label: "Within 7 days" },
+  { value: "14", label: "Within 14 days" },
+  { value: "30", label: "Within 30 days" },
+] as const;
 
 export default function NewInvoice() {
   const router = useRouter();
@@ -39,6 +63,9 @@ export default function NewInvoice() {
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [note, setNote] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [billingType, setBillingType] = useState<BillingType>("once");
+  const [interval, setInterval] = useState<RecurringIntervalInput>("monthly");
+  const [dueDays, setDueDays] = useState("7");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rateFor, setRateFor] = useState<{ currency: string; NIM: number; USDT: number } | null>(null);
@@ -62,12 +89,16 @@ export default function NewInvoice() {
   // (Read from the URL after mount; the page itself is prerendered without it.)
   const [copied, setCopied] = useState<string | null>(null);
   useEffect(() => {
-    const from = new URLSearchParams(window.location.search).get("from");
+    const params = new URLSearchParams(window.location.search);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time sync from browser URL query
+    if (params.get("recurring") === "1") setBillingType("repeat");
+    const from = params.get("from");
     if (!from || !/^[a-z0-9]{6,20}$/.test(from)) return;
-    api<{ invoice: PublicInvoice; isOwner: boolean }>(`/api/invoices/${from}`)
-      .then(({ invoice, isOwner }) => {
+    api<{ invoice: PublicInvoice; isOwner: boolean; clientEmail: string | null }>(`/api/invoices/${from}`)
+      .then(({ invoice, isOwner, clientEmail: fromEmail }) => {
         if (!isOwner) return;
         setClientName(invoice.clientName);
+        if (fromEmail) setClientEmail(fromEmail);
         setCurrency(invoice.currency);
         setRows(invoice.items.map((i) => ({ description: i.description, quantity: String(i.quantity), unitPrice: String(i.unitPrice) })));
         setNote(invoice.note ?? "");
@@ -110,11 +141,13 @@ export default function NewInvoice() {
   }));
 
   const update = (i: number, patch: Partial<Row>) => setRows((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+  const isRepeat = billingType === "repeat";
+  const intervalMeta = INTERVAL_OPTIONS.find((o) => o.value === interval) ?? INTERVAL_OPTIONS[2];
 
   return (
     <>
       <Header back="/invoices" />
-      <PageTitle title="New invoice" />
+      <PageTitle title={isRepeat ? "New recurring invoice" : "New invoice"} />
       {copied && <Alert className="mb-5">Copied from {copied}. Change anything you like before creating it.</Alert>}
       <form
         className="space-y-5"
@@ -124,7 +157,7 @@ export default function NewInvoice() {
           setError(null);
           try {
             localStorage.setItem(LAST_CURRENCY, currency);
-            const { invoice } = await api<{ invoice: PublicInvoice }>("/api/invoices", {
+            const { invoice } = await api<{ invoice: PublicInvoice | null; recurring: PublicRecurringInvoice | null }>("/api/invoices", {
               body: {
                 clientName,
                 clientEmail,
@@ -133,18 +166,22 @@ export default function NewInvoice() {
                   .filter((r) => r.description || r.unitPrice)
                   .map((r) => ({ ...r, quantity: Number(r.quantity), unitPrice: Number(r.unitPrice) })),
                 note,
-                dueDate,
+                dueDate: isRepeat ? "" : dueDate,
+                recurring: isRepeat ? { interval, dueDays: Number(dueDays) } : undefined,
                 // Saved clients are kept up to date (e.g. a new email); new ones only if asked.
                 saveClient: picked?.saved ? true : saveIt,
               },
             });
-            router.replace(`/i/${invoice.id}?created=1`);
+            if (invoice) router.replace(`/i/${invoice.id}?created=1`);
+            else router.replace("/invoices?view=recurring");
           } catch (err) {
             setError((err as Error).message);
             setBusy(false);
           }
         }}
       >
+        <SegmentedControl label="Billing type" options={BILLING_TYPES} value={billingType} onChange={setBillingType} size="md" block />
+
         <Card className="space-y-4">
           {book.length > 0 && (
             <Field label="Saved clients" htmlFor="saved-client">
@@ -173,13 +210,23 @@ export default function NewInvoice() {
               maxLength={80}
             />
           </Field>
-          <Field label="Client email" htmlFor="email" optional hint="For your records only. Your client never sees it.">
+          <Field
+            label="Client email"
+            htmlFor="email"
+            optional={!isRepeat}
+            hint={
+              isRepeat
+                ? "Required for recurring invoices: NimBill emails each new invoice here automatically, and your client can unsubscribe anytime."
+                : "For your records only. Your client never sees it."
+            }
+          >
             <Input
               id="email"
               type="email"
               value={clientEmail}
               onChange={(e) => setClientEmail(e.target.value)}
               placeholder="client@example.com"
+              required={isRepeat}
             />
           </Field>
           {nameKey && !picked?.saved && (
@@ -190,20 +237,48 @@ export default function NewInvoice() {
               onChange={(e) => setSaveIt(e.target.checked)}
             />
           )}
-          <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
-            <Field label="Currency" htmlFor="currency">
-              <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
-            </Field>
-            <Field label="Due date" htmlFor="due" optional>
-              <Input
-                id="due"
-                type="date"
-                value={dueDate}
-                min={new Date().toISOString().slice(0, 10)}
-                onChange={(e) => setDueDate(e.target.value)}
-              />
-            </Field>
-          </div>
+          {isRepeat ? (
+            <>
+              <Field label="Currency" htmlFor="currency">
+                <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
+              </Field>
+              <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
+                <Field label="Repeat every" htmlFor="interval">
+                  <Select id="interval" value={interval} onChange={(e) => setInterval(e.target.value as RecurringIntervalInput)}>
+                    {INTERVAL_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Payment terms" htmlFor="due-days">
+                  <Select id="due-days" value={dueDays} onChange={(e) => setDueDays(e.target.value)}>
+                    {DUE_DAYS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+            </>
+          ) : (
+            <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
+              <Field label="Currency" htmlFor="currency">
+                <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
+              </Field>
+              <Field label="Due date" htmlFor="due" optional>
+                <Input
+                  id="due"
+                  type="date"
+                  value={dueDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setDueDate(e.target.value)}
+                />
+              </Field>
+            </div>
+          )}
         </Card>
 
         <Card className="space-y-3">
@@ -292,12 +367,23 @@ export default function NewInvoice() {
         </Card>
 
         <Alert>
-          Your client pays the exact amount in NIM{merchant.evmAddress ? " or USDT" : ""} at the live rate when they pay. Money goes
-          straight to your wallet.
+          {isRepeat ? (
+            <>
+              Creates the first invoice today and repeats {intervalMeta.label.toLowerCase()}. Each cycle locks the live NIM
+              {merchant.evmAddress ? " or USDT" : ""} rate when your client pays.
+            </>
+          ) : (
+            <>
+              Your client pays the exact amount in NIM{merchant.evmAddress ? " or USDT" : ""} at the live rate when they pay. Money goes
+              straight to your wallet.
+            </>
+          )}
         </Alert>
         {error && <Alert kind="error">{error}</Alert>}
         <Button type="submit" size="lg" block loading={busy} disabled={total <= 0}>
-          Create invoice · {formatFiat(total, currency)}
+          {isRepeat
+            ? `Start recurring · ${formatFiat(total, currency)} / ${intervalMeta.short}`
+            : `Create invoice · ${formatFiat(total, currency)}`}
         </Button>
       </form>
     </>

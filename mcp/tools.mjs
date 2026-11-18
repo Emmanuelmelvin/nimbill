@@ -3,7 +3,10 @@ import {
   assertSpendAllowed,
   broadcastRawTx,
   buildAndSignNimiqTx,
+  chequeHtlcPreImage,
   clientNonceForTx,
+  completeDualHtlcCreationSignature,
+  completeDualHtlcRegularTransferSignature,
   completeDualSignature,
   formatChequeCode,
   getAgentBalance,
@@ -15,8 +18,11 @@ import {
   normalizeAddress,
   parseChequeInput,
   recordSpend,
+  refundKeyFromSecret,
   saveChequeSecret,
   serializeBasicTxContent,
+  serializeHtlcCreationTxContent,
+  serializeHtlcSpendTxContent,
   spendingLimits,
   spentLast24h,
 } from "./wallet.mjs";
@@ -564,6 +570,10 @@ export async function executeTool(name, args = {}, client) {
     case "write_cheque": {
       const secret = newChequeSecret();
       const { publicKey: linkPublicKey } = linkKeyFromSecret(secret);
+      // A separate refund secret for the 30-day timeout refund: it stays in the agent's data dir
+      // and is never part of the link or code handed to the recipient.
+      const refundSecret = newChequeSecret();
+      const { address: refundAddress } = refundKeyFromSecret(refundSecret);
       const created = await client.request("/api/cheques", {
         method: "POST",
         auth: true,
@@ -571,16 +581,17 @@ export async function executeTool(name, args = {}, client) {
           amount: args.amount,
           currency: args.currency || "NIM",
           linkPublicKey,
+          refundAddress,
           recipientTag: args.recipientTag ? cleanTag(args.recipientTag) : null,
           note: args.note,
         },
       });
-      const { cheque, payment } = created;
+      let { cheque, payment } = created;
       const url = `${baseUrl}/c/${cheque.id}#${secret}`;
       const code = formatChequeCode(cheque.id, secret);
 
       // Save the secret before any money moves: without it the cheque can't be cancelled.
-      saveChequeSecret(dataDir, cheque.id, secret, { number: cheque.number, amount: cheque.amount });
+      saveChequeSecret(dataDir, cheque.id, secret, { number: cheque.number, amount: cheque.amount, refundSecret });
 
       if (payment?.recipient !== cheque.chequeAddress || payment?.amount !== cheque.amount || payment?.memo !== `NimBill C ${cheque.id}`) {
         throw new Error("The server's funding details don't match the cheque. Nothing was sent.");
@@ -597,6 +608,45 @@ export async function executeTool(name, args = {}, client) {
         const verify = await verifyAfterBroadcast(client, `/api/cheques/${encodeURIComponent(cheque.id)}/verify`, {
           txHash: signed.txHash,
         });
+        if (verify.status === "funded" && cheque.htlc?.refundAddress && cheque.htlc?.timeoutMs) {
+          try {
+            const height = await getCurrentBlockHeight();
+            const htlcTx = {
+              senderPublicKey: cheque.chequePublicKey,
+              htlcSenderAddress: cheque.htlc.refundAddress,
+              htlcRecipientAddress: cheque.chequeAddress,
+              hashRoot: chequeHtlcPreImage(cheque.id).hashRoot,
+              timeoutMs: cheque.htlc.timeoutMs,
+              value: payment.amount,
+              fee: 0,
+              validityStartHeight: height,
+            };
+            const { txContent } = serializeHtlcCreationTxContent(htlcTx);
+            const n1 = clientNonceForTx(secret, txContent);
+            const prep = await client.request(`/api/cheques/${encodeURIComponent(cheque.id)}/htlc`, {
+              method: "POST",
+              auth: true,
+              body: { step: "prepare", validityStartHeight: height, value: payment.amount, clientNoncePublicKey: n1.noncePublicKey },
+            });
+            if (prep.step === "prepared") {
+              const builtHtlc = completeDualHtlcCreationSignature({
+                secret,
+                tx: htlcTx,
+                nonceScalar: n1.nonceScalar,
+                serverNoncePublicKey: prep.serverNoncePublicKey,
+                serverPartialSig: prep.serverPartialSig,
+              });
+              const locked = await client.request(`/api/cheques/${encodeURIComponent(cheque.id)}/htlc`, {
+                method: "POST",
+                auth: true,
+                body: { step: "broadcast", validityStartHeight: height, value: payment.amount, rawTx: builtHtlc.rawTx },
+              });
+              if (locked.cheque) cheque = locked.cheque;
+            }
+          } catch {
+            // If HTLC lock fails transiently, the cheque remains funded and spendable.
+          }
+        }
         funding = {
           fundedOnChain: true,
           txHash: signed.txHash,
@@ -655,36 +705,68 @@ export async function executeTool(name, args = {}, client) {
       const recipient = normalizeAddress(recipientAddress || "");
       if (!recipient) throw toolError("INVALID_ARGUMENTS", `Invalid Nimiq address: ${recipientAddress}`);
 
-      const tx = {
-        senderPublicKey: cheque.chequePublicKey,
-        recipient,
-        value: info.balance,
-        fee: 0,
-        validityStartHeight: info.currentBlock || (await getCurrentBlockHeight()),
-      };
+      const spendFrom = info.spendFrom === "htlc" && cheque.htlc?.contractAddress ? "htlc" : "basic";
+      const validityStartHeight = info.currentBlock || (await getCurrentBlockHeight());
       const common = {
         action,
         recipientAddress: recipient,
         claimerName: args.claimerName,
-        validityStartHeight: tx.validityStartHeight,
+        validityStartHeight,
         value: info.balance,
+        spendFrom,
       };
-      const { nonceScalar, noncePublicKey } = clientNonceForTx(secret, serializeBasicTxContent(tx));
 
-      const prep = await client.request(`/api/cheques/${encodeURIComponent(cheque.id)}/claim`, {
-        method: "POST",
-        auth: action === "cancel",
-        body: { step: "prepare", ...common, clientNoncePublicKey: noncePublicKey },
-      });
-
-      // Signs only the transaction built above, whatever the server sent back.
-      const { rawTx, txHash } = completeDualSignature({
-        secret,
-        tx,
-        nonceScalar,
-        serverNoncePublicKey: prep.serverNoncePublicKey,
-        serverPartialSig: prep.serverPartialSig,
-      });
+      let rawTx;
+      let txHash;
+      if (spendFrom === "htlc") {
+        const htlcTx = {
+          htlcAddress: cheque.htlc.contractAddress,
+          recipient,
+          value: info.balance,
+          fee: 0,
+          validityStartHeight,
+        };
+        const { nonceScalar, noncePublicKey } = clientNonceForTx(secret, serializeHtlcSpendTxContent(htlcTx));
+        const prep = await client.request(`/api/cheques/${encodeURIComponent(cheque.id)}/claim`, {
+          method: "POST",
+          auth: action === "cancel",
+          body: { step: "prepare", ...common, clientNoncePublicKey: noncePublicKey },
+        });
+        const built = completeDualHtlcRegularTransferSignature({
+          secret,
+          chequeId: cheque.id,
+          chequePublicKey: cheque.chequePublicKey,
+          tx: htlcTx,
+          nonceScalar,
+          serverNoncePublicKey: prep.serverNoncePublicKey,
+          serverPartialSig: prep.serverPartialSig,
+        });
+        rawTx = built.rawTx;
+        txHash = built.txHash;
+      } else {
+        const tx = {
+          senderPublicKey: cheque.chequePublicKey,
+          recipient,
+          value: info.balance,
+          fee: 0,
+          validityStartHeight,
+        };
+        const { nonceScalar, noncePublicKey } = clientNonceForTx(secret, serializeBasicTxContent(tx));
+        const prep = await client.request(`/api/cheques/${encodeURIComponent(cheque.id)}/claim`, {
+          method: "POST",
+          auth: action === "cancel",
+          body: { step: "prepare", ...common, clientNoncePublicKey: noncePublicKey },
+        });
+        const built = completeDualSignature({
+          secret,
+          tx,
+          nonceScalar,
+          serverNoncePublicKey: prep.serverNoncePublicKey,
+          serverPartialSig: prep.serverPartialSig,
+        });
+        rawTx = built.rawTx;
+        txHash = built.txHash;
+      }
 
       const done = await client.request(`/api/cheques/${encodeURIComponent(cheque.id)}/claim`, {
         method: "POST",

@@ -5,9 +5,24 @@
 //   A_cheque = A_link + A_server
 // - A_link comes from the ~118-bit secret in the cheque link's #fragment (or cheque code).
 //   The server never sees the secret, so NimBill can never move a cheque's funds on its own.
-// - A_server is derived deterministically on the server from HMAC(SESSION_SECRET, chequeId).
+// - A_server is derived deterministically on the server from HMAC(CHEQUE_KEY_SECRET, chequeId)
+//   (falling back to SESSION_SECRET for cheques written before CHEQUE_KEY_SECRET was added).
 //   The server only co-signs after checking the cheque's rules (e.g. locked to a @tag, or
 //   cancelled by the writer), so nobody can bypass the rules with a raw RPC call.
+//
+// In addition, every funded cheque can lock its funds inside a native Nimiq Hashed Time-Locked
+// Contract (HTLC, AccountType 2):
+// - HTLC `recipient` = A_cheque (2-of-2), so normal cashing and early writer cancellation still
+//   require NimBill's rule check + the link secret (via `OutgoingHTLCTransactionProof::RegularTransfer`).
+// - HTLC `sender` = the writer's refund key (`A_refund`, `refundKeyFromSecret`), derived from a
+//   SEPARATE refund secret the writer's browser generates and keeps. It is never part of the link
+//   or code: whoever holds the link (the recipient, or anyone it was forwarded to) must never be
+//   able to sign the refund, or a @tag-locked cheque could be taken after the timeout.
+//   `timeout` = 30 days after the cheque is written.
+// - If NimBill's server ever goes offline permanently or loses its secret, the cheque is never
+//   frozen forever: once `timeout` passes, the writer (holding the refund secret) can broadcast an
+//   `OutgoingHTLCTransactionProof::TimeoutResolve` transaction that moves 100% of the NIM to their
+//   own wallet without any server involvement.
 //
 // Signing is a two-party Schnorr signature. Each side's nonce MUST be fresh for every signing
 // attempt: if one side ever answers twice with the same nonce but a different challenge, its key
@@ -16,9 +31,9 @@
 
 import { ed25519 } from "@noble/curves/ed25519.js";
 import { blake2b } from "@noble/hashes/blake2.js";
-import { sha512 } from "@noble/hashes/sha2.js";
+import { sha256, sha512 } from "@noble/hashes/sha2.js";
 import { bytesToHex, hexToBytes, utf8ToBytes } from "@noble/hashes/utils.js";
-import { addressFromPublicKey, normalizeAddress } from "./nimiq-address";
+import { addressFromBytes, addressFromPublicKey, normalizeAddress } from "./nimiq-address";
 
 const Point = ed25519.Point;
 const CURVE_N = Point.CURVE().n;
@@ -34,6 +49,9 @@ const NIMIQ_ALPHABET = "0123456789ABCDEFGHJKLMNPQRSTUVXY";
 
 /** Nimiq Mainnet Albatross network ID. */
 export const NIMIQ_MAINNET_ID = 24;
+
+/** Default HTLC timelock duration (30 days in milliseconds) before the writer can reclaim without NimBill. */
+export const CHEQUE_HTLC_TIMEOUT_MS = 30 * 24 * 3_600_000;
 
 /** Generate a fresh 24-character cheque secret in the browser. */
 export function newChequeSecret(): string {
@@ -148,6 +166,17 @@ function concatBytes(...parts: Uint8Array[]): Uint8Array {
   return out;
 }
 
+function encodeVarint(n: number): Uint8Array {
+  const out: number[] = [];
+  let v = n >>> 0;
+  while (v >= 0x80) {
+    out.push((v & 0x7f) | 0x80);
+    v >>>= 7;
+  }
+  out.push(v);
+  return new Uint8Array(out);
+}
+
 export function hashToScalar(...parts: Uint8Array[]): bigint {
   const s = bytesToNumberLE(sha512(concatBytes(...parts))) % CURVE_N;
   return s === ZERO ? ONE : s;
@@ -171,6 +200,43 @@ export function linkKeyFromSecret(rawSecret: string): { scalar: bigint; publicKe
   const scalar = hashToScalar(utf8ToBytes("nimbill-cheque-link-key-v1:"), utf8ToBytes(secret));
   const point = Point.BASE.multiply(scalar);
   return { scalar, publicKey: bytesToHex(point.toBytes()) };
+}
+
+/**
+ * Derive the writer's HTLC timeout-refund keypair (`A_refund`) from the writer's REFUND secret
+ * (`newChequeSecret()`, generated separately from the link secret and never shared). This key is
+ * the HTLC's `sender`: once the timelock expires, only its holder can sign a `TimeoutResolve`.
+ * Never pass the link secret here: the link is handed to the recipient.
+ */
+export function refundKeyFromSecret(rawRefundSecret: string): {
+  secretKey: Uint8Array;
+  publicKey: string;
+  address: string;
+} {
+  const secret = normalizeChequeSecret(rawRefundSecret);
+  if (!SECRET_RE.test(secret)) throw new Error("Invalid cheque refund key");
+  const secretKey = sha256(concatBytes(utf8ToBytes("nimbill-cheque-refund-key-v2:"), utf8ToBytes(secret)));
+  const pubBytes = ed25519.getPublicKey(secretKey);
+  return {
+    secretKey,
+    publicKey: bytesToHex(pubBytes),
+    address: addressFromPublicKey(pubBytes),
+  };
+}
+
+/**
+ * Deterministic 32-byte HTLC pre-image and its SHA-256 `hashRoot` for a cheque.
+ * Note: even though the pre-image is deterministic from `chequeId`, an `OutgoingHTLCTransactionProof::RegularTransfer`
+ * ALSO requires a valid signature from the HTLC `recipient` (`A_cheque = A_link + A_server`), so
+ * knowing the pre-image alone never lets anyone move the funds.
+ */
+export function chequeHtlcPreImage(chequeId: string): { preImage: string; hashRoot: string } {
+  const preBytes = sha256(utf8ToBytes(`nimbill-cheque-htlc-preimage-v1:${chequeId.toLowerCase()}`));
+  const rootBytes = sha256(preBytes);
+  return {
+    preImage: bytesToHex(preBytes),
+    hashRoot: bytesToHex(rootBytes),
+  };
 }
 
 /** Derive a key pair from a scalar seed (used by the server for its rule-checking half). */
@@ -265,6 +331,425 @@ export function hashBasicTxContent(tx: BasicTxFields): string {
   return bytesToHex(blake2b(serializeBasicTxContent(tx), { dkLen: 32 }));
 }
 
+// ---------- Nimiq Albatross HTLC Contract Creation & Resolution ----------
+
+export type HtlcCreationTxFields = {
+  /** 64-char hex public key of the funding Basic account (`chequePublicKey`). */
+  senderPublicKey: string;
+  /** Address allowed to reclaim the funds after `timeoutMs` via `TimeoutResolve` (`refundAddress`). */
+  htlcSenderAddress: string;
+  /** Address allowed to claim the funds before `timeoutMs` via `RegularTransfer` (`chequeAddress`). */
+  htlcRecipientAddress: string;
+  /** 64-char hex SHA-256 hash root (algorithm 3 = Sha256, hash_count = 1). */
+  hashRoot: string;
+  /** Millisecond UNIX timestamp after which `htlcSenderAddress` can reclaim via `TimeoutResolve`. */
+  timeoutMs: bigint | number;
+  value: bigint | number | string; // Luna
+  fee?: bigint | number | string; // Luna (defaults to 0)
+  validityStartHeight: number;
+  networkId?: number;
+};
+
+/**
+ * Serialize the 82-byte `CreationTransactionData` payload for an Albatross HTLC contract creation:
+ *   sender (20B) + recipient (20B) + hash_algorithm (1B: 3 = Sha256) + hash_root (32B) + hash_count (1B: 1) + timeout (8B BE u64 ms).
+ */
+export function serializeHtlcCreationData(params: {
+  htlcSenderAddress: string;
+  htlcRecipientAddress: string;
+  hashRoot: string;
+  timeoutMs: bigint | number;
+}): Uint8Array {
+  const senderBytes = addressToBytes(params.htlcSenderAddress);
+  const recipientBytes = addressToBytes(params.htlcRecipientAddress);
+  const rootBytes = hexToBytes(params.hashRoot.toLowerCase());
+  if (rootBytes.length !== 32) throw new Error("HTLC hashRoot must be 32 bytes");
+
+  const data = new Uint8Array(82);
+  const dv = new DataView(data.buffer);
+  let o = 0;
+  data.set(senderBytes, o);
+  o += 20;
+  data.set(recipientBytes, o);
+  o += 20;
+  data[o++] = 3; // AnyHash::Sha256 (discriminant 3)
+  data.set(rootBytes, o);
+  o += 32;
+  data[o++] = 1; // hash_count = 1
+  dv.setBigUint64(o, BigInt(params.timeoutMs), false);
+  return data;
+}
+
+/**
+ * Compute the deterministic 20-byte contract address and `serialize_content` bytes for an
+ * Albatross HTLC contract-creation transaction (`Transaction::contract_creation_address`).
+ */
+export function serializeHtlcCreationTxContent(tx: HtlcCreationTxFields): {
+  txContent: Uint8Array;
+  contractAddress: string;
+  contractAddressBytes: Uint8Array;
+  recipientData: Uint8Array;
+} {
+  const pubKey = hexToBytes(tx.senderPublicKey);
+  if (pubKey.length !== 32) throw new Error("senderPublicKey must be 32 bytes");
+  const senderBytes = blake2b(pubKey, { dkLen: 32 }).subarray(0, 20);
+  const recipientData = serializeHtlcCreationData(tx);
+  const value = BigInt(tx.value);
+  const fee = BigInt(tx.fee ?? 0);
+  const networkId = tx.networkId ?? NIMIQ_MAINNET_ID;
+
+  const buildContent = (recipient20: Uint8Array) => {
+    const out = new Uint8Array(67 + recipientData.length);
+    const view = new DataView(out.buffer);
+    let o = 0;
+    view.setUint16(o, recipientData.length, false);
+    o += 2;
+    out.set(recipientData, o);
+    o += recipientData.length;
+    out.set(senderBytes, o);
+    o += 20;
+    out[o++] = 0; // sender_type = Basic (0)
+    out.set(recipient20, o);
+    o += 20;
+    out[o++] = 2; // recipient_type = HTLC (2)
+    view.setBigUint64(o, value, false);
+    o += 8;
+    view.setBigUint64(o, fee, false);
+    o += 8;
+    view.setUint32(o, tx.validityStartHeight >>> 0, false);
+    o += 4;
+    out[o++] = networkId & 0xff;
+    out[o++] = 1; // flags = CONTRACT_CREATION (0b1)
+    out[o++] = 0; // sender_data.len = 0
+    return out;
+  };
+
+  // `Transaction::contract_creation_address` hashes `serialize_content` with `recipient = [0u8; 20]`.
+  const zeroRecipient = new Uint8Array(20);
+  const contractAddressBytes = blake2b(buildContent(zeroRecipient), { dkLen: 32 }).subarray(0, 20);
+  const contractAddress = addressFromBytes(contractAddressBytes);
+  const txContent = buildContent(contractAddressBytes);
+  return { txContent, contractAddress, contractAddressBytes, recipientData };
+}
+
+/** Assemble the 248-byte Extended transaction that locks a cheque's funds into its HTLC contract. */
+export function serializeSignedHtlcCreationTx(
+  tx: HtlcCreationTxFields,
+  signatureHex: string,
+): { rawTx: string; txHash: string; contractAddress: string } {
+  const pubKey = hexToBytes(tx.senderPublicKey);
+  const sig = hexToBytes(signatureHex);
+  if (pubKey.length !== 32 || sig.length !== 64) throw new Error("Invalid public key or signature length");
+  const senderBytes = blake2b(pubKey, { dkLen: 32 }).subarray(0, 20);
+  const { txContent, contractAddress, contractAddressBytes, recipientData } = serializeHtlcCreationTxContent(tx);
+  const value = BigInt(tx.value);
+  const fee = BigInt(tx.fee ?? 0);
+  const networkId = tx.networkId ?? NIMIQ_MAINNET_ID;
+
+  const sigProof = new Uint8Array(98);
+  sigProof[0] = 0; // Ed25519, no webauthn
+  sigProof.set(pubKey, 1);
+  sigProof[33] = 0; // merkle_path.nodes_len = 0
+  sigProof.set(sig, 34);
+
+  const dataLenVarint = encodeVarint(recipientData.length);
+  const proofLenVarint = encodeVarint(sigProof.length);
+  const totalLen =
+    1 + 20 + 1 + 1 + 20 + 1 + dataLenVarint.length + recipientData.length + 8 + 8 + 4 + 1 + 1 + proofLenVarint.length + sigProof.length;
+
+  const raw = new Uint8Array(totalLen);
+  const dv = new DataView(raw.buffer);
+  let p = 0;
+  raw[p++] = 1; // TransactionFormat::Extended
+  raw.set(senderBytes, p);
+  p += 20;
+  raw[p++] = 0; // sender_type = Basic (0)
+  raw[p++] = 0; // sender_data len = 0
+  raw.set(contractAddressBytes, p);
+  p += 20;
+  raw[p++] = 2; // recipient_type = HTLC (2)
+  raw.set(dataLenVarint, p);
+  p += dataLenVarint.length;
+  raw.set(recipientData, p);
+  p += recipientData.length;
+  dv.setBigUint64(p, value, false);
+  p += 8;
+  dv.setBigUint64(p, fee, false);
+  p += 8;
+  dv.setUint32(p, tx.validityStartHeight >>> 0, false);
+  p += 4;
+  raw[p++] = networkId & 0xff;
+  raw[p++] = 1; // flags = CONTRACT_CREATION (0b1)
+  raw.set(proofLenVarint, p);
+  p += proofLenVarint.length;
+  raw.set(sigProof, p);
+
+  return {
+    rawTx: bytesToHex(raw),
+    txHash: bytesToHex(blake2b(txContent, { dkLen: 32 })),
+    contractAddress,
+  };
+}
+
+/** Complete the 2-of-2 signature over an HTLC creation transaction and return the signed raw tx. */
+export function completeDualHtlcCreationSignature(params: {
+  secret: string;
+  tx: HtlcCreationTxFields;
+  nonceScalar: bigint;
+  serverNoncePublicKey: string;
+  serverPartialSig: string;
+}): { rawTx: string; txHash: string; signature: string; contractAddress: string } {
+  const { txContent } = serializeHtlcCreationTxContent(params.tx);
+  const signature = combineDualSignatureBytes({
+    secret: params.secret,
+    senderPublicKey: params.tx.senderPublicKey,
+    txContent,
+    nonceScalar: params.nonceScalar,
+    serverNoncePublicKey: params.serverNoncePublicKey,
+    serverPartialSig: params.serverPartialSig,
+  });
+  const built = serializeSignedHtlcCreationTx(params.tx, signature);
+  return { ...built, signature };
+}
+
+/** Verify a signed HTLC contract-creation transaction matches `expected` and carries a valid 2-of-2 signature. */
+export function verifyRawHtlcCreationTx(
+  rawTxHex: string,
+  expected: HtlcCreationTxFields,
+): { valid: boolean; txHash: string; contractAddress: string } {
+  if (!/^[0-9a-f]+$/i.test(rawTxHex) || rawTxHex.length !== 496) {
+    return { valid: false, txHash: "", contractAddress: "" };
+  }
+  const raw = hexToBytes(rawTxHex.toLowerCase());
+  const sig = raw.slice(raw.length - 64);
+  const rebuilt = serializeSignedHtlcCreationTx(expected, bytesToHex(sig));
+  if (rebuilt.rawTx !== rawTxHex.toLowerCase()) {
+    return { valid: false, txHash: "", contractAddress: "" };
+  }
+  const { txContent } = serializeHtlcCreationTxContent(expected);
+  const pubKey = hexToBytes(expected.senderPublicKey);
+  if (!ed25519.verify(sig, txContent, pubKey)) {
+    return { valid: false, txHash: "", contractAddress: "" };
+  }
+  return { valid: true, txHash: rebuilt.txHash, contractAddress: rebuilt.contractAddress };
+}
+
+export type HtlcSpendTxFields = {
+  /** The 20-byte HTLC contract address (`NQxx …`). */
+  htlcAddress: string;
+  /** Recipient Basic address (`NQxx …`) receiving the redeemed or refunded NIM. */
+  recipient: string;
+  value: bigint | number | string; // Luna
+  fee?: bigint | number | string; // Luna (defaults to 0)
+  validityStartHeight: number;
+  networkId?: number;
+};
+
+/**
+ * Exact 67-byte `Transaction::serialize_content` payload signed when spending from an Albatross
+ * HTLC contract (`sender_type = AccountType::HTLC (2)`, `recipient_type = AccountType::Basic (0)`).
+ */
+export function serializeHtlcSpendTxContent(tx: HtlcSpendTxFields): Uint8Array {
+  const senderBytes = addressToBytes(tx.htlcAddress);
+  const recipientBytes = addressToBytes(tx.recipient);
+  const value = BigInt(tx.value);
+  const fee = BigInt(tx.fee ?? 0);
+  const networkId = tx.networkId ?? NIMIQ_MAINNET_ID;
+
+  const buf = new ArrayBuffer(67);
+  const view = new DataView(buf);
+  const out = new Uint8Array(buf);
+  let o = 0;
+  view.setUint16(o, 0, false); // recipient_data.len = 0
+  o += 2;
+  out.set(senderBytes, o);
+  o += 20;
+  out[o++] = 2; // sender_type = HTLC (2)
+  out.set(recipientBytes, o);
+  o += 20;
+  out[o++] = 0; // recipient_type = Basic (0)
+  view.setBigUint64(o, value, false);
+  o += 8;
+  view.setBigUint64(o, fee, false);
+  o += 8;
+  view.setUint32(o, tx.validityStartHeight >>> 0, false);
+  o += 4;
+  out[o++] = networkId & 0xff;
+  out[o++] = 0; // flags = 0
+  out[o++] = 0; // sender_data.len = 0
+  return out;
+}
+
+export function hashHtlcSpendTxContent(tx: HtlcSpendTxFields): string {
+  return bytesToHex(blake2b(serializeHtlcSpendTxContent(tx), { dkLen: 32 }));
+}
+
+function wrapHtlcOutgoingTx(tx: HtlcSpendTxFields, proof: Uint8Array): { rawTx: string; txHash: string } {
+  const senderBytes = addressToBytes(tx.htlcAddress);
+  const recipientBytes = addressToBytes(tx.recipient);
+  const txContent = serializeHtlcSpendTxContent(tx);
+  const value = BigInt(tx.value);
+  const fee = BigInt(tx.fee ?? 0);
+  const networkId = tx.networkId ?? NIMIQ_MAINNET_ID;
+
+  const proofLenVarint = encodeVarint(proof.length);
+  const totalLen = 1 + 20 + 1 + 1 + 20 + 1 + 1 + 8 + 8 + 4 + 1 + 1 + proofLenVarint.length + proof.length;
+  const raw = new Uint8Array(totalLen);
+  const dv = new DataView(raw.buffer);
+  let p = 0;
+  raw[p++] = 1; // TransactionFormat::Extended
+  raw.set(senderBytes, p);
+  p += 20;
+  raw[p++] = 2; // sender_type = HTLC (2)
+  raw[p++] = 0; // sender_data len = 0
+  raw.set(recipientBytes, p);
+  p += 20;
+  raw[p++] = 0; // recipient_type = Basic (0)
+  raw[p++] = 0; // recipient_data len = 0
+  dv.setBigUint64(p, value, false);
+  p += 8;
+  dv.setBigUint64(p, fee, false);
+  p += 8;
+  dv.setUint32(p, tx.validityStartHeight >>> 0, false);
+  p += 4;
+  raw[p++] = networkId & 0xff;
+  raw[p++] = 0; // flags = 0
+  raw.set(proofLenVarint, p);
+  p += proofLenVarint.length;
+  raw.set(proof, p);
+
+  return {
+    rawTx: bytesToHex(raw),
+    txHash: bytesToHex(blake2b(txContent, { dkLen: 32 })),
+  };
+}
+
+/**
+ * Assemble an `OutgoingHTLCTransactionProof::RegularTransfer` Extended transaction (variant 0)
+ * signed by the 2-of-2 cheque key (`chequePublicKey`). Used for both normal cashing and early writer cancel.
+ */
+export function serializeSignedHtlcRegularTransferTx(params: {
+  tx: HtlcSpendTxFields;
+  chequePublicKey: string;
+  preImage: string;
+  hashRoot: string;
+  signatureHex: string;
+}): { rawTx: string; txHash: string } {
+  const pubKey = hexToBytes(params.chequePublicKey);
+  const sig = hexToBytes(params.signatureHex);
+  const preBytes = hexToBytes(params.preImage.toLowerCase());
+  const rootBytes = hexToBytes(params.hashRoot.toLowerCase());
+  if (pubKey.length !== 32 || sig.length !== 64 || preBytes.length !== 32 || rootBytes.length !== 32) {
+    throw new Error("Invalid HTLC RegularTransfer key, hash, or signature length");
+  }
+
+  const sigProof = new Uint8Array(98);
+  sigProof[0] = 0;
+  sigProof.set(pubKey, 1);
+  sigProof[33] = 0;
+  sigProof.set(sig, 34);
+
+  const proof = new Uint8Array(1 + 1 + 1 + 32 + 1 + 32 + 98);
+  let o = 0;
+  proof[o++] = 0; // OutgoingHTLCTransactionProof::RegularTransfer (variant 0)
+  proof[o++] = 1; // hash_depth = 1
+  proof[o++] = 3; // AnyHash::Sha256 (3)
+  proof.set(rootBytes, o);
+  o += 32;
+  proof[o++] = 32; // PreImage::PreImage32 (32)
+  proof.set(preBytes, o);
+  o += 32;
+  proof.set(sigProof, o);
+
+  return wrapHtlcOutgoingTx(params.tx, proof);
+}
+
+/** Complete the 2-of-2 signature over an HTLC RegularTransfer spend and return the signed raw tx. */
+export function completeDualHtlcRegularTransferSignature(params: {
+  secret: string;
+  chequeId: string;
+  chequePublicKey: string;
+  tx: HtlcSpendTxFields;
+  nonceScalar: bigint;
+  serverNoncePublicKey: string;
+  serverPartialSig: string;
+}): { rawTx: string; txHash: string; signature: string } {
+  const txContent = serializeHtlcSpendTxContent(params.tx);
+  const signature = combineDualSignatureBytes({
+    secret: params.secret,
+    senderPublicKey: params.chequePublicKey,
+    txContent,
+    nonceScalar: params.nonceScalar,
+    serverNoncePublicKey: params.serverNoncePublicKey,
+    serverPartialSig: params.serverPartialSig,
+  });
+  const { preImage, hashRoot } = chequeHtlcPreImage(params.chequeId);
+  const built = serializeSignedHtlcRegularTransferTx({
+    tx: params.tx,
+    chequePublicKey: params.chequePublicKey,
+    preImage,
+    hashRoot,
+    signatureHex: signature,
+  });
+  return { ...built, signature };
+}
+
+/** Verify a signed HTLC `RegularTransfer` raw transaction against `expected`. */
+export function verifyRawHtlcRegularTransferTx(
+  rawTxHex: string,
+  expected: { tx: HtlcSpendTxFields; chequePublicKey: string; preImage: string; hashRoot: string },
+): { valid: boolean; txHash: string } {
+  if (!/^[0-9a-f]+$/i.test(rawTxHex) || rawTxHex.length !== 470) {
+    return { valid: false, txHash: "" };
+  }
+  const raw = hexToBytes(rawTxHex.toLowerCase());
+  const sig = raw.slice(raw.length - 64);
+  const rebuilt = serializeSignedHtlcRegularTransferTx({
+    ...expected,
+    signatureHex: bytesToHex(sig),
+  });
+  if (rebuilt.rawTx !== rawTxHex.toLowerCase()) {
+    return { valid: false, txHash: "" };
+  }
+  const txContent = serializeHtlcSpendTxContent(expected.tx);
+  const pubKey = hexToBytes(expected.chequePublicKey);
+  if (!ed25519.verify(sig, txContent, pubKey)) {
+    return { valid: false, txHash: "" };
+  }
+  return { valid: true, txHash: rebuilt.txHash };
+}
+
+/**
+ * Build and sign an `OutgoingHTLCTransactionProof::TimeoutResolve` transaction (variant 2)
+ * **entirely in the browser / client** using only the writer's refund secret (never the link secret).
+ *
+ * Requires zero participation from NimBill's server: once the HTLC's `timeout` timestamp has passed,
+ * the writer can broadcast this transaction directly to any Nimiq RPC node to move the full balance
+ * to `recipient` (their own wallet).
+ */
+export function buildAndSignHtlcTimeoutResolveTx(params: {
+  refundSecret: string;
+  tx: HtlcSpendTxFields;
+}): { rawTx: string; txHash: string; refundAddress: string } {
+  const refund = refundKeyFromSecret(params.refundSecret);
+  const txContent = serializeHtlcSpendTxContent(params.tx);
+  const sig = ed25519.sign(txContent, refund.secretKey);
+  const pubKey = hexToBytes(refund.publicKey);
+
+  const sigProof = new Uint8Array(98);
+  sigProof[0] = 0; // Ed25519, no webauthn
+  sigProof.set(pubKey, 1);
+  sigProof[33] = 0; // merkle_path.nodes_len = 0
+  sigProof.set(sig, 34);
+
+  const proof = new Uint8Array(1 + 98);
+  proof[0] = 2; // OutgoingHTLCTransactionProof::TimeoutResolve (variant 2)
+  proof.set(sigProof, 1);
+
+  const built = wrapHtlcOutgoingTx(params.tx, proof);
+  return { ...built, refundAddress: refund.address };
+}
+
 /**
  * A fresh client nonce r_1 and its commitment R_1 for one signing attempt of `txContent`.
  * Fresh randomness is mixed in on every call, so a retry never reuses a nonce (a server that
@@ -306,6 +791,33 @@ export function serverPartialSignTx(params: {
   };
 }
 
+function combineDualSignatureBytes(params: {
+  secret: string;
+  senderPublicKey: string;
+  txContent: Uint8Array;
+  nonceScalar: bigint;
+  serverNoncePublicKey: string;
+  serverPartialSig: string;
+}): string {
+  const { scalar: a1 } = linkKeyFromSecret(params.secret);
+  const r1 = params.nonceScalar;
+  const R1 = Point.BASE.multiply(r1);
+  const R2 = Point.fromHex(params.serverNoncePublicKey);
+  const R = R1.add(R2).toBytes();
+  const A = hexToBytes(params.senderPublicKey);
+  const k = bytesToNumberLE(sha512(concatBytes(R, A, params.txContent))) % CURVE_N;
+  const s1 = (r1 + k * a1) % CURVE_N;
+  const s2 = bytesToNumberLE(hexToBytes(params.serverPartialSig));
+  if (s2 >= CURVE_N) throw new Error("Invalid server partial signature");
+  const s = (s1 + s2) % CURVE_N;
+  const sigBytes = concatBytes(R, numberToBytesLE(s, 32));
+
+  if (!ed25519.verify(sigBytes, params.txContent, A)) {
+    throw new Error("Cheque signature could not be verified. Check the cheque link or code.");
+  }
+  return bytesToHex(sigBytes);
+}
+
 /**
  * Client side: combine the link secret's partial signature s_1 with the server's s_2,
  * verify the resulting 64-byte Ed25519 signature, and return the 139-byte raw Nimiq transaction.
@@ -320,24 +832,14 @@ export function completeDualSignature(params: {
   serverPartialSig: string;
 }): { rawTx: string; txHash: string; signature: string } {
   const txContent = serializeBasicTxContent(params.tx);
-  const { scalar: a1 } = linkKeyFromSecret(params.secret);
-  const r1 = params.nonceScalar;
-  const R1 = Point.BASE.multiply(r1);
-  const R2 = Point.fromHex(params.serverNoncePublicKey);
-  const R = R1.add(R2).toBytes();
-  const A = hexToBytes(params.tx.senderPublicKey);
-  const k = bytesToNumberLE(sha512(concatBytes(R, A, txContent))) % CURVE_N;
-  const s1 = (r1 + k * a1) % CURVE_N;
-  const s2 = bytesToNumberLE(hexToBytes(params.serverPartialSig));
-  if (s2 >= CURVE_N) throw new Error("Invalid server partial signature");
-  const s = (s1 + s2) % CURVE_N;
-  const sigBytes = concatBytes(R, numberToBytesLE(s, 32));
-
-  if (!ed25519.verify(sigBytes, txContent, A)) {
-    throw new Error("Cheque signature could not be verified. Check the cheque link or code.");
-  }
-
-  const signature = bytesToHex(sigBytes);
+  const signature = combineDualSignatureBytes({
+    secret: params.secret,
+    senderPublicKey: params.tx.senderPublicKey,
+    txContent,
+    nonceScalar: params.nonceScalar,
+    serverNoncePublicKey: params.serverNoncePublicKey,
+    serverPartialSig: params.serverPartialSig,
+  });
   const rawTx = serializeSignedBasicTx(params.tx, signature);
   const txHash = bytesToHex(blake2b(txContent, { dkLen: 32 }));
   return { rawTx, txHash, signature };

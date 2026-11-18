@@ -7,7 +7,7 @@ import { getNimiq, nimiqPaymentUri, useNimiq, walletErrorMessage } from "@/lib/c
 import { polygonWallet } from "@/lib/client/wallet";
 import { formatAsset, formatFiat } from "@/lib/currencies";
 import { AppError, Errors } from "@/lib/errors";
-import { MAX_TIP } from "@/lib/schemas";
+import { MAX_TIP, PayerEmail } from "@/lib/schemas";
 import { CurrencyLabel } from "./CurrencyIcon";
 import {
   Alert,
@@ -55,7 +55,7 @@ export function PayPanel({
   selfPreview,
 }: {
   inv: PublicInvoice;
-  onPaid: (inv: PublicInvoice) => void;
+  onPaid: (inv: PublicInvoice, payerEmail?: string) => void;
   selfPreview?: boolean;
 }) {
   const { state } = useNimiq();
@@ -65,6 +65,9 @@ export function PayPanel({
   const [external, setExternal] = useState(false);
   const [tipChoice, setTipChoice] = useState<TipChoice>("0");
   const [customTip, setCustomTip] = useState("");
+  const [payerEmail, setPayerEmail] = useState("");
+  const cleanEmail = payerEmail.trim();
+  const emailInvalid = cleanEmail.length > 0 && !PayerEmail.safeParse(cleanEmail).success;
   const total = Number(inv.total);
   const canTip = !inv.isDemo; // the sample invoice keeps to the basic flow
   const tip = !canTip ? 0 : tipChoice === "custom" ? cents(Number(customTip) || 0) : cents((total * Number(tipChoice)) / 100);
@@ -82,14 +85,16 @@ export function PayPanel({
       setError(null);
       setPhase({ k: "quoting" });
       try {
-        const { quote } = await api<{ quote: Quote }>(`/api/invoices/${inv.id}/quote`, { body: { asset: a, tip } });
+        const { quote } = await api<{ quote: Quote }>(`/api/invoices/${inv.id}/quote`, {
+          body: { asset: a, tip, ...(cleanEmail && !emailInvalid ? { payerEmail: cleanEmail } : {}) },
+        });
         setPhase({ k: "quoted", quote });
       } catch (e) {
         setError((e as Error).message);
         setPhase({ k: "choose" });
       }
     },
-    [inv.id, tip],
+    [inv.id, tip, cleanEmail, emailInvalid],
   );
 
   /** Poll the server until the payment is verified on-chain (≈3 min max). */
@@ -101,9 +106,13 @@ export function PayPanel({
         try {
           if (hash) {
             const r = await api<{ status: string; message?: string; invoice?: PublicInvoice }>(`/api/invoices/${inv.id}/verify`, {
-              body: { asset: quote.asset, txHash: hash },
+              body: {
+                asset: quote.asset,
+                txHash: hash,
+                ...(cleanEmail && !emailInvalid ? { payerEmail: cleanEmail } : {}),
+              },
             });
-            if (r.status === "paid" && r.invoice) return onPaid(r.invoice);
+            if (r.status === "paid" && r.invoice) return onPaid(r.invoice, cleanEmail && !emailInvalid ? cleanEmail : undefined);
             if (r.status === "rejected") {
               setError(r.message ?? "This payment could not be matched to the invoice.");
               return setPhase({ k: "choose" });
@@ -111,7 +120,7 @@ export function PayPanel({
             if (r.message) setPhase({ k: "verifying", quote, hash, message: r.message });
           } else {
             const r = await api<{ invoice: PublicInvoice }>(`/api/invoices/${inv.id}`);
-            if (r.invoice.status === "paid") return onPaid(r.invoice);
+            if (r.invoice.status === "paid") return onPaid(r.invoice, cleanEmail && !emailInvalid ? cleanEmail : undefined);
           }
         } catch (e) {
           if (AppError.is(e) && e.code === "NOT_FOUND") return;
@@ -123,7 +132,7 @@ export function PayPanel({
       );
       setPhase({ k: "choose" });
     },
-    [inv.id, onPaid],
+    [inv.id, onPaid, cleanEmail, emailInvalid],
   );
 
   async function payNim(quote: Quote) {
@@ -209,11 +218,12 @@ export function PayPanel({
                   tooLarge={tipTooLarge}
                 />
               )}
+              <PayerEmailField value={payerEmail} onChange={setPayerEmail} invalid={emailInvalid} />
               <Button
                 size="lg"
                 block
                 loading={phase.k === "quoting"}
-                disabled={tipTooLarge}
+                disabled={tipTooLarge || emailInvalid}
                 onClick={() => getQuote(external ? "NIM" : asset)}
               >
                 Get price in {external ? "NIM" : asset}
@@ -221,6 +231,7 @@ export function PayPanel({
             </>
           ) : (
             <>
+              <PayerEmailField value={payerEmail} onChange={setPayerEmail} invalid={emailInvalid} />
               <OpenInNimiqPay text="Pay in a few taps with the Nimiq Pay wallet." />
               <TextButton className="w-full" onClick={() => setExternal(true)}>
                 I use a different Nimiq wallet
@@ -247,15 +258,19 @@ export function PayPanel({
           ) : external ? (
             <ExternalWallet quote={phase.quote} onSent={() => watch(phase.quote, null)} />
           ) : (
-            <Button
-              size="lg"
-              block
-              loading={phase.k === "wallet"}
-              loadingText="Confirm in your wallet…"
-              onClick={() => (phase.quote.asset === "NIM" ? payNim(phase.quote) : payUsdt(phase.quote))}
-            >
-              Pay {formatAsset(phase.quote.amount, phase.quote.asset)}
-            </Button>
+            <>
+              <PayerEmailField value={payerEmail} onChange={setPayerEmail} invalid={emailInvalid} />
+              <Button
+                size="lg"
+                block
+                loading={phase.k === "wallet"}
+                loadingText="Confirm in your wallet…"
+                disabled={emailInvalid}
+                onClick={() => (phase.quote.asset === "NIM" ? payNim(phase.quote) : payUsdt(phase.quote))}
+              >
+                Pay {formatAsset(phase.quote.amount, phase.quote.asset)}
+              </Button>
+            </>
           )}
           {canSwitch && phase.k !== "wallet" && (
             <TextButton className="w-full" onClick={() => switchAsset(phase.quote.asset === "NIM" ? "USDT" : "NIM")}>
@@ -280,6 +295,45 @@ export function PayPanel({
 
       {error && <Alert kind={/cancelled/i.test(error) ? "info" : "error"}>{error}</Alert>}
     </Card>
+  );
+}
+
+/** Optional email input so the payer receives the paid invoice details and a downloadable PDF receipt. */
+function PayerEmailField({
+  value,
+  onChange,
+  invalid,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  invalid: boolean;
+}) {
+  return (
+    <div className="border-t border-line pt-4">
+      <Field
+        label="Email for your receipt"
+        optional
+        htmlFor="payer-email"
+        hint={
+          invalid ? (
+            <span className="font-medium text-ink">Enter a valid email address, or leave this blank.</span>
+          ) : (
+            "We'll email you the paid invoice and a receipt you can download as PDF."
+          )
+        }
+        size="sm"
+      >
+        <Input
+          id="payer-email"
+          type="email"
+          inputMode="email"
+          autoComplete="email"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="you@example.com"
+        />
+      </Field>
+    </div>
   );
 }
 

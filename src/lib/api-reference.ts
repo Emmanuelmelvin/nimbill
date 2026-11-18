@@ -77,6 +77,11 @@ export const ENDPOINTS: Endpoint[] = [
         required: true,
         description: "Who is paying. The merchant sees it on the order. Agents: say who you act for, e.g. “Shop bot for Tunde”.",
       },
+      {
+        name: "payerEmail",
+        type: "string",
+        description: "Optional email address where the payer receives a copy of the paid invoice and a downloadable PDF receipt.",
+      },
       { name: "productId", type: "string", description: "A product id from the board. Use this or amount." },
       { name: "quantity", type: "integer", description: "How many of the product, 1 to 100. Default 1." },
       { name: "amount", type: "number", description: "Amount to pay when not buying a product." },
@@ -161,6 +166,11 @@ export const ENDPOINTS: Endpoint[] = [
         description: "NIM, or USDT on Polygon (only if the merchant accepts it).",
       },
       { name: "tip", type: "number", description: "Optional extra on top, in the invoice currency." },
+      {
+        name: "payerEmail",
+        type: "string",
+        description: "Optional email address where the payer receives a copy of the paid invoice and a downloadable PDF receipt.",
+      },
     ],
     example: {
       request: { asset: "NIM" },
@@ -193,6 +203,11 @@ export const ENDPOINTS: Endpoint[] = [
         type: "string",
         required: true,
         description: "The transaction hash: 64 hex characters for NIM, 0x + 64 for Polygon.",
+      },
+      {
+        name: "payerEmail",
+        type: "string",
+        description: "Optional email address where the payer receives a copy of the paid invoice and a downloadable PDF receipt.",
       },
     ],
     example: {

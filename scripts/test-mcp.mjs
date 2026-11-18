@@ -6,8 +6,12 @@ import path from "node:path";
 import {
   addressToBytes,
   assertSpendAllowed,
+  buildAndSignHtlcTimeoutResolveTx,
   buildAndSignNimiqTx,
+  chequeHtlcPreImage,
   clientNonceForTx,
+  completeDualHtlcCreationSignature,
+  completeDualHtlcRegularTransferSignature,
   completeDualSignature,
   formatChequeCode,
   getSavedChequeSecret,
@@ -18,8 +22,11 @@ import {
   nimiqRpc,
   parseChequeInput,
   recordSpend,
+  refundKeyFromSecret,
   saveChequeSecret,
   serializeBasicTxContent,
+  serializeHtlcCreationTxContent,
+  serializeHtlcSpendTxContent,
   signNimiqMessage,
   spentLast24h,
 } from "../mcp/wallet.mjs";
@@ -151,6 +158,82 @@ ok(
     "server never reuses its nonce, even for the same transaction and client nonce",
   );
   ok(!app.isValidPointHex("00".repeat(32)) && app.isValidPointHex(lk.publicKey), "isValidPointHex rejects bad points");
+
+  // 3c-htlc. MCP + app HTLC contract creation, RegularTransfer (2-of-2), and TimeoutResolve (client-only) match byte-for-byte.
+  const refundSecret = newChequeSecret();
+  const rk = refundKeyFromSecret(refundSecret);
+  ok(rk.address === app.refundKeyFromSecret(refundSecret).address, "MCP refundKeyFromSecret matches the app");
+  ok(rk.address !== refundKeyFromSecret(secret).address, "MCP refund key is independent of the link secret");
+  ok(
+    JSON.stringify(chequeHtlcPreImage("c9f8e7d6c5")) === JSON.stringify(app.chequeHtlcPreImage("c9f8e7d6c5")),
+    "MCP chequeHtlcPreImage matches the app",
+  );
+  const htlcCreateTx = {
+    senderPublicKey: chq.publicKey,
+    htlcSenderAddress: rk.address,
+    htlcRecipientAddress: chq.address,
+    hashRoot: chequeHtlcPreImage("c9f8e7d6c5").hashRoot,
+    timeoutMs: 1_800_000_000_000,
+    value: 100_000,
+    fee: 0,
+    validityStartHeight: 40_000_000,
+  };
+  const htlcInfo = serializeHtlcCreationTxContent(htlcCreateTx);
+  const nCreate = clientNonceForTx(secret, htlcInfo.txContent);
+  const partCreate = app.serverPartialSignTx({
+    serverScalar: srv.scalar,
+    chequePublicKey: chq.publicKey,
+    clientNoncePublicKey: nCreate.noncePublicKey,
+    txContent: htlcInfo.txContent,
+  });
+  const signedCreate = completeDualHtlcCreationSignature({
+    secret,
+    tx: htlcCreateTx,
+    nonceScalar: nCreate.nonceScalar,
+    ...partCreate,
+  });
+  ok(
+    app.verifyRawHtlcCreationTx(signedCreate.rawTx, htlcCreateTx).valid,
+    "MCP + app produce a valid 2-of-2 HTLC creation transaction",
+  );
+
+  const htlcSpendTx = {
+    htlcAddress: signedCreate.contractAddress,
+    recipient: w1.address,
+    value: 100_000,
+    fee: 0,
+    validityStartHeight: 40_000_005,
+  };
+  const nSpend = clientNonceForTx(secret, serializeHtlcSpendTxContent(htlcSpendTx));
+  const partSpend = app.serverPartialSignTx({
+    serverScalar: srv.scalar,
+    chequePublicKey: chq.publicKey,
+    clientNoncePublicKey: nSpend.noncePublicKey,
+    txContent: serializeHtlcSpendTxContent(htlcSpendTx),
+  });
+  const signedRedeem = completeDualHtlcRegularTransferSignature({
+    secret,
+    chequeId: "c9f8e7d6c5",
+    chequePublicKey: chq.publicKey,
+    tx: htlcSpendTx,
+    nonceScalar: nSpend.nonceScalar,
+    ...partSpend,
+  });
+  ok(
+    app.verifyRawHtlcRegularTransferTx(signedRedeem.rawTx, {
+      tx: htlcSpendTx,
+      chequePublicKey: chq.publicKey,
+      ...chequeHtlcPreImage("c9f8e7d6c5"),
+    }).valid,
+    "MCP + app produce a valid 2-of-2 HTLC RegularTransfer transaction",
+  );
+
+  const mcpTimeout = buildAndSignHtlcTimeoutResolveTx({ refundSecret, tx: htlcSpendTx });
+  const appTimeout = app.buildAndSignHtlcTimeoutResolveTx({ refundSecret, tx: htlcSpendTx });
+  ok(
+    mcpTimeout.rawTx === appTimeout.rawTx && mcpTimeout.txHash === appTimeout.txHash,
+    "MCP buildAndSignHtlcTimeoutResolveTx matches app byte-for-byte",
+  );
 }
 
 // 3d. Spending limits, saved cheque secrets, and wallet encryption.

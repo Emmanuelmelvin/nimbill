@@ -8,6 +8,7 @@ const FREE_SAMPLE: PublicCheque = {
   id: "k7m2p9qx4z",
   number: "CHQ-K7M2P-9QX4Z",
   writer: {
+    address: "NQ24 A5H8 D7F3 9J6K 2L8M 4P1Q 7R3S 5T9V 2W6X",
     name: "Ada Studio",
     tag: "adaokafor",
     handle: "adaokafor@nimbill",
@@ -15,6 +16,7 @@ const FREE_SAMPLE: PublicCheque = {
   },
   chequeAddress: "NQ48 7K2M P9QX 4ZA2 B3C4 D5E6 F7G8 H9J2 9Q4Z",
   chequePublicKey: "0".repeat(64),
+  htlc: null,
   recipient: {
     kind: "free",
     tag: null,
@@ -43,6 +45,7 @@ const TAG_SAMPLE: PublicCheque = {
   id: "8x3n24v9wt",
   number: "CHQ-8X3N2-4V9WT",
   writer: {
+    address: "NQ24 A5H8 D7F3 9J6K 2L8M 4P1Q 7R3S 5T9V 2W6X",
     name: "Ada Studio",
     tag: "adaokafor",
     handle: "adaokafor@nimbill",
@@ -50,6 +53,7 @@ const TAG_SAMPLE: PublicCheque = {
   },
   chequeAddress: "NQ82 4V9W T8X3 N2A7 C6E5 G4J3 K2M9 P8Q7 3X9N",
   chequePublicKey: "0".repeat(64),
+  htlc: null,
   recipient: {
     kind: "tag",
     tag: "tunde",

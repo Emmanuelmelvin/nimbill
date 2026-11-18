@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   AnchorButton,
+  Button,
   Card,
   CoinAmount,
   Dropdown,
@@ -23,7 +24,7 @@ import { EarningsCard } from "@/components/EarningsCard";
 import { RemindActions, ViewedStatus } from "@/components/InvoiceReminder";
 import { TabPage } from "@/components/TabPage";
 import { TransferList } from "@/components/TransferList";
-import { api, type BookClient, type PublicInvoice } from "@/lib/client/api";
+import { api, type BookClient, type PublicInvoice, type PublicRecurringInvoice } from "@/lib/client/api";
 import { toast } from "@/lib/client/toast";
 import { formatFiat } from "@/lib/currencies";
 import { localDate, type EarningPoint } from "@/lib/earnings";
@@ -31,14 +32,23 @@ import { formatMoney, type Fx } from "@/lib/money";
 
 /** An invoice as its owner sees it: with the private client email, when the client first opened it, and a dollar value for adding up. */
 type OwnInvoice = PublicInvoice & { clientEmail: string | null; viewedAt: string | null; usd: number | null };
-type Listing = { invoices: OwnInvoice[]; fx: Fx | null; currency: string };
+type Listing = { invoices: OwnInvoice[]; recurring: PublicRecurringInvoice[]; fx: Fx | null; currency: string };
 
 const VIEWS = [
   { value: "invoices", label: "Invoices" },
+  { value: "recurring", label: "Recurring" },
   { value: "clients", label: "Clients" },
   { value: "transfers", label: "Transfers" },
 ] as const;
 type View = (typeof VIEWS)[number]["value"];
+
+const INTERVAL_LABELS: Record<PublicRecurringInvoice["interval"], { badge: string; per: string }> = {
+  weekly: { badge: "Weekly", per: "wk" },
+  biweekly: { badge: "Every 2 weeks", per: "2 wk" },
+  monthly: { badge: "Monthly", per: "mo" },
+  quarterly: { badge: "Quarterly", per: "qtr" },
+  yearly: { badge: "Yearly", per: "yr" },
+};
 
 const FILTERS = [
   { value: "all", label: "All" },
@@ -75,18 +85,25 @@ function InvoicesScreen() {
   const [error, setError] = useState<string | null>(null);
   // "/invoices?view=transfers" opens straight on transfers (linked from the send screen).
   const params = useSearchParams();
-  const [view, setView] = useState<View>(params.get("view") === "transfers" ? "transfers" : "invoices");
+  const initialView = params.get("view");
+  const [view, setView] = useState<View>(
+    initialView === "transfers" ? "transfers" : initialView === "recurring" ? "recurring" : "invoices",
+  );
 
-  useEffect(() => {
+  const load = () => {
     api<Listing>("/api/invoices")
       .then(setData)
       .catch((e) => setError(e.message));
+  };
+
+  useEffect(() => {
+    load();
   }, []);
 
   return (
     <div className="space-y-5">
-      <LinkButton href="/new" size="lg" block>
-        + New invoice
+      <LinkButton href={view === "recurring" ? "/new?recurring=1" : "/new"} size="lg" block>
+        {view === "recurring" ? "+ New recurring invoice" : "+ New invoice"}
       </LinkButton>
 
       {error && <Alert kind="error">{error}</Alert>}
@@ -96,6 +113,8 @@ function InvoicesScreen() {
           <SegmentedControl label="View" options={VIEWS} value={view} onChange={setView} size="md" block />
           {view === "transfers" ? (
             <TransferList />
+          ) : view === "recurring" ? (
+            <RecurringList recurring={data.recurring ?? []} onChanged={load} />
           ) : data.invoices.length === 0 ? (
             <EmptyState
               title="No invoices yet"
@@ -111,7 +130,7 @@ function InvoicesScreen() {
           ) : (
             <ClientList {...data} />
           )}
-          {view !== "transfers" && data.invoices.some((i) => i.status === "paid") && <ExportCard />}
+          {view !== "transfers" && view !== "recurring" && data.invoices.some((i) => i.status === "paid") && <ExportCard />}
         </>
       )}
     </div>
@@ -137,6 +156,7 @@ function InvoiceList({ invoices }: { invoices: OwnInvoice[] }) {
                     <p className="truncate font-semibold">{inv.clientName}</p>
                     <p className="font-mono text-xs text-muted">
                       {inv.number} · {new Date(inv.createdAt).toLocaleDateString()}
+                      {inv.recurringId ? " · Recurring" : ""}
                     </p>
                     {inv.status === "unpaid" && <ViewedStatus viewedAt={inv.viewedAt} className="mt-1" />}
                   </div>
@@ -163,6 +183,151 @@ function InvoiceList({ invoices }: { invoices: OwnInvoice[] }) {
           </ul>
         </Card>
       )}
+    </section>
+  );
+}
+
+function RecurringList({ recurring, onChanged }: { recurring: PublicRecurringInvoice[]; onChanged: () => void }) {
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function runAction(rec: PublicRecurringInvoice, action: "pause" | "resume" | "cancel" | "issue_now") {
+    if (action === "cancel" && !confirm(`Cancel the recurring invoice for ${rec.clientName}? Past invoices will stay untouched.`)) {
+      return;
+    }
+    setBusyId(`${rec.id}:${action}`);
+    try {
+      const res = await api<{ recurring: PublicRecurringInvoice; invoice: PublicInvoice | null }>(`/api/recurring/${rec.id}`, {
+        method: "PATCH",
+        body: { action },
+      });
+      if (action === "issue_now" && res.invoice) {
+        toast.success(`Issued ${res.invoice.number}`, {
+          description: `${rec.clientEmail ? `Emailed to ${rec.clientEmail}.` : `Ready to share with ${rec.clientName}.`} Next invoice on ${res.recurring.nextRunDate}.`,
+        });
+      } else if (action === "pause") {
+        toast.success("Schedule paused", { description: `No new invoices will be created for ${rec.clientName} until you resume.` });
+      } else if (action === "resume") {
+        toast.success("Schedule resumed", { description: `Next invoice on ${res.recurring.nextRunDate}.` });
+      } else if (action === "cancel") {
+        toast.success("Schedule cancelled");
+      }
+      onChanged();
+    } catch (e) {
+      toast.error("Couldn't update schedule", { description: (e as Error).message });
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (recurring.length === 0) {
+    return (
+      <EmptyState
+        title="No recurring invoices yet"
+        description="Bill retainers, subscriptions and regular clients automatically on a weekly, monthly or yearly schedule."
+        action={
+          <LinkButton href="/new?recurring=1" variant="secondary" size="sm">
+            Create a recurring invoice
+          </LinkButton>
+        }
+      />
+    );
+  }
+
+  return (
+    <section className="space-y-3">
+      <Card as="div" padding="none">
+        <ul className="divide-y divide-line">
+          {recurring.map((rec) => {
+            const meta = INTERVAL_LABELS[rec.interval] ?? INTERVAL_LABELS.monthly;
+            const active = rec.status === "active";
+            const paused = rec.status === "paused";
+            return (
+              <li key={rec.id} className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{rec.clientName}</p>
+                    <p className="font-mono text-xs text-muted">
+                      {meta.badge} · {rec.generatedCount} {rec.generatedCount === 1 ? "invoice" : "invoices"} sent
+                    </p>
+                    <p className="mt-1 font-mono text-xs text-muted">
+                      {active
+                        ? `Next invoice: ${new Date(rec.nextRunDate + "T00:00:00").toLocaleDateString()}`
+                        : paused
+                          ? "Paused"
+                          : rec.cancelledBy === "client"
+                            ? "Unsubscribed by client"
+                            : "Cancelled"}
+                      {rec.clientEmail ? ` · ${rec.clientEmail}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1 text-right">
+                    <p className="font-bold tabular-nums">
+                      {formatFiat(rec.total, rec.currency)}
+                      <span className="font-mono text-xs font-normal text-muted">/{meta.per}</span>
+                    </p>
+                    <span
+                      className={
+                        active
+                          ? "inline-block border border-ink bg-ink px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wider text-paper uppercase"
+                          : "inline-block border border-line bg-subtle px-2 py-0.5 font-mono text-[11px] tracking-wider text-muted uppercase"
+                      }
+                    >
+                      {rec.status}
+                    </span>
+                  </div>
+                </div>
+                {rec.items.length > 0 && (
+                  <p className="truncate text-xs text-muted">
+                    {rec.items.map((it) => (it.quantity > 1 ? `${it.quantity}× ${it.description}` : it.description)).join(", ")}
+                  </p>
+                )}
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  {rec.lastInvoiceId && (
+                    <LinkButton href={`/i/${rec.lastInvoiceId}`} variant="secondary" size="sm">
+                      Latest invoice
+                    </LinkButton>
+                  )}
+                  {rec.status !== "cancelled" && (
+                    <>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        loading={busyId === `${rec.id}:issue_now`}
+                        disabled={busyId !== null}
+                        onClick={() => runAction(rec, "issue_now")}
+                      >
+                        Issue now
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        loading={busyId === `${rec.id}:${active ? "pause" : "resume"}`}
+                        disabled={busyId !== null}
+                        onClick={() => runAction(rec, active ? "pause" : "resume")}
+                      >
+                        {active ? "Pause" : "Resume"}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        loading={busyId === `${rec.id}:cancel`}
+                        disabled={busyId !== null}
+                        onClick={() => runAction(rec, "cancel")}
+                      >
+                        Cancel
+                      </Button>
+                    </>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      </Card>
+      <p className="text-xs text-muted">
+        Each cycle creates a new invoice with its own number and emails it to your client (when an address is saved) and to you. Clients
+        always pay at the live NIM or USDT rate when they open the invoice.
+      </p>
     </section>
   );
 }

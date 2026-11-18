@@ -6,14 +6,23 @@ import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import type { z } from "zod";
 import { merchantAvatarUrl } from "./avatars";
 import {
+  CHEQUE_HTLC_TIMEOUT_MS,
+  chequeHtlcPreImage,
   chequeNumber,
   combinePublicKeys,
   hashBasicTxContent,
+  hashHtlcSpendTxContent,
   keyFromSeedBytes,
   serializeBasicTxContent,
+  serializeHtlcCreationTxContent,
+  serializeHtlcSpendTxContent,
   serverPartialSignTx,
   verifyRawBasicTx,
+  verifyRawHtlcCreationTx,
+  verifyRawHtlcRegularTransferTx,
   type BasicTxFields,
+  type HtlcCreationTxFields,
+  type HtlcSpendTxFields,
 } from "./cheque-crypto";
 import { decodeData, nimiq, sameNimAddress, type NimTx } from "./clients";
 import { LUNA_PER_NIM } from "./currencies";
@@ -26,7 +35,7 @@ import { lookupTag, type TagOwner } from "./merchant-tags";
 import { enforceLimit } from "./rate-limit";
 import { normalizeAddress } from "./nimiq-address";
 import { getRate } from "./rates";
-import type { ChequeClaimBody, NewChequeBody } from "./schemas";
+import type { ChequeClaimBody, ChequeHtlcBody, NewChequeBody } from "./schemas";
 import { formatTag } from "./tags";
 
 const HOUR = 3_600_000;
@@ -118,6 +127,8 @@ export async function createCheque(
   const srv = serverChequeKey(id, keyRef);
   const linkPub = input.linkPublicKey.toLowerCase();
   const combined = combinePublicKeys(linkPub, srv.publicKey);
+  const refundAddr = input.refundAddress ? normalizeAddress(input.refundAddress) : null;
+  const htlcTimeoutAt = refundAddr ? new Date(Date.now() + CHEQUE_HTLC_TIMEOUT_MS) : null;
 
   const [c] = await db
     .insert(schema.cheques)
@@ -130,6 +141,8 @@ export async function createCheque(
       chequePublicKey: combined.publicKey,
       linkPublicKey: linkPub,
       keyRef,
+      refundAddress: refundAddr,
+      htlcTimeoutAt,
       recipientTag: recipient?.tag ?? null,
       recipientName: recipient?.name ?? null,
       recipientAddress: recipient?.address ?? null,
@@ -158,6 +171,16 @@ function fundTxMatches(c: Cheque, tx: NimTx): boolean {
     BigInt(tx.value) >= BigInt(c.amount) &&
     tx.timestamp >= c.createdAt.getTime() - 60_000
   );
+}
+
+/** True when `tx` is the 248-byte HTLC contract-creation transaction moving the cheque's funds into its HTLC. */
+function isHtlcLockTx(c: Cheque, tx: NimTx): boolean {
+  if (!tx.executionResult || !sameNimAddress(tx.from, c.chequeAddress)) return false;
+  if (c.htlcAddress && sameNimAddress(tx.to, c.htlcAddress)) return true;
+  if (c.htlcTxHash && tx.hash.toLowerCase() === c.htlcTxHash.toLowerCase()) return true;
+  // 82 bytes (164 hex chars) of `CreationTransactionData` starting with 20B sender + 20B recipient + 0x03 (Sha256).
+  const data = (tx.recipientData || "").toLowerCase();
+  return data.length === 164 && data.slice(80, 82) === "03";
 }
 
 async function markFunded(c: Cheque, tx: NimTx): Promise<Cheque | null> {
@@ -198,7 +221,7 @@ export async function verifyChequeFunding(c: Cheque, txHash?: string): Promise<C
   return { status: "pending", message: "Waiting for the funding transaction on the blockchain…" };
 }
 
-/** Check the cheque wallet's on-chain transactions to catch up with funding or settlement. */
+/** Check the cheque wallet's (and HTLC contract's) on-chain transactions to catch up with funding, HTLC lock, or settlement. */
 export async function reconcileCheque(c: Cheque): Promise<Cheque> {
   if (isFinal(c.status)) return c;
   let txs: NimTx[];
@@ -219,11 +242,44 @@ export async function reconcileCheque(c: Cheque): Promise<Cheque> {
   if (current.status !== "funded" && current.status !== "settling") return current;
   const db = await getDb();
 
-  const outTx = txs.find((tx) => tx.executionResult && sameNimAddress(tx.from, current.chequeAddress));
+  // If the 2-of-2 cheque wallet locked its balance into an HTLC contract on-chain, record `htlcAddress`.
+  const htlcLock = txs.find((tx) => isHtlcLockTx(current, tx));
+  if (htlcLock && !current.htlcAddress) {
+    const [withHtlc] = await db
+      .update(schema.cheques)
+      .set({ htlcAddress: normalizeAddress(htlcLock.to) ?? htlcLock.to, htlcTxHash: htlcLock.hash.toLowerCase() })
+      .where(eq(schema.cheques.id, current.id))
+      .returning();
+    if (withHtlc) current = withHtlc;
+  }
+
+  // Look for a settlement spend: either from the HTLC contract (`htlcAddress`) or a direct Basic spend from `chequeAddress`.
+  let outTx = txs.find((tx) => tx.executionResult && sameNimAddress(tx.from, current.chequeAddress) && !isHtlcLockTx(current, tx));
+  let spentFromHtlc = false;
+  if (!outTx && current.htlcAddress) {
+    try {
+      const htlcTxs = await nimiq.getTransactionsByAddress(current.htlcAddress, 20);
+      outTx = htlcTxs.find((tx) => tx.executionResult && sameNimAddress(tx.from, current.htlcAddress!));
+      spentFromHtlc = !!outTx;
+    } catch {
+      // ignore RPC blip on HTLC lookup
+    }
+  }
+
   if (outTx) {
-    const isCancel = sameNimAddress(outTx.to, current.writerAddress);
-    const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, outTx.to));
     const ownBroadcast = current.settleTxHash === outTx.hash.toLowerCase();
+    // A TimeoutResolve is the writer's refund (only the writer holds the refund key), wherever they
+    // sent it: record it as a cancel, not as "cashed by Someone". The proof's first byte is the
+    // OutgoingHTLCTransactionProof variant (2 = TimeoutResolve). Without a proof from the node, a
+    // spend after the timeout that NimBill didn't broadcast can only be that refund in practice.
+    const proof = typeof outTx.proof === "string" ? outTx.proof.toLowerCase().replace(/^0x/, "") : "";
+    const isTimeoutRefund =
+      spentFromHtlc &&
+      (proof
+        ? proof.startsWith("02")
+        : !ownBroadcast && !!current.htlcTimeoutAt && outTx.timestamp >= current.htlcTimeoutAt.getTime());
+    const isCancel = isTimeoutRefund || sameNimAddress(outTx.to, current.writerAddress);
+    const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, outTx.to));
     const [updated] = await db
       .update(schema.cheques)
       .set({
@@ -306,14 +362,125 @@ export async function listCheques(address: string): Promise<Cheque[]> {
     .limit(200);
 }
 
-/** Live balance (Luna) of a cheque wallet: what cashing or cancelling moves out. */
-export async function chequeBalance(c: Cheque): Promise<string | null> {
-  if (c.status !== "funded") return null;
+/**
+ * Live balance (Luna) of a cheque, and which account currently holds it (`"htlc"` when locked in
+ * its Nimiq HTLC contract, or `"basic"` when sitting in the 2-of-2 Basic wallet).
+ */
+export async function chequeBalanceInfo(
+  c: Cheque,
+): Promise<{ balance: string | null; spendFrom: "basic" | "htlc" }> {
+  if (c.status !== "funded") return { balance: null, spendFrom: c.htlcAddress ? "htlc" : "basic" };
   try {
-    return String(await nimiq.getBalance(c.chequeAddress));
+    if (c.htlcAddress) {
+      const htlcBal = await nimiq.getBalance(c.htlcAddress);
+      if (htlcBal > 0) return { balance: String(htlcBal), spendFrom: "htlc" };
+    }
+    const basicBal = await nimiq.getBalance(c.chequeAddress);
+    return { balance: String(basicBal), spendFrom: "basic" };
   } catch {
-    return null;
+    return { balance: null, spendFrom: c.htlcAddress ? "htlc" : "basic" };
   }
+}
+
+/** Live balance (Luna) of a cheque wallet or HTLC: what cashing or cancelling moves out. */
+export async function chequeBalance(c: Cheque): Promise<string | null> {
+  return (await chequeBalanceInfo(c)).balance;
+}
+
+/**
+ * Two-step non-custodial protocol (`prepare` -> `broadcast`) that moves a funded cheque's balance
+ * from its 2-of-2 Basic wallet (`chequeAddress`) into its Nimiq HTLC contract (`htlcAddress`) so the
+ * writer has a guaranteed on-chain timeout refund even if NimBill's server disappears.
+ */
+export async function handleChequeHtlcLock(id: string, input: z.output<typeof ChequeHtlcBody>, sessionAddress: string) {
+  let c = await getCheque(id);
+  if (!c) throw Errors.notFound("No cheque found with that link or code.");
+  if (!sameNimAddress(c.writerAddress, sessionAddress)) {
+    throw Errors.forbidden("Only the person who wrote this cheque can lock its HTLC.");
+  }
+  if (c.status === "pending") c = await reconcileCheque(c);
+  if (c.status !== "funded") {
+    throw Errors.badRequest("This cheque must be funded on the blockchain before locking its HTLC.");
+  }
+  if (!c.refundAddress || !c.htlcTimeoutAt) {
+    throw Errors.badRequest("This cheque was created without an HTLC refund key.");
+  }
+  // A cheque funded after its timeout would be locked into an already-expired contract: pointless,
+  // and the refund would be open straight away. The writer can simply cancel it instead.
+  if (c.htlcTimeoutAt.getTime() <= Date.now() + HOUR) {
+    throw Errors.badRequest("This cheque's 30-day protection window has passed. Cancel it to take the NIM back instead.");
+  }
+
+  const value = BigInt(input.value);
+  if (value < BigInt(c.amount)) throw Errors.validation("The HTLC lock amount must cover the cheque's full balance.");
+  const basicBalance = BigInt(await nimiq.getBalance(c.chequeAddress));
+  if (basicBalance === BigInt(0) && c.htlcAddress) {
+    return {
+      step: "already_locked" as const,
+      htlcAddress: c.htlcAddress,
+      txHash: c.htlcTxHash ?? "",
+      cheque: await publicChequeView(c, sessionAddress),
+    };
+  }
+  if (value !== basicBalance) {
+    throw Errors.conflict("The cheque wallet's balance changed. Reload the cheque and try again.", {
+      details: { expected: basicBalance.toString(), got: input.value },
+    });
+  }
+
+  const { hashRoot } = chequeHtlcPreImage(c.id);
+  const txFields: HtlcCreationTxFields = {
+    senderPublicKey: c.chequePublicKey,
+    htlcSenderAddress: c.refundAddress,
+    htlcRecipientAddress: c.chequeAddress,
+    hashRoot,
+    timeoutMs: c.htlcTimeoutAt.getTime(),
+    value,
+    fee: 0,
+    validityStartHeight: input.validityStartHeight,
+  };
+
+  if (input.step === "prepare") {
+    const srv = serverChequeKey(c.id, c.keyRef);
+    const { txContent, contractAddress } = serializeHtlcCreationTxContent(txFields);
+    const partial = serverPartialSignTx({
+      serverScalar: srv.scalar,
+      chequePublicKey: c.chequePublicKey,
+      clientNoncePublicKey: input.clientNoncePublicKey.toLowerCase(),
+      txContent,
+    });
+    return {
+      step: "prepared" as const,
+      htlcAddress: contractAddress,
+      timeoutMs: c.htlcTimeoutAt.getTime(),
+      validityStartHeight: input.validityStartHeight,
+      value: value.toString(),
+      serverNoncePublicKey: partial.serverNoncePublicKey,
+      serverPartialSig: partial.serverPartialSig,
+    };
+  }
+
+  // step === "broadcast"
+  const rawTx = input.rawTx.toLowerCase();
+  const check = verifyRawHtlcCreationTx(rawTx, txFields);
+  if (!check.valid) {
+    throw Errors.validation("Invalid HTLC lock signature.");
+  }
+
+  const txHash = (await nimiq.sendRawTransaction(rawTx)).toLowerCase();
+  const db = await getDb();
+  const [updated] = await db
+    .update(schema.cheques)
+    .set({ htlcAddress: check.contractAddress, htlcTxHash: txHash })
+    .where(eq(schema.cheques.id, c.id))
+    .returning();
+
+  return {
+    step: "broadcast" as const,
+    txHash,
+    htlcAddress: check.contractAddress,
+    cheque: await publicChequeView(updated ?? c, sessionAddress),
+  };
 }
 
 /** Validate that `recipientAddress` and `action` obey the cheque's rules before co-signing or broadcasting. */
@@ -370,16 +537,27 @@ async function validateClaimRules(
  * The transaction must move the cheque's whole balance (so an overfunded cheque doesn't strand
  * the extra NIM), and at least the written amount.
  */
-async function checkClaimValue(c: Cheque, rawValue: string): Promise<bigint> {
+async function checkClaimValue(
+  c: Cheque,
+  rawValue: string,
+  requestedSpendFrom?: "basic" | "htlc",
+): Promise<{ value: bigint; spendFrom: "basic" | "htlc" }> {
   const value = BigInt(rawValue);
   if (value < BigInt(c.amount)) throw Errors.validation("The amount must be the cheque's full balance.");
-  const balance = BigInt(await nimiq.getBalance(c.chequeAddress));
+
+  const info = await chequeBalanceInfo(c);
+  const spendFrom = requestedSpendFrom ?? info.spendFrom;
+  if (spendFrom === "htlc" && !c.htlcAddress) {
+    throw Errors.badRequest("This cheque is not locked in an HTLC contract.");
+  }
+  const sourceAddress = spendFrom === "htlc" ? c.htlcAddress! : c.chequeAddress;
+  const balance = BigInt(await nimiq.getBalance(sourceAddress));
   if (value !== balance) {
     throw Errors.conflict("The cheque's balance changed. Reload the cheque and try again.", {
       details: { expected: balance.toString(), got: rawValue },
     });
   }
-  return value;
+  return { value, spendFrom };
 }
 
 /** Handle the two-step non-custodial claim / cancel protocol (`prepare` -> `broadcast`). */
@@ -389,19 +567,29 @@ export async function handleChequeClaim(id: string, input: z.output<typeof Chequ
   if (c.status === "pending" || c.status === "settling") c = await reconcileCheque(c);
 
   const { recipient, recipientTagOwner } = await validateClaimRules(c, input.action, input.recipientAddress, sessionAddress);
-  const value = await checkClaimValue(c, input.value);
+  const { value, spendFrom } = await checkClaimValue(c, input.value, input.spendFrom);
 
-  const txFields: BasicTxFields = {
+  const basicTxFields: BasicTxFields = {
     senderPublicKey: c.chequePublicKey,
     recipient,
     value,
     fee: 0,
     validityStartHeight: input.validityStartHeight,
   };
+  const htlcTxFields: HtlcSpendTxFields | null =
+    spendFrom === "htlc" && c.htlcAddress
+      ? {
+          htlcAddress: c.htlcAddress,
+          recipient,
+          value,
+          fee: 0,
+          validityStartHeight: input.validityStartHeight,
+        }
+      : null;
 
   if (input.step === "prepare") {
     const srv = serverChequeKey(c.id, c.keyRef);
-    const txContent = serializeBasicTxContent(txFields);
+    const txContent = htlcTxFields ? serializeHtlcSpendTxContent(htlcTxFields) : serializeBasicTxContent(basicTxFields);
     const partial = serverPartialSignTx({
       serverScalar: srv.scalar,
       chequePublicKey: c.chequePublicKey,
@@ -410,18 +598,25 @@ export async function handleChequeClaim(id: string, input: z.output<typeof Chequ
     });
     return {
       step: "prepared" as const,
+      spendFrom,
       recipient,
       validityStartHeight: input.validityStartHeight,
       value: value.toString(),
       serverNoncePublicKey: partial.serverNoncePublicKey,
       serverPartialSig: partial.serverPartialSig,
-      txHash: hashBasicTxContent(txFields),
+      txHash: htlcTxFields ? hashHtlcSpendTxContent(htlcTxFields) : hashBasicTxContent(basicTxFields),
     };
   }
 
   // step === "broadcast"
   const rawTx = input.rawTx.toLowerCase();
-  const check = verifyRawBasicTx(rawTx, txFields);
+  const check = htlcTxFields
+    ? verifyRawHtlcRegularTransferTx(rawTx, {
+        tx: htlcTxFields,
+        chequePublicKey: c.chequePublicKey,
+        ...chequeHtlcPreImage(c.id),
+      })
+    : verifyRawBasicTx(rawTx, basicTxFields);
   if (!check.valid) {
     throw Errors.validation("Invalid cheque signature. Make sure you opened the full cheque link or entered the complete cheque code.");
   }
@@ -495,11 +690,13 @@ function buildView(c: Cheque, ctx: ViewContext, viewerAddress: string | null) {
   // Show the current owner's name and photo only while the tag still points at the locked wallet.
   const sameOwner = tagOwner && (!c.recipientAddress || sameNimAddress(tagOwner.address, c.recipientAddress));
   const writerTag = writer?.tag ?? c.writerTag ?? null;
+  const htlcHashRoot = c.refundAddress ? chequeHtlcPreImage(c.id).hashRoot : null;
 
   return {
     id: c.id,
     number: chequeNumber(c.id),
     writer: {
+      address: c.writerAddress,
       name: writer?.name || c.writerName || "Someone",
       tag: writerTag,
       handle: writerTag ? formatTag(writerTag) : null,
@@ -507,6 +704,16 @@ function buildView(c: Cheque, ctx: ViewContext, viewerAddress: string | null) {
     },
     chequeAddress: c.chequeAddress,
     chequePublicKey: c.chequePublicKey,
+    htlc: c.refundAddress
+      ? {
+          refundAddress: c.refundAddress,
+          contractAddress: c.htlcAddress ?? null,
+          txHash: c.htlcTxHash ?? null,
+          hashRoot: htlcHashRoot!,
+          timeoutAt: c.htlcTimeoutAt?.toISOString() ?? null,
+          timeoutMs: c.htlcTimeoutAt?.getTime() ?? null,
+        }
+      : null,
     recipient: c.recipientTag
       ? {
           kind: "tag" as const,

@@ -1,7 +1,7 @@
 "use client";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Alert, Badge, Button, Card, CoinAmount, DescriptionList, Eyebrow, Header, Loader, TextLink } from "@/components/ui";
+import { Alert, AnchorButton, Badge, Button, Card, CoinAmount, DescriptionList, Eyebrow, Header, Loader, TextLink } from "@/components/ui";
 import { api, type PublicInvoice } from "@/lib/client/api";
 import { nimExplorerTx, polygonExplorerTx } from "@/lib/client/nimiq";
 import { formatFiat } from "@/lib/currencies";
@@ -132,9 +132,14 @@ export default function Receipt() {
           NimBill.
         </p>
       </Card>
-      <Button block className="no-print mt-4" onClick={() => window.print()}>
-        Download PDF / Print
-      </Button>
+      <div className="no-print mt-4 grid gap-2 sm:grid-cols-2">
+        <AnchorButton href={`/api/invoices/${inv.id}/receipt`} download={`NimBill-Receipt-${inv.number}.pdf`} block>
+          Download PDF
+        </AnchorButton>
+        <Button variant="secondary" block onClick={() => window.print()}>
+          Print receipt
+        </Button>
+      </div>
     </>
   );
 }
