@@ -5,6 +5,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import {
   Alert,
   AnchorButton,
+  Badge,
   Button,
   Card,
   CoinAmount,
@@ -14,7 +15,6 @@ import {
   LinkButton,
   Loader,
   SegmentedControl,
-  Select,
   Stat,
   StatusBadge,
   TextButton,
@@ -293,15 +293,7 @@ function RecurringList({ recurring, onChanged }: { recurring: PublicRecurringInv
                       {formatFiat(rec.total, rec.currency)}
                       <span className="font-mono text-xs font-normal text-muted">/{meta.per}</span>
                     </p>
-                    <span
-                      className={
-                        active
-                          ? "inline-block border border-ink bg-ink px-2 py-0.5 font-mono text-[11px] font-semibold tracking-wider text-paper uppercase"
-                          : "inline-block border border-line bg-subtle px-2 py-0.5 font-mono text-[11px] tracking-wider text-muted uppercase"
-                      }
-                    >
-                      {rec.status}
-                    </span>
+                    <Badge variant={active ? "solid" : "muted"}>{rec.status}</Badge>
                   </div>
                 </div>
                 {rec.items.length > 0 && (
@@ -549,13 +541,7 @@ function ExportCard() {
         htmlFor="export-range"
         hint="A CSV file of paid invoices with amounts, rates and transactions, for your records."
       >
-        <Select id="export-range" value={range} onChange={(e) => setRange(e.target.value as typeof range)}>
-          {EXPORT_RANGES.map((r) => (
-            <option key={r.value} value={r.value}>
-              {r.label}
-            </option>
-          ))}
-        </Select>
+        <Dropdown id="export-range" labels="name" options={EXPORT_RANGES} value={range} onChange={setRange} />
       </Field>
       <AnchorButton href={`/api/invoices/export?range=${range}`} download variant="secondary" block>
         Download CSV

@@ -15,7 +15,6 @@ import {
   Label,
   OpenInNimiqPay,
   PageTitle,
-  Select,
   Textarea,
 } from "@/components/ui";
 import { CurrencyLabel } from "@/components/CurrencyIcon";
@@ -58,7 +57,7 @@ export default function NewInvoice() {
   const [dueDate, setDueDate] = useState("");
   const [isRepeat, setIsRepeat] = useState(false);
   const [interval, setInterval] = useState<RecurringIntervalInput>("monthly");
-  const [dueDays, setDueDays] = useState("7");
+  const [dueDays, setDueDays] = useState<(typeof DUE_DAYS_OPTIONS)[number]["value"]>("7");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [rateFor, setRateFor] = useState<{ currency: string; NIM: number; USDT: number } | null>(null);
@@ -347,22 +346,10 @@ export default function NewInvoice() {
             <>
               <div className="grid gap-4 min-[420px]:grid-cols-2 min-[420px]:gap-3">
                 <Field label="Repeat every" htmlFor="interval">
-                  <Select id="interval" value={interval} onChange={(e) => setInterval(e.target.value as RecurringIntervalInput)}>
-                    {INTERVAL_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </Select>
+                  <Dropdown id="interval" labels="name" options={INTERVAL_OPTIONS} value={interval} onChange={setInterval} />
                 </Field>
                 <Field label="Payment terms" htmlFor="due-days">
-                  <Select id="due-days" value={dueDays} onChange={(e) => setDueDays(e.target.value)}>
-                    {DUE_DAYS_OPTIONS.map((o) => (
-                      <option key={o.value} value={o.value}>
-                        {o.label}
-                      </option>
-                    ))}
-                  </Select>
+                  <Dropdown id="due-days" labels="name" options={DUE_DAYS_OPTIONS} value={dueDays} onChange={setDueDays} />
                 </Field>
               </div>
               {!clientEmail.trim() && (

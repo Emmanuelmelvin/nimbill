@@ -156,7 +156,7 @@ export async function lockChequeInHtlc(params: {
     return { txHash: prepared.txHash ?? "", htlcAddress: prepared.htlcAddress, cheque: prepared.cheque };
   }
   if (!prepared.serverNoncePublicKey || !prepared.serverPartialSig) {
-    throw new Error("Server did not return a partial signature for the HTLC lock.");
+    throw new Error("NimBill couldn't turn on the safety refund just now. Try again from the cheque page.");
   }
 
   const { rawTx } = completeDualHtlcCreationSignature({
@@ -280,9 +280,9 @@ async function directNimiqRpc<T>(rpcUrl: string, method: string, params: unknown
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
   });
-  if (!res.ok) throw new Error(`Nimiq RPC HTTP ${res.status}`);
+  if (!res.ok) throw new Error(`The Nimiq network server didn't answer (error ${res.status}). Try again, or try another server.`);
   const body = (await res.json()) as { result?: { data?: T } | T; error?: { message?: string; data?: string } };
-  if (body.error) throw new Error(body.error.data || body.error.message || "Nimiq RPC error");
+  if (body.error) throw new Error(body.error.data || body.error.message || "The Nimiq network server returned an error.");
   const r = body.result as { data?: T } | T | undefined;
   return (r && typeof r === "object" && "data" in r ? (r as { data: T }).data : (r as T));
 }
@@ -304,7 +304,7 @@ export async function reclaimExpiredHtlcCheque(params: {
   const rpcUrl = params.rpcUrl || PUBLIC_NIMIQ_RPC_URL;
   const htlcAddress = normalizeAddress(params.htlcAddress);
   const recipient = normalizeAddress(params.recipientAddress);
-  if (!htlcAddress) throw new Error("Enter a valid HTLC contract address (NQ…).");
+  if (!htlcAddress) throw new Error("Enter the safety refund address (NQ…). It's on the cheque and in your cheque key backup.");
   if (!recipient) throw new Error("Enter a valid Nimiq wallet address (NQ…) to receive the refund.");
   if (!isValidChequeSecret(normalizeChequeSecret(params.refundSecret))) {
     throw new Error("Enter the cheque's refund key (from your cheque key backup), not the cheque link.");
@@ -322,10 +322,10 @@ export async function reclaimExpiredHtlcCheque(params: {
   ]);
   const balance = BigInt(acc?.balance ?? 0);
   if (balance <= BigInt(0)) {
-    throw new Error("This HTLC contract has a 0 NIM balance (it may already have been cashed or reclaimed).");
+    throw new Error("There's no money left to take back: this cheque was already cashed or refunded.");
   }
   if (!currentBlock || currentBlock <= 0) {
-    throw new Error("Could not read the current block height from the Nimiq RPC node.");
+    throw new Error("Couldn't reach the Nimiq network. Try again in a moment, or try another server.");
   }
 
   const built = buildAndSignHtlcTimeoutResolveTx({

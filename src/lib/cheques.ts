@@ -396,23 +396,23 @@ export async function handleChequeHtlcLock(id: string, input: z.output<typeof Ch
   let c = await getCheque(id);
   if (!c) throw Errors.notFound("No cheque found with that link or code.");
   if (!sameNimAddress(c.writerAddress, sessionAddress)) {
-    throw Errors.forbidden("Only the person who wrote this cheque can lock its HTLC.");
+    throw Errors.forbidden("Only the person who wrote this cheque can turn on its safety refund.");
   }
   if (c.status === "pending") c = await reconcileCheque(c);
   if (c.status !== "funded") {
-    throw Errors.badRequest("This cheque must be funded on the blockchain before locking its HTLC.");
+    throw Errors.badRequest("This cheque needs to be funded before its safety refund can be turned on.");
   }
   if (!c.refundAddress || !c.htlcTimeoutAt) {
-    throw Errors.badRequest("This cheque was created without an HTLC refund key.");
+    throw Errors.badRequest("This cheque was written without a safety refund.");
   }
   // A cheque funded after its timeout would be locked into an already-expired contract: pointless,
   // and the refund would be open straight away. The writer can simply cancel it instead.
   if (c.htlcTimeoutAt.getTime() <= Date.now() + HOUR) {
-    throw Errors.badRequest("This cheque's 30-day protection window has passed. Cancel it to take the NIM back instead.");
+    throw Errors.badRequest("It's too late to turn on the safety refund for this cheque. You can still cancel it to take the NIM back.");
   }
 
   const value = BigInt(input.value);
-  if (value < BigInt(c.amount)) throw Errors.validation("The HTLC lock amount must cover the cheque's full balance.");
+  if (value < BigInt(c.amount)) throw Errors.validation("The safety refund must cover the cheque's full amount.");
   const basicBalance = BigInt(await nimiq.getBalance(c.chequeAddress));
   if (basicBalance === BigInt(0) && c.htlcAddress) {
     return {
@@ -464,7 +464,7 @@ export async function handleChequeHtlcLock(id: string, input: z.output<typeof Ch
   const rawTx = input.rawTx.toLowerCase();
   const check = verifyRawHtlcCreationTx(rawTx, txFields);
   if (!check.valid) {
-    throw Errors.validation("Invalid HTLC lock signature.");
+    throw Errors.validation("Couldn't turn on the safety refund: the cheque key didn't match. Reload the cheque and try again.");
   }
 
   const txHash = (await nimiq.sendRawTransaction(rawTx)).toLowerCase();
@@ -548,7 +548,7 @@ async function checkClaimValue(
   const info = await chequeBalanceInfo(c);
   const spendFrom = requestedSpendFrom ?? info.spendFrom;
   if (spendFrom === "htlc" && !c.htlcAddress) {
-    throw Errors.badRequest("This cheque is not locked in an HTLC contract.");
+    throw Errors.badRequest("This cheque doesn't have a safety refund turned on.");
   }
   const sourceAddress = spendFrom === "htlc" ? c.htlcAddress! : c.chequeAddress;
   const balance = BigInt(await nimiq.getBalance(sourceAddress));

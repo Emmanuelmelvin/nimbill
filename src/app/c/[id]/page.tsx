@@ -254,7 +254,9 @@ function ChequeScreen({
   async function runDirectReclaim() {
     if (!cheque.htlc?.contractAddress) return;
     if (!refundSecret) {
-      setActionError("This browser doesn't have the cheque's refund key. Use the on-chain reclaim tool on the Cheques page with your key backup.");
+      setActionError(
+        "This browser doesn't have this cheque's refund key. On the Cheques page, open Cash → Get your money back, and use the key from your cheque key backup.",
+      );
       return;
     }
     setBusy("reclaim");
@@ -465,12 +467,12 @@ function ChequeScreen({
           <WriterShareCard cheque={cheque} secret={secret} />
           {cheque.htlc && !cheque.htlc.contractAddress && (
             <Card tone="subtle" className="space-y-2">
-              <p className="text-xs font-semibold">Finish activating 30-day HTLC timeout protection</p>
+              <p className="text-xs font-semibold">Turn on the 30-day safety refund</p>
               <p className="text-xs text-muted">
-                Lock this cheque inside its Nimiq HTLC contract so that after {htlcTimeoutDate ?? "30 days"} you can reclaim the NIM on-chain even if NimBill is unreachable.
+                If nobody cashes this cheque, you can take the money back after {htlcTimeoutDate ?? "30 days"}, even if NimBill is down.
               </p>
               <Button variant="secondary" size="sm" block loading={busy === "lock"} disabled={!!busy} onClick={() => void runHtlcLock()}>
-                Activate HTLC timeout lock
+                Turn on safety refund
               </Button>
             </Card>
           )}
@@ -481,21 +483,22 @@ function ChequeScreen({
                 Cancel this cheque before it&apos;s cashed to sweep the {formatAsset(cheque.amount, "NIM")} back into your wallet.
                 {cheque.htlc?.contractAddress && htlcTimeoutDate && (
                   <>
-                    {" "}Protected by a Nimiq HTLC contract ({shortAddress(cheque.htlc.contractAddress)}): after {htlcTimeoutDate}, you can also reclaim directly on-chain without NimBill, using this cheque&apos;s refund key.
+                    {" "}Safety refund is on: if it&apos;s still uncashed after {htlcTimeoutDate}, you can take the money back even if NimBill is
+                    down, using this cheque&apos;s refund key.
                   </>
                 )}
               </CoinText>
             </p>
             {cheque.htlc && refundSecret && (
               <div className="flex items-center justify-between gap-3 border border-line p-2">
-                <p className="text-xs text-muted">Refund key: only you have it. Keep a copy, never share it.</p>
+                <p className="text-xs text-muted">Your refund key: only you have it. Keep a copy somewhere safe and never share it.</p>
                 <CopyButton text={refundSecret} label="Copy refund key" variant="secondary" size="sm" className="shrink-0" />
               </div>
             )}
             {actionError && <Alert kind="error">{actionError}</Alert>}
             {reclaimTxHash && (
               <Alert kind="info">
-                Direct on-chain HTLC timeout refund broadcast.{" "}
+                Your money is on its way back to your wallet.{" "}
                 <a href={nimExplorerTx(reclaimTxHash)} target="_blank" rel="noreferrer" className="underline">
                   View transaction ↗
                 </a>
@@ -506,7 +509,7 @@ function ChequeScreen({
             </Button>
             {cheque.htlc?.contractAddress && htlcExpired && (
               <Button variant="secondary" block loading={busy === "reclaim"} disabled={!!busy} onClick={() => void runDirectReclaim()}>
-                Reclaim directly on-chain (no server)
+                Take it back with the safety refund
               </Button>
             )}
           </Card>
@@ -515,7 +518,7 @@ function ChequeScreen({
 
       <p className="text-center text-xs text-muted">
         Non-custodial: NimBill never holds the key to this cheque
-        {cheque.htlc?.timeoutAt ? `, and an on-chain HTLC refunds the writer after ${htlcTimeoutDate}` : ""}.{" "}
+        {cheque.htlc?.contractAddress && htlcTimeoutDate ? `, and the writer can take back an uncashed cheque after ${htlcTimeoutDate}` : ""}.{" "}
         <TextLink href="/cheques" muted>
           Write a cheque
         </TextLink>
