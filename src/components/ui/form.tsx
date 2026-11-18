@@ -164,7 +164,9 @@ export function SegmentedControl<T extends string>({
             className={cx(
               "px-3 font-medium transition-colors",
               size === "sm" ? "min-h-9 text-sm" : "min-h-11 text-base",
-              block && "flex-1",
+              // min-w-0 + truncate: with large phone text sizes the segments shrink and cut their
+              // label instead of pushing the row past the screen edge.
+              block && "min-w-0 flex-1 truncate",
               i > 0 && "border-l border-ink",
               on ? "bg-ink text-paper" : "bg-paper text-ink hover:bg-subtle",
             )}

@@ -36,7 +36,6 @@ type Listing = { invoices: OwnInvoice[]; recurring: PublicRecurringInvoice[]; fx
 
 const VIEWS = [
   { value: "invoices", label: "Invoices" },
-  { value: "recurring", label: "Recurring" },
   { value: "clients", label: "Clients" },
   { value: "transfers", label: "Transfers" },
 ] as const;
@@ -55,6 +54,8 @@ const FILTERS = [
   { value: "unpaid", label: "Unpaid" },
   { value: "overdue", label: "Overdue" },
   { value: "paid", label: "Paid" },
+  // Not an invoice status: shows the schedules that create invoices instead of the invoices.
+  { value: "recurring", label: "Recurring" },
 ] as const;
 type Filter = (typeof FILTERS)[number]["value"];
 
@@ -83,12 +84,12 @@ export default function Invoices() {
 function InvoicesScreen() {
   const [data, setData] = useState<Listing | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // "/invoices?view=transfers" opens straight on transfers (linked from the send screen).
+  // "/invoices?view=transfers" opens straight on transfers (linked from the send screen), and
+  // "?view=recurring" on the Recurring filter (linked from emails and after creating a schedule).
   const params = useSearchParams();
   const initialView = params.get("view");
-  const [view, setView] = useState<View>(
-    initialView === "transfers" ? "transfers" : initialView === "recurring" ? "recurring" : "invoices",
-  );
+  const [view, setView] = useState<View>(initialView === "transfers" ? "transfers" : "invoices");
+  const [filter, setFilter] = useState<Filter>(initialView === "recurring" ? "recurring" : "all");
 
   const load = () => {
     api<Listing>("/api/invoices")
@@ -100,10 +101,12 @@ function InvoicesScreen() {
     load();
   }, []);
 
+  const showingRecurring = view === "invoices" && filter === "recurring";
+
   return (
     <div className="space-y-5">
-      <LinkButton href={view === "recurring" ? "/new?recurring=1" : "/new"} size="lg" block>
-        {view === "recurring" ? "+ New recurring invoice" : "+ New invoice"}
+      <LinkButton href={showingRecurring ? "/new?recurring=1" : "/new"} size="lg" block>
+        {showingRecurring ? "+ New recurring invoice" : "+ New invoice"}
       </LinkButton>
 
       {error && <Alert kind="error">{error}</Alert>}
@@ -113,9 +116,7 @@ function InvoicesScreen() {
           <SegmentedControl label="View" options={VIEWS} value={view} onChange={setView} size="md" block />
           {view === "transfers" ? (
             <TransferList />
-          ) : view === "recurring" ? (
-            <RecurringList recurring={data.recurring ?? []} onChanged={load} />
-          ) : data.invoices.length === 0 ? (
+          ) : data.invoices.length === 0 && (data.recurring ?? []).length === 0 ? (
             <EmptyState
               title="No invoices yet"
               description="Create your first one — it takes under a minute."
@@ -126,25 +127,52 @@ function InvoicesScreen() {
               }
             />
           ) : view === "invoices" ? (
-            <InvoiceList invoices={data.invoices} />
+            <InvoiceList
+              invoices={data.invoices}
+              recurring={data.recurring ?? []}
+              filter={filter}
+              onFilter={setFilter}
+              onChanged={load}
+            />
           ) : (
             <ClientList {...data} />
           )}
-          {view !== "transfers" && view !== "recurring" && data.invoices.some((i) => i.status === "paid") && <ExportCard />}
+          {view !== "transfers" && !showingRecurring && data.invoices.some((i) => i.status === "paid") && <ExportCard />}
         </>
       )}
     </div>
   );
 }
 
-function InvoiceList({ invoices }: { invoices: OwnInvoice[] }) {
-  const [filter, setFilter] = useState<Filter>("all");
+/**
+ * A filterable invoice list. With `recurring`, the dropdown also offers "Recurring" (the schedules)
+ * and the filter is controlled by the caller; without it (one client's invoices) it keeps its own.
+ */
+function InvoiceList({
+  invoices,
+  recurring,
+  filter: controlledFilter,
+  onFilter,
+  onChanged,
+}: {
+  invoices: OwnInvoice[];
+  recurring?: PublicRecurringInvoice[];
+  filter?: Filter;
+  onFilter?: (f: Filter) => void;
+  onChanged?: () => void;
+}) {
+  const [ownFilter, setOwnFilter] = useState<Filter>("all");
+  const filter = controlledFilter ?? ownFilter;
+  const setFilter = onFilter ?? setOwnFilter;
+  const options = recurring ? FILTERS : FILTERS.filter((f) => f.value !== "recurring");
   const today = localDate();
   const shown = invoices.filter((i) => filter === "all" || (filter === "overdue" ? isOverdue(i, today) : i.status === filter));
   return (
     <section className="space-y-3">
-      <Dropdown aria-label="Filter invoices" options={FILTERS} value={filter} onChange={setFilter} labels="name" />
-      {shown.length === 0 ? (
+      <Dropdown aria-label="Filter invoices" options={options} value={filter} onChange={setFilter} labels="name" />
+      {filter === "recurring" && recurring ? (
+        <RecurringList recurring={recurring} onChanged={onChanged ?? (() => {})} />
+      ) : shown.length === 0 ? (
         <p className="py-6 text-center text-sm text-muted">Nothing here.</p>
       ) : (
         <Card as="div" padding="none">

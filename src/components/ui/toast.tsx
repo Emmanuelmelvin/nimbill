@@ -18,7 +18,7 @@ export function Toaster() {
   return (
     <section
       aria-label="Notifications"
-      className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-xl flex-col items-stretch gap-2 px-4 pb-[calc(1rem+var(--safe-area-inset-bottom,env(safe-area-inset-bottom,0px)))]"
+      className="no-print pointer-events-none fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-xl flex-col items-stretch gap-2 px-4 pb-[calc(1rem+max(var(--safe-area-inset-bottom,0px),env(safe-area-inset-bottom,0px)))]"
     >
       {toasts.map((t) => {
         const s = TOASTS[t.kind];
