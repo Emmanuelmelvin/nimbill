@@ -28,7 +28,7 @@ jobs:
       - name: Lint
         run: npm run lint
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npx next typegen && npx tsc --noEmit
 
       # None of these need a database, a dev server or any secrets.
       - run: npm run test:address
