@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main, withdrawals]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Lint, typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      # None of these need a database, a dev server or any secrets.
+      - run: npm run test:address
+      - run: npm run test:tags
+      - run: npm run test:earnings
+      - run: npm run test:webhooks
+      - run: npm run test:webhook-health
+      - run: npm run test:recurring
+      - run: npm run test:recurring-lifecycle
+      - run: npm run test:receipt-email
+      - run: npm run test:withdraw
+      - run: npm run test:withdraw-status
+      - run: npm run test:mcp
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Every env var is optional, so the build runs without production secrets.
+      - run: npm run build
+        env:
+          NEXT_TELEMETRY_DISABLED: 1
