@@ -7,10 +7,13 @@ import { ChequeCard } from "@/components/ChequeCard";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import {
   Alert,
+  AnchorButton,
   Badge,
   Button,
   Card,
   CardHeader,
+  Checkbox,
+  CodeBlock,
   CoinText,
   CopyButton,
   Dropdown,
@@ -27,6 +30,7 @@ import {
   Spinner,
   TabBar,
   TextButton,
+  useCanShare,
 } from "@/components/ui";
 import { WriterShareCard } from "@/app/c/[id]/page";
 import { formatChequeCode, linkKeyFromSecret, newChequeSecret, parseChequeInput, refundKeyFromSecret } from "@/lib/cheque-crypto";
@@ -57,7 +61,7 @@ type WritePhase =
   | { k: "creating" }
   | { k: "wallet"; cheque: PublicCheque; payment: Payment; secret: string }
   | { k: "verifying"; cheque: PublicCheque; secret: string; message: string }
-  | { k: "done"; cheque: PublicCheque; secret: string };
+  | { k: "done"; cheque: PublicCheque; secret: string; refundSecret: string | null; backedUp: boolean };
 
 const TABS = [
   { value: "write" as Tab, label: "Write" },
@@ -411,7 +415,7 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
   const canWrite = validAmount && recipientReady && phase.k === "form";
   const typed = validAmount ? (currency === "NIM" ? `${value.toLocaleString("en")} NIM` : formatFiat(value, currency)) : "";
 
-  async function watchFunding(cheque: PublicCheque, secret: string, hash: string | null) {
+  async function watchFunding(cheque: PublicCheque, secret: string, refundSecret: string, hash: string | null) {
     setPhase({ k: "verifying", cheque, secret, message: "Confirming on the blockchain…" });
     for (let i = 0; i < 60 && !stopped.current; i++) {
       await new Promise((r) => setTimeout(r, i === 0 ? 1500 : 3000));
@@ -430,7 +434,10 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
               // If locking fails for any transient reason, the cheque is still funded and can be locked/cashed from its page.
             }
           }
-          return setPhase({ k: "done", cheque: finalCheque, secret });
+          // The refund key only matters while the cheque can still be refunded: skip the backup step
+          // for a cheque that was cashed before we got here.
+          const needsBackup = finalCheque.status === "funded" && !!finalCheque.htlc?.refundAddress;
+          return setPhase({ k: "done", cheque: finalCheque, secret, refundSecret: needsBackup ? refundSecret : null, backedUp: !needsBackup });
         }
         if (r.status === "rejected") {
           setError(r.message ?? "This cheque could not be confirmed.");
@@ -482,14 +489,27 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
         value: Number(created.payment.amount),
         data: created.payment.memo,
       });
-      await watchFunding(created.cheque, secret, typeof hash === "string" ? hash : null);
+      await watchFunding(created.cheque, secret, refundSecret, typeof hash === "string" ? hash : null);
     } catch (e) {
       if ((e as { type?: string })?.type === "TRANSACTION_OUTCOME_UNKNOWN") {
-        return watchFunding(created.cheque, secret, null);
+        return watchFunding(created.cheque, secret, refundSecret, null);
       }
       setError(walletErrorMessage(e) ?? "Cancelled. Nothing was sent.");
       setPhase({ k: "form" });
     }
+  }
+
+  if (phase.k === "done" && !phase.backedUp && phase.refundSecret) {
+    return (
+      <div className="space-y-4">
+        <ChequeCard cheque={phase.cheque} />
+        <RefundKeyBackup
+          cheque={phase.cheque}
+          refundSecret={phase.refundSecret}
+          onDone={() => setPhase({ ...phase, backedUp: true })}
+        />
+      </div>
+    );
   }
 
   if (phase.k === "done") {
@@ -634,6 +654,84 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
         <OpenInNimiqPay text="Funding a cheque needs the Nimiq Pay wallet." />
       )}
     </form>
+  );
+}
+
+const formatDay = (iso: string | null | undefined) =>
+  iso ? new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : null;
+
+/** The text a writer saves: everything needed to get the money back without NimBill. */
+function refundBackupText(cheque: PublicCheque, refundSecret: string): string {
+  const after = formatDay(cheque.htlc?.timeoutAt);
+  return [
+    `NimBill cheque ${cheque.number} · ${amountText(cheque)}`,
+    `Refund key: ${refundSecret}`,
+    cheque.htlc?.contractAddress
+      ? `Safety refund address: ${cheque.htlc.contractAddress}`
+      : "Safety refund address: shown on the cheque page once the safety refund is on",
+    "",
+    `If nobody cashes this cheque, you can take the money back${after ? ` after ${after}` : " 30 days after writing it"}, even if NimBill is down: open Cheques, tap "Get your money back" and enter the refund key and safety refund address.`,
+    "Keep this private. Anyone with the refund key can take the money back after that date.",
+  ].join("\n");
+}
+
+/**
+ * Shown right after a cheque is funded, before the share link: the writer's refund key is never in
+ * the link and only lives in this browser, so losing it (cleared storage, new phone) while NimBill
+ * is down would leave the money stuck. The copy or email stays on the writer's device: NimBill's
+ * server never sees the refund key.
+ */
+function RefundKeyBackup({ cheque, refundSecret, onDone }: { cheque: PublicCheque; refundSecret: string; onDone: () => void }) {
+  const canShare = useCanShare();
+  const [saved, setSaved] = useState(false);
+  const text = refundBackupText(cheque, refundSecret);
+  const subject = `Refund key for NimBill cheque ${cheque.number}`;
+  const after = formatDay(cheque.htlc?.timeoutAt) ?? "30 days";
+
+  return (
+    <Card tone="strong" className="space-y-3">
+      <div>
+        <p className="font-semibold">Save your refund key first</p>
+        <p className="text-xs text-muted">
+          If nobody cashes this cheque, this key lets you take the money back after {after}, even if NimBill is down. It isn&apos;t in
+          the cheque link, and NimBill doesn&apos;t keep a copy. It&apos;s only saved in this browser, so if you clear it or change phones,
+          this copy is the only one.
+        </p>
+      </div>
+      <CodeBlock className="space-y-1">
+        <p>{cheque.number}</p>
+        <p>Refund key: {refundSecret}</p>
+        {cheque.htlc?.contractAddress && <p>Safety refund address: {cheque.htlc.contractAddress}</p>}
+      </CodeBlock>
+      <p className="text-xs text-muted">Copying or emailing saves these with the steps to get your money back.</p>
+      <div className="grid grid-cols-2 gap-2">
+        <CopyButton text={text} label="Copy" variant="primary" size="sm" className="min-h-11" />
+        {canShare ? (
+          <Button
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
+            onClick={() => navigator.share({ title: subject, text }).catch(() => {})}
+          >
+            Save or email
+          </Button>
+        ) : (
+          <AnchorButton
+            variant="secondary"
+            size="sm"
+            className="min-h-11"
+            href={`mailto:?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`}
+          >
+            Email to myself
+          </AnchorButton>
+        )}
+      </div>
+      <p className="text-xs text-muted">Don&apos;t send this to the person you&apos;re paying. They get the cheque link next.</p>
+      <Checkbox label="I've saved my refund key" checked={saved} onChange={(e) => setSaved(e.target.checked)} />
+      <Button block disabled={!saved} onClick={onDone}>
+        Continue to the cheque link
+      </Button>
+    </Card>
   );
 }
 
