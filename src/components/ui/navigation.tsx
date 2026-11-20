@@ -163,7 +163,7 @@ const TABS: Tab[] = [
   { href: "/", label: "Home", icon: <path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /> },
   { href: "/invoices", label: "Invoices", icon: <path d="M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6" /> },
   { href: "/cheques", label: "Cheques", icon: <path d="M3 6h18v12H3zM7 10h6M7 14h4M15 14h2" /> },
-  { href: "/save", label: "Save", icon: <path d="M12 3v18M3 12h18M5 5h14v14H5z" /> },
+  { href: "/save", label: "Goals", icon: <path d="M12 3v18M3 12h18M5 5h14v14H5z" /> },
   { href: "/withdraw", label: "Withdraw", icon: <path d="M12 4v12M7 11l5 5 5-5M4 20h16" /> },
 ];
 

@@ -7,7 +7,7 @@ import { useLedger } from "@/lib/client/ledger";
 
 export default function Save() {
   return (
-    <TabPage title="Save" description="Set a target for what you earn, and put your NIM to work.">
+    <TabPage title="Goals" description="Set a target for what you earn, and put your NIM to work.">
       <SaveScreen />
     </TabPage>
   );
