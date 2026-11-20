@@ -38,9 +38,9 @@ const client = new PGlite();
 
 const { getDb } = await import("../src/lib/db/index.ts");
 const { createQuote, nimPaymentIssue, paymentMemo, scanNimPaymentIssues } = await import("../src/lib/invoices.ts");
-const { saveEndpoint } = await import("../src/lib/webhooks.ts");
-const { recordInvoicePaid, recordPaymentIssue } = await import("../src/lib/webhooks.ts");
-const { buildPayload, sweepMissedEvents } = await import("../src/lib/webhook-delivery.ts");
+const { endpointView, getEndpoint, saveEndpoint } = await import("../src/lib/webhooks.ts");
+const { recordInvoiceExpired, recordInvoicePaid, recordPaymentIssue } = await import("../src/lib/webhooks.ts");
+const { buildPayload, deliver, sweepMissedEvents } = await import("../src/lib/webhook-delivery.ts");
 const { expireStoreInvoices } = await import("../src/lib/webhook-watch.ts");
 const { WATCH_AFTER_LOCK_MIN } = await import("../src/lib/webhook-policy.ts");
 const { BoardInvoiceBody } = await import("../src/lib/schemas.ts");
@@ -247,6 +247,40 @@ assert.equal(found.length, 1, "still one event after a second scan");
 assert.equal(found[0].issue?.reason, "amount_too_low");
 assert.equal(found[0].issue?.amount, "400000");
 console.log("PASS the worker scan finds a short NIM payment on-chain and reports it once");
+
+// ---- choosing events (Settings → Webhooks) ----
+assert.deepEqual(endpoint.events, ["invoice.paid", "invoice.expired", "invoice.payment_issue"], "a new endpoint gets every event");
+assert.deepEqual(endpointView(endpoint, []).subscribed, endpoint.events, "Settings shows the choice");
+await assert.rejects(saveEndpoint(merchant, { url: endpoint.url, events: [] }), /at least one event/);
+// Repeats and order don't matter: stored once each, in the usual order.
+const { endpoint: onlyPaid } = await saveEndpoint(merchant, { url: endpoint.url, events: ["invoice.paid", "invoice.paid"] });
+assert.deepEqual(onlyPaid.events, ["invoice.paid"]);
+const { endpoint: leftAlone } = await saveEndpoint(merchant, { url: endpoint.url });
+assert.deepEqual(leftAlone.events, ["invoice.paid"], "saving without events keeps the choice");
+console.log("PASS events are chosen per endpoint: all by default, at least one, kept when not sent");
+
+// Only invoice.paid chosen: the other two are never queued, and the sweep doesn't add them.
+const quiet = await invoice({ expiresAt: at(-1 * MIN) });
+await recordInvoiceExpired(quiet);
+await recordPaymentIssue(quiet, issue("04".repeat(32)));
+assert.equal((await events(quiet.id)).length, 0, "unchosen events aren't queued");
+await db.update(schema.invoices).set({ status: "expired" }).where(eq(schema.invoices.id, quiet.id));
+await sweepMissedEvents();
+assert.equal((await events(quiet.id)).length, 0, "the sweep doesn't add unchosen events");
+await recordInvoicePaid(quiet);
+assert.equal((await events(quiet.id, "invoice.paid")).length, 1, "chosen events still are");
+console.log("PASS unchosen events are never queued, swept or counted");
+
+// An event queued before the store unticked it isn't sent: it's dropped with a reason, without
+// a request to the store (so it can't count as a failure against its URL).
+const [stale] = (await events(open.id, "invoice.payment_issue")).filter((e) => e.status === "pending");
+assert.equal(await deliver(stale), "failed");
+const [after] = await db.select().from(schema.webhookEvents).where(eq(schema.webhookEvents.id, stale.id));
+assert.equal(after.status, "failed");
+assert.equal(after.attempts, 0, "no request was made");
+assert.match(after.lastError ?? "", /turned this event off/);
+assert.equal((await getEndpoint(merchant))!.consecutiveFailures, 0, "the store's URL isn't marked as failing");
+console.log("PASS an event unticked after it was queued is dropped, not sent");
 
 rpc.close();
 console.log("\nAll webhook event checks passed");

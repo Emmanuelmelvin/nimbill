@@ -2,6 +2,7 @@ import { z } from "zod";
 import { handle, json } from "@/lib/api";
 import { requireSessionAddress } from "@/lib/auth";
 import { ensureMerchant } from "@/lib/invoices";
+import { STORE_EVENT_TYPES, type StoreEventType } from "@/lib/webhook-policy";
 import { deleteEndpoint, endpointView, getEndpoint, recentEvents, saveEndpoint } from "@/lib/webhooks";
 
 // "Pay with NimBill": the signed-in merchant's webhook endpoint (Settings → Webhooks).
@@ -12,6 +13,8 @@ const Body = z.object({
   // Where payers may be sent back to after paying. Empty clears it.
   returnOrigin: z.string().trim().max(500).nullable().optional(),
   enabled: z.boolean().optional(),
+  // The event types to receive. Left out: unchanged (all of them for a new endpoint).
+  events: z.array(z.enum(STORE_EVENT_TYPES as [StoreEventType, ...StoreEventType[]], { error: "Unknown event type" })).optional(),
 });
 
 async function view(address: string) {

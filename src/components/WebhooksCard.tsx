@@ -2,7 +2,13 @@
 import { useEffect, useRef, useState } from "react";
 import { api } from "@/lib/client/api";
 import { toast } from "@/lib/client/toast";
-import { FAILING_REMOVE_AFTER_DAYS, FAILING_WARN_AFTER_HOURS } from "@/lib/webhook-policy";
+import {
+  FAILING_REMOVE_AFTER_DAYS,
+  FAILING_WARN_AFTER_HOURS,
+  STORE_EVENT_TYPES,
+  STORE_EVENTS,
+  type StoreEventType,
+} from "@/lib/webhook-policy";
 import type { WebhookEndpointView } from "@/lib/webhooks";
 import {
   Alert,
@@ -249,6 +255,7 @@ function WebhooksPanel({
   const [url, setUrl] = useState(endpoint?.url ?? "");
   const [returnOrigin, setReturnOrigin] = useState(endpoint?.returnOrigin ?? "");
   const [enabled, setEnabled] = useState(formEnabled(endpoint));
+  const [events, setEvents] = useState<StoreEventType[]>(endpoint?.subscribed ?? STORE_EVENT_TYPES);
   const [secret, setSecret] = useState<string | null>(null);
   const [busy, setBusy] = useState<null | "save" | "rotate" | "delete" | "test">(null);
   const [error, setError] = useState<string | null>(null);
@@ -258,7 +265,11 @@ function WebhooksPanel({
     setUrl(ep?.url ?? "");
     setReturnOrigin(ep?.returnOrigin ?? "");
     setEnabled(formEnabled(ep));
+    setEvents(ep?.subscribed ?? STORE_EVENT_TYPES);
   }
+
+  const toggleEvent = (type: StoreEventType, on: boolean) =>
+    setEvents((cur) => STORE_EVENT_TYPES.filter((t) => (t === type ? on : cur.includes(t))));
 
   async function run(kind: "save" | "rotate" | "delete" | "test", call: () => Promise<Answer>) {
     setBusy(kind);
@@ -314,7 +325,9 @@ function WebhooksPanel({
         onSubmit={(e) => {
           e.preventDefault();
           void run("save", () =>
-            api<Answer>("/api/webhooks", { body: { url, returnOrigin: returnOrigin.trim() || null, ...(endpoint ? { enabled } : {}) } }),
+            api<Answer>("/api/webhooks", {
+              body: { url, returnOrigin: returnOrigin.trim() || null, events, ...(endpoint ? { enabled } : {}) },
+            }),
           );
         }}
       >
@@ -345,6 +358,25 @@ function WebhooksPanel({
             onChange={(e) => setReturnOrigin(e.target.value)}
           />
         </Field>
+        <fieldset className="space-y-1">
+          <legend className="mb-1">
+            <Eyebrow>Events to receive</Eyebrow>
+          </legend>
+          {STORE_EVENTS.map((e) => (
+            <Checkbox
+              key={e.type}
+              label={e.label}
+              description={
+                <>
+                  <span className="font-mono">{e.type}</span> · {e.description}
+                </>
+              }
+              checked={events.includes(e.type)}
+              onChange={(ev) => toggleEvent(e.type, ev.target.checked)}
+            />
+          ))}
+          {!events.length && <p className="text-sm text-muted">Pick at least one, or turn webhooks off below.</p>}
+        </fieldset>
         {endpoint && (
           <Checkbox
             label="Webhooks on"
@@ -354,7 +386,7 @@ function WebhooksPanel({
           />
         )}
         {error && <Alert kind="error">{error}</Alert>}
-        <Button type="submit" block loading={busy === "save"} loadingText="Saving…" disabled={!!busy || !url.trim()}>
+        <Button type="submit" block loading={busy === "save"} loadingText="Saving…" disabled={!!busy || !url.trim() || !events.length}>
           {endpoint ? "Save" : "Turn on webhooks"}
         </Button>
       </form>

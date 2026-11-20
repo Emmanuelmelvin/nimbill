@@ -1,4 +1,5 @@
 import { boolean, integer, jsonb, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import type { StoreEventType } from "../webhook-policy";
 
 export type LineItem = { description: string; quantity: number; unitPrice: number };
 
@@ -273,6 +274,8 @@ export const webhookEndpoints = pgTable("webhook_endpoints", {
   previousSecretEnc: text("previous_secret_enc"),
   previousExpiresAt: timestamp("previous_expires_at", { withTimezone: true }),
   enabled: boolean("enabled").notNull().default(true),
+  // The event types the store chose (STORE_EVENTS in lib/webhook-policy.ts). Others are never queued.
+  events: jsonb("events").$type<StoreEventType[]>().notNull().default(["invoice.paid", "invoice.expired", "invoice.payment_issue"]),
   // Health (lib/webhook-health.ts): the first failed attempt since the last 2xx, and how many in a row.
   // Reset by any delivered webhook and by the merchant saving a new URL or turning webhooks back on.
   failingSince: timestamp("failing_since", { withTimezone: true }),
@@ -286,7 +289,7 @@ export const webhookEndpoints = pgTable("webhook_endpoints", {
 });
 
 // "webhook.test": sent from Settings → Webhooks with a made-up invoice (`invoice_id` is "test_…").
-export type WebhookEventType = "invoice.paid" | "invoice.expired" | "invoice.payment_issue" | "webhook.test";
+export type WebhookEventType = StoreEventType | "webhook.test";
 
 /** Why a NIM transaction carrying an invoice's memo didn't pay it (invoice.payment_issue). */
 export type PaymentIssueReason = "amount_too_low" | "price_lock_expired" | "already_paid" | "invoice_closed";
@@ -699,4 +702,5 @@ ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS issue jsonb;
 CREATE UNIQUE INDEX IF NOT EXISTS webhook_events_once_tx_idx ON webhook_events (type, invoice_id, tx_hash) NULLS NOT DISTINCT;
 DROP INDEX IF EXISTS webhook_events_once_idx;
 CREATE INDEX IF NOT EXISTS invoices_expiring_idx ON invoices (expires_at) WHERE status = 'unpaid' AND expires_at IS NOT NULL;
+ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS events jsonb NOT NULL DEFAULT '["invoice.paid","invoice.expired","invoice.payment_issue"]';
 `;

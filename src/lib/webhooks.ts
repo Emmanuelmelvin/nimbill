@@ -7,7 +7,7 @@ import type { Invoice, PaymentIssue, WebhookEndpoint, WebhookEvent, WebhookEvent
 import { env, isProd } from "./env";
 import { Errors } from "./errors";
 import { logger } from "./logger";
-import { ROTATION_OVERLAP_HOURS, removalDate } from "./webhook-policy";
+import { ROTATION_OVERLAP_HOURS, STORE_EVENT_TYPES, removalDate, type StoreEventType } from "./webhook-policy";
 import { checkSignature } from "./webhook-signature";
 
 // "Pay with NimBill": a merchant's store creates board invoices with signed requests and gets a
@@ -120,7 +120,18 @@ export async function getEndpoint(merchantAddress: string): Promise<WebhookEndpo
   return ep ?? null;
 }
 
-export type EndpointInput = { url: string; returnOrigin?: string | null; enabled?: boolean };
+export type EndpointInput = { url: string; returnOrigin?: string | null; enabled?: boolean; events?: StoreEventType[] };
+
+/** The chosen events, in the usual order, without repeats. At least one is required. */
+function cleanEvents(events: StoreEventType[] | undefined): StoreEventType[] | undefined {
+  if (events === undefined) return undefined;
+  const chosen = STORE_EVENT_TYPES.filter((t) => events.includes(t));
+  if (!chosen.length) throw Errors.badRequest("Pick at least one event to receive, or turn webhooks off.");
+  return chosen;
+}
+
+/** Whether the merchant's endpoint wants this event type. webhook.test always goes. */
+export const wantsEvent = (ep: WebhookEndpoint, type: WebhookEventType) => type === "webhook.test" || ep.events.includes(type);
 
 /** Create the merchant's endpoint (the answer carries its new secret, once) or change its settings. */
 export async function saveEndpoint(merchantAddress: string, input: EndpointInput): Promise<{ endpoint: WebhookEndpoint; secret?: string }> {
@@ -131,6 +142,7 @@ export async function saveEndpoint(merchantAddress: string, input: EndpointInput
       : input.returnOrigin
         ? checkPublicUrl(input.returnOrigin, "The store address").origin
         : null;
+  const events = cleanEvents(input.events);
   const db = await getDb();
   const existing = await getEndpoint(merchantAddress);
   if (existing) {
@@ -144,6 +156,7 @@ export async function saveEndpoint(merchantAddress: string, input: EndpointInput
         url,
         ...(returnOrigin !== undefined ? { returnOrigin } : {}),
         ...(input.enabled !== undefined ? { enabled: input.enabled } : {}),
+        ...(events ? { events } : {}),
         ...(fresh ? { failingSince: null, consecutiveFailures: 0, warnedAt: null } : {}),
         ...(turningOn ? { disabledReason: null, disabledAt: null } : {}),
         updatedAt: new Date(),
@@ -162,6 +175,7 @@ export async function saveEndpoint(merchantAddress: string, input: EndpointInput
       returnOrigin: returnOrigin ?? null,
       secretEnc: encryptSecret(secret),
       enabled: input.enabled ?? true,
+      events: events ?? STORE_EVENT_TYPES,
     })
     .onConflictDoNothing()
     .returning();
@@ -257,6 +271,8 @@ export function endpointView(ep: WebhookEndpoint, events: WebhookEvent[]) {
     url: ep.url,
     returnOrigin: ep.returnOrigin,
     enabled: ep.enabled,
+    /** The event types this endpoint receives. */
+    subscribed: ep.events,
     createdAt: ep.createdAt.toISOString(),
     /** Until when the previous secret still works, while a rotation is in progress. */
     previousSecretValidUntil: rotating,
@@ -340,9 +356,13 @@ export async function recordPaymentIssue(inv: Invoice, issue: PaymentIssue): Pro
   await recordEvent(inv, "invoice.payment_issue", issue);
 }
 
-async function recordEvent(inv: Invoice, type: Exclude<WebhookEventType, "webhook.test">, issue?: PaymentIssue): Promise<void> {
+async function recordEvent(inv: Invoice, type: StoreEventType, issue?: PaymentIssue): Promise<void> {
   if (!inv.integrationId || inv.isDemo) return;
   try {
+    // Only what the store chose (Settings → Webhooks). No endpoint: queued anyway, and delivery
+    // gives up with a reason the merchant can see if they set webhooks up again.
+    const ep = await getEndpoint(inv.merchantAddress);
+    if (ep && !wantsEvent(ep, type)) return;
     const db = await getDb();
     const inserted = await db
       .insert(schema.webhookEvents)

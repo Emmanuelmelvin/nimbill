@@ -81,7 +81,16 @@ export default async function ReceiveWebhooks() {
           ["webhook.test", "", "Sent from Settings → Webhooks, with a made-up paid invoice and test: true."],
         ]}
       />
-      <p className="text-sm text-muted">More types may be added. Answer 2xx to types you don&apos;t handle, so they aren&apos;t retried.</p>
+      <p className="text-muted">
+        <strong className="text-ink">Pick the ones you want</strong> under <span className={mono}>Events to receive</span> in Settings →
+        Webhooks. All three are on for a new endpoint. Events you untick are never sent, so they can&apos;t fail or count against your URL;
+        one that was already waiting when you unticked it is dropped, and Recent events says why. <span className={mono}>webhook.test</span>{" "}
+        is always sent when you ask for it.
+      </p>
+      <p className="text-sm text-muted">
+        More types may be added; you&apos;ll choose whether to receive them. Answer 2xx to types you don&apos;t handle, so they aren&apos;t
+        retried.
+      </p>
 
       <H2 id="expired">Expired invoices</H2>
       <p className="text-muted">

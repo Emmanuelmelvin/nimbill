@@ -6,7 +6,7 @@ import { logger } from "./logger";
 import { safePost } from "./safe-post";
 import { siteUrl } from "./site";
 import { recordAttempt } from "./webhook-health";
-import { activeSecrets, getEndpoint } from "./webhooks";
+import { activeSecrets, getEndpoint, wantsEvent } from "./webhooks";
 import { MAX_ATTEMPTS, RETRY_DELAYS_MIN } from "./webhook-policy";
 import { signatureHeader } from "./webhook-signature";
 
@@ -147,6 +147,8 @@ export async function deliver(ev: WebhookEvent): Promise<DeliveryOutcome> {
     const tooOld = Date.now() - ev.createdAt.getTime() > MAX_EVENT_AGE_MS;
     const ep = await getEndpoint(ev.merchantAddress);
     if (!ep) return (await giveUp(ev, "No webhook URL is set up anymore."), "failed");
+    // Queued before the merchant unticked this event in Settings: don't send it.
+    if (!wantsEvent(ep, ev.type)) return (await giveUp(ev, "You turned this event off in Settings, so it wasn't sent."), "failed");
     if (!ep.enabled) {
       if (tooOld) return (await giveUp(ev, "Webhooks were turned off for too long."), "failed");
       const lastError = ep.disabledReason === "failing" ? "Webhooks were removed after repeated failures." : "Webhooks are turned off.";
@@ -226,6 +228,11 @@ export async function sweepMissedEvents(): Promise<number> {
       AND NOT i.is_demo
       AND i.created_at > now() - interval '14 days'
       AND NOT EXISTS (SELECT 1 FROM webhook_events e WHERE e.type = 'invoice.' || i.status AND e.invoice_id = i.id)
+      -- Only events the store chose in Settings → Webhooks.
+      AND EXISTS (
+        SELECT 1 FROM webhook_endpoints w
+        WHERE w.merchant_address = i.merchant_address AND w.events @> jsonb_build_array('invoice.' || i.status)
+      )
     ON CONFLICT DO NOTHING
   `);
   return (res as { affectedRows?: number; rowCount?: number }).affectedRows ?? (res as { rowCount?: number }).rowCount ?? 0;

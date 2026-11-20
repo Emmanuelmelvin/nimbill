@@ -10,6 +10,20 @@ export const DELIVERY_TIMEOUT_S = 10;
 /** How long the old secret keeps working after "New secret". */
 export const ROTATION_OVERLAP_HOURS = 24;
 
+// The events a store can choose in Settings → Webhooks. Events it didn't choose are never queued,
+// so they can't fail and count against its URL. webhook.test always goes out when asked for.
+export const STORE_EVENTS = [
+  { type: "invoice.paid", label: "Paid", description: "An invoice was paid and confirmed on-chain." },
+  { type: "invoice.expired", label: "Expired", description: "Nobody paid in time. Release the stock." },
+  {
+    type: "invoice.payment_issue",
+    label: "Payment issue",
+    description: "NIM arrived for an invoice but didn't pay it: too little, too late, or twice.",
+  },
+] as const;
+export type StoreEventType = (typeof STORE_EVENTS)[number]["type"];
+export const STORE_EVENT_TYPES: StoreEventType[] = STORE_EVENTS.map((e) => e.type);
+
 // Store invoices expire, so a store can release stock that was held for an order nobody paid.
 /** How long a store invoice can be paid when the store doesn't say (`expiresInMinutes`). */
 export const STORE_INVOICE_EXPIRY_DEFAULT_MIN = 24 * 60;

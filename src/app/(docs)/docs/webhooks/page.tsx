@@ -75,8 +75,9 @@ export default function Webhooks() {
         <Step n={2} title="Turn on webhooks.">
           <p>
             In Settings, open <span className="font-mono">Webhooks</span> (tagged For developers, closed by default) and enter the https URL
-            that receives webhooks and, optionally, your store&apos;s address (where customers may be sent back to). Copy the secret it
-            shows. It is shown only once; you can make a new one any time.
+            that receives webhooks and, optionally, your store&apos;s address (where customers may be sent back to). Under Events to
+            receive, untick any you don&apos;t want (paid, expired, payment issue). Copy the secret it shows. It is shown only once; you can
+            make a new one any time.
           </p>
         </Step>
         <Step n={3} title="Store the secret on your server.">
