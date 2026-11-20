@@ -107,7 +107,9 @@ function EventRow({ event: e }: { event: EventView }) {
                 <p className="text-xs text-muted">
                   {e.type === "webhook.test"
                     ? "What your server was sent."
-                    : "Built from the invoice as it is now, the same way it's sent."}
+                    : e.type === "invoice.payment_issue"
+                      ? "Built from the invoice as it is now and the payment as it was found, the same way it's sent."
+                      : "Built from the invoice as it is now, the same way it's sent."}
                 </p>
               </>
             )}

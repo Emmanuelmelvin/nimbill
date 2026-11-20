@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 };
 
 const link = "underline underline-offset-4";
-const STORE_FIELDS = new Set(["reference", "metadata", "returnUrl"]);
+const STORE_FIELDS = new Set(["reference", "metadata", "returnUrl", "expiresInMinutes"]);
 
 export default async function CreateSignedInvoice() {
   const base = requestOrigin(await headers());
@@ -73,6 +73,15 @@ export default async function CreateSignedInvoice() {
         and NimBill: they never appear on the public invoice page. <span className="font-mono text-ink">returnUrl</span> must be on the
         store address saved in Settings → Webhooks, so nobody can use your invoices to send customers to another site.
       </p>
+      <p className="text-sm text-muted">
+        Your invoices always expire, so stock held for an unpaid order can be released: after{" "}
+        <span className="font-mono text-ink">expiresInMinutes</span> (24 hours if you leave it out), nobody can start paying, and you get{" "}
+        <span className="font-mono text-ink">invoice.expired</span> once no payment that was started in time can still land.{" "}
+        <Link href="/docs/webhooks/receive#expired" className={link}>
+          How expiry works
+        </Link>
+        .
+      </p>
 
       <H2 id="code">Code</H2>
       <p className="text-muted">Runs on your server when the customer picks &quot;Pay with NimBill&quot; at checkout:</p>
@@ -109,7 +118,12 @@ export default async function CreateSignedInvoice() {
             `t is more than ${SIGNATURE_TOLERANCE_S / 60} minutes from NimBill's clock. Sign each request right before sending it.`,
           ],
           ["401 UNAUTHORIZED", "webhooks off", "Webhooks are turned off or removed in Settings, so signed requests are refused."],
-          ["400 BAD_REQUEST", "unsigned extras", "reference, metadata or returnUrl were sent without a NimBill-Signature header."],
+          [
+            "400 BAD_REQUEST",
+            "unsigned extras",
+            "reference, metadata, returnUrl or expiresInMinutes were sent without a NimBill-Signature header.",
+          ],
+          ["400 VALIDATION", "expiresInMinutes", "expiresInMinutes is under 15 or over 4320 (3 days)."],
           ["400 VALIDATION", "returnUrl", "returnUrl isn't on the store address saved in Settings, or no store address is saved."],
         ]}
       />

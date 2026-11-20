@@ -103,6 +103,12 @@ export const ENDPOINTS: Endpoint[] = [
         type: "string",
         description: "Pay with NimBill only: where the payer goes back to after paying. Must be on the store address saved in NimBill.",
       },
+      {
+        name: "expiresInMinutes",
+        type: "integer",
+        description:
+          "Pay with NimBill only: how long the invoice can be paid, 15 to 4320 (3 days). Default 1440 (24 hours). After that no price can be locked, and invoice.expired is sent once no started payment can still land.",
+      },
     ],
     example: {
       request: { productId: "g3exvt33mh", quantity: 2, payerName: "Shop bot for Tunde" },
@@ -122,7 +128,7 @@ export const ENDPOINTS: Endpoint[] = [
     },
     errors: [
       "400 VALIDATION: a field is missing or wrong (the message says which)",
-      "400 BAD_REQUEST: the board doesn't take open amounts, or reference/metadata/returnUrl were sent without a signature",
+      "400 BAD_REQUEST: the board doesn't take open amounts, or reference/metadata/returnUrl/expiresInMinutes were sent without a signature",
       "401 UNAUTHORIZED: a NimBill-Signature header was sent but doesn't match, is older than 5 minutes, or webhooks are off",
       "404 NOT_FOUND: no such tag, or the product isn't available",
       "429 RATE_LIMITED: more than 30 invoices on this board in 10 minutes (300 for the merchant's own signed requests), or more than 10 a minute from one address. Wait RateLimit-Reset seconds",

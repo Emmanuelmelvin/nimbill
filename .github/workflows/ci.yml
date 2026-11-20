@@ -36,6 +36,7 @@ jobs:
       - run: npm run test:earnings
       - run: npm run test:webhooks
       - run: npm run test:webhook-health
+      - run: npm run test:webhook-events
       - run: npm run test:recurring
       - run: npm run test:recurring-lifecycle
       - run: npm run test:receipt-email

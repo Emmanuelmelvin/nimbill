@@ -3,7 +3,7 @@ import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:
 import { isIP } from "node:net";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb, schema } from "./db";
-import type { Invoice, WebhookEndpoint, WebhookEvent } from "./db/schema";
+import type { Invoice, PaymentIssue, WebhookEndpoint, WebhookEvent, WebhookEventType } from "./db/schema";
 import { env, isProd } from "./env";
 import { Errors } from "./errors";
 import { logger } from "./logger";
@@ -321,14 +321,43 @@ export async function queueTestEvent(merchantAddress: string): Promise<void> {
  * must not fail because of a webhook. A row missed here is added again by the worker's sweep.
  */
 export async function recordInvoicePaid(inv: Invoice): Promise<void> {
+  await recordEvent(inv, "invoice.paid");
+}
+
+/**
+ * Queue "invoice.expired". Called by the worker right after the unpaid -> expired update (lib/webhook-watch.ts).
+ * Same guarantees as recordInvoicePaid; a row missed here is added again by the sweep.
+ */
+export async function recordInvoiceExpired(inv: Invoice): Promise<void> {
+  await recordEvent(inv, "invoice.expired");
+}
+
+/**
+ * Queue "invoice.payment_issue": NIM carrying this invoice's memo reached the merchant but didn't pay
+ * the invoice. One event per transaction, however often it is seen. Never throws.
+ */
+export async function recordPaymentIssue(inv: Invoice, issue: PaymentIssue): Promise<void> {
+  await recordEvent(inv, "invoice.payment_issue", issue);
+}
+
+async function recordEvent(inv: Invoice, type: Exclude<WebhookEventType, "webhook.test">, issue?: PaymentIssue): Promise<void> {
   if (!inv.integrationId || inv.isDemo) return;
   try {
     const db = await getDb();
-    await db
+    const inserted = await db
       .insert(schema.webhookEvents)
-      .values({ id: randomId("evt", 16), merchantAddress: inv.merchantAddress, type: "invoice.paid", invoiceId: inv.id })
-      .onConflictDoNothing();
+      .values({
+        id: randomId("evt", 16),
+        merchantAddress: inv.merchantAddress,
+        type,
+        invoiceId: inv.id,
+        txHash: issue?.txHash ?? null,
+        issue: issue ?? null,
+      })
+      .onConflictDoNothing()
+      .returning({ id: schema.webhookEvents.id });
+    if (issue && inserted.length) logger.info("payment issue found", { invoiceId: inv.id, reason: issue.reason, txHash: issue.txHash });
   } catch (e) {
-    logger.error("webhook event not recorded", { invoiceId: inv.id, error: (e as Error).message });
+    logger.error("webhook event not recorded", { invoiceId: inv.id, type, error: (e as Error).message });
   }
 }

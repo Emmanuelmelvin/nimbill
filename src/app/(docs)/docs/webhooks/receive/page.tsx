@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { CodeGroup } from "@/components/docs/CodeGroup";
 import { Callout, Code, DefinitionBox, DocPage, H2 } from "@/components/docs/DocsParts";
-import { DELIVERY_HEADERS, paidPayload, receiveTabs } from "@/components/docs/webhook-snippets";
+import { DELIVERY_HEADERS, issuePayload, paidPayload, receiveTabs } from "@/components/docs/webhook-snippets";
 import { requestOrigin } from "@/lib/request-origin";
 import {
   DELIVERY_TIMEOUT_S,
@@ -12,6 +12,10 @@ import {
   MAX_ATTEMPTS,
   REMOVAL_NOTICE_HOURS,
   ROTATION_OVERLAP_HOURS,
+  STORE_INVOICE_EXPIRY_DEFAULT_MIN,
+  STORE_INVOICE_EXPIRY_MAX_MIN,
+  STORE_INVOICE_EXPIRY_MIN_MIN,
+  WATCH_AFTER_LOCK_MIN,
   retryScheduleText,
 } from "@/lib/webhook-policy";
 import { SIGNATURE_TOLERANCE_S } from "@/lib/webhook-signature";
@@ -19,7 +23,7 @@ import { SIGNATURE_TOLERANCE_S } from "@/lib/webhook-signature";
 export const metadata: Metadata = {
   title: "Receive webhooks",
   description:
-    "What NimBill sends your store when an invoice is paid, how to verify the signature, retries, what happens when your URL keeps failing, duplicates and testing.",
+    "What NimBill sends your store when an invoice is paid, expires or gets a payment it can't accept, how to verify the signature, retries, what happens when your URL keeps failing, duplicates and testing.",
 };
 
 const mono = "font-mono text-ink";
@@ -64,10 +68,82 @@ export default async function ReceiveWebhooks() {
         title="Event types"
         rows={[
           ["invoice.paid", "", "An invoice your store created was paid and confirmed on-chain. Sent once per invoice."],
+          [
+            "invoice.expired",
+            "",
+            "An invoice your store created wasn't paid in time and can no longer be paid. Release the stock. Sent once per invoice.",
+          ],
+          [
+            "invoice.payment_issue",
+            "NIM only",
+            "NIM for one of your invoices arrived but didn't pay it: too little, too late, or a second payment. Sent once per transaction.",
+          ],
           ["webhook.test", "", "Sent from Settings → Webhooks, with a made-up paid invoice and test: true."],
         ]}
       />
       <p className="text-sm text-muted">More types may be added. Answer 2xx to types you don&apos;t handle, so they aren&apos;t retried.</p>
+
+      <H2 id="expired">Expired invoices</H2>
+      <p className="text-muted">
+        Every invoice your store creates can be paid for {STORE_INVOICE_EXPIRY_DEFAULT_MIN / 60} hours, or for{" "}
+        <span className={mono}>expiresInMinutes</span> if you set it when creating it ({STORE_INVOICE_EXPIRY_MIN_MIN} minutes to{" "}
+        {STORE_INVOICE_EXPIRY_MAX_MIN / 60 / 24} days). The time is in <span className={mono}>data.invoice.expiresAt</span>.
+      </p>
+      <ul className="list-disc space-y-1.5 pl-5 text-muted">
+        <li>
+          After <span className={mono}>expiresAt</span>, nobody can lock a new price, so nobody can start paying.
+        </li>
+        <li>
+          A customer who locked a price just before then can still finish. NimBill waits until no price lock can be paid any more (up to{" "}
+          {WATCH_AFTER_LOCK_MIN} minutes after the last one ended), checks the blockchain one last time, and only then marks the invoice{" "}
+          <span className={mono}>expired</span> and sends <span className={mono}>invoice.expired</span>.
+        </li>
+        <li>
+          So an invoice ends up either <span className={mono}>paid</span> or <span className={mono}>expired</span>, never both. You
+          won&apos;t get <span className={mono}>invoice.paid</span> after <span className={mono}>invoice.expired</span> for the same
+          invoice.
+        </li>
+      </ul>
+      <Callout type="tip" title="Hold stock until you hear back">
+        <p>
+          Keep the order reserved until <span className={mono}>invoice.paid</span> or <span className={mono}>invoice.expired</span> arrives,
+          not just until <span className={mono}>expiresAt</span>: the customer may be finishing a payment they started in time.
+        </p>
+      </Callout>
+
+      <H2 id="payment-issues">Payment issues</H2>
+      <p className="text-muted">
+        A NIM payment carries the invoice&apos;s reference, so NimBill knows which invoice it was meant for even when it doesn&apos;t pay
+        it. The money is already in your wallet: NimBill can&apos;t send it back, so this event is your cue to sort it out with the customer
+        (ask for the rest, refund it, or accept it).
+      </p>
+      <Code label="body · invoice.payment_issue">{issuePayload(base)}</Code>
+      <DefinitionBox
+        title="data.issue.reason"
+        rows={[
+          [
+            "amount_too_low",
+            "",
+            "Sent while a price was locked, but less than it. lockedAmount is the price it fell short of. The invoice stays unpaid.",
+          ],
+          ["price_lock_expired", "", "Sent when no price was locked: too long after the lock ran out, or without locking one."],
+          ["already_paid", "", "The invoice was already paid by another transaction. This is a second payment."],
+          ["invoice_closed", "", "The invoice had expired or been cancelled before this payment."],
+        ]}
+      />
+      <DefinitionBox
+        title="Other fields in data.issue"
+        rows={[
+          ["amount", "integer string", "What arrived, in Luna (1 NIM = 100000)."],
+          ["lockedAmount", "integer string | null", "The locked price in Luna (amount_too_low only)."],
+          ["txHash, from, sentAt", "string", "The transaction, the wallet it came from, and when it was sent."],
+        ]}
+      />
+      <p className="text-sm text-muted">
+        NimBill looks for these from when a price is locked until {WATCH_AFTER_LOCK_MIN} minutes after the lock ends, and whenever a
+        payer&apos;s wallet hands in a transaction. USDT has no reference, so a USDT transfer that doesn&apos;t match a locked price
+        can&apos;t be tied to an invoice and isn&apos;t reported.
+      </p>
 
       <H2 id="verify">Verify the signature</H2>
       <p className="text-muted">Before trusting anything in the body:</p>

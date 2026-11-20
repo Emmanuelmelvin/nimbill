@@ -4,14 +4,15 @@ Sends "Pay with NimBill" webhooks. It runs as its own process, separate from the
 **not exposed to the internet**: it opens no port. It only talks to the same Postgres database as the
 web app and makes outgoing HTTPS requests.
 
-| Job        | Every | What it does                                                                                                       |
-| ---------- | ----- | ------------------------------------------------------------------------------------------------------------------ |
-| `deliver`  | 2 s   | Sends queued `webhook_events`, signed with the merchant's secret, and retries for ~3 days                          |
-| `watch`    | 15 s  | Looks on-chain for payments to store invoices, so a shopper closing the tab doesn't matter                         |
-| `sweep`    | 60 s  | Queues `invoice.paid` for any paid store invoice that is missing one                                               |
-| `health`   | 5 min | Warns merchants whose URL has failed for 24 h, removes it after 5 days (emails both times)                         |
-| `withdraw` | 5 s   | Moves open withdrawals forward: claims swaps (gasless), confirms delivery on-chain. Only with `WITHDRAW_LIVE=true` |
-| `stuck`    | 5 min | Logs withdrawals paid but not delivered after 30 minutes. Only with `WITHDRAW_LIVE=true`                           |
+| Job        | Every | What it does                                                                                                                                                                       |
+| ---------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `deliver`  | 2 s   | Sends queued `webhook_events`, signed with the merchant's secret, and retries for ~3 days                                                                                          |
+| `watch`    | 15 s  | Looks on-chain for payments to store invoices, so a shopper closing the tab doesn't matter, and for NIM that carried an invoice's memo but didn't pay it (`invoice.payment_issue`) |
+| `expire`   | 60 s  | Marks store invoices past their expiry `expired` once no price lock can still be paid, and queues `invoice.expired`                                                                |
+| `sweep`    | 60 s  | Queues `invoice.paid` / `invoice.expired` for any paid or expired store invoice that is missing one                                                                                |
+| `health`   | 5 min | Warns merchants whose URL has failed for 24 h, removes it after 5 days (emails both times)                                                                                         |
+| `withdraw` | 5 s   | Moves open withdrawals forward: claims swaps (gasless), confirms delivery on-chain. Only with `WITHDRAW_LIVE=true`                                                                 |
+| `stuck`    | 5 min | Logs withdrawals paid but not delivered after 30 minutes. Only with `WITHDRAW_LIVE=true`                                                                                           |
 
 The worker runs the web app's own code from `src/lib` (the same payment matching, the same schema),
 so the two can't disagree about whether an invoice is paid. Node runs the TypeScript directly; there

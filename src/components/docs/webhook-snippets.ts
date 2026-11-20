@@ -23,6 +23,7 @@ export async function startNimbillPayment(order) {
     reference: order.id,
     metadata: { cart: order.cartId },
     returnUrl: \`https://shop.example.com/orders/\${order.id}\`,
+    expiresInMinutes: 60, // optional: release the stock after an hour (default 24 hours)
   });
   const t = Math.floor(Date.now() / 1000);
   const v1 = createHmac("sha256", SECRET).update(\`\${t}.\${body}\`).digest("hex");
@@ -57,6 +58,7 @@ def start_nimbill_payment(order):
         "reference": order["id"],
         "metadata": {"cart": order["cart_id"]},
         "returnUrl": f"https://shop.example.com/orders/{order['id']}",
+        "expiresInMinutes": 60,  # optional: release the stock after an hour (default 24 hours)
     })
     t = int(time.time())
     v1 = hmac.new(SECRET.encode(), f"{t}.{body}".encode(), hashlib.sha256).hexdigest()
@@ -90,6 +92,7 @@ function start_nimbill_payment(array $order): string {
     'reference' => $order['id'],
     'metadata' => ['cart' => $order['cart_id']],
     'returnUrl' => "https://shop.example.com/orders/{$order['id']}",
+    'expiresInMinutes' => 60, // optional: release the stock after an hour (default 24 hours)
   ]);
   $t = time();
   $v1 = hash_hmac('sha256', "$t.$body", $secret);
@@ -143,6 +146,14 @@ app.post("/nimbill/webhook", express.raw({ type: "application/json" }), async (r
       await db.orders.markPaid(order.id, { txHash: invoice.payment.txHash });
     }
   }
+  if (event.type === "invoice.expired" && !event.test) {
+    // Nobody paid in time, and it can't be paid now: release the stock held for the order.
+    await db.orders.cancelByNimbillInvoiceId(event.data.invoice.id);
+  }
+  if (event.type === "invoice.payment_issue" && !event.test) {
+    // NIM arrived for this order but didn't pay it (too little, too late…). Have a person look.
+    await db.orders.flagForReview(event.data.invoice.id, event.data.issue);
+  }
   await db.events.remember(event.id);
   res.sendStatus(200); // answer fast; do slow work afterwards
 });`,
@@ -177,6 +188,12 @@ def nimbill_webhook():
         order = find_order_by_nimbill_invoice_id(invoice["id"])
         if order and float(invoice["total"]) == order["total"] and invoice["currency"] == order["currency"]:
             mark_order_paid(order["id"], invoice["payment"]["txHash"])
+    elif event["type"] == "invoice.expired" and not event["test"]:
+        # Nobody paid in time, and it can't be paid now: release the stock held for the order.
+        cancel_order_by_nimbill_invoice_id(event["data"]["invoice"]["id"])
+    elif event["type"] == "invoice.payment_issue" and not event["test"]:
+        # NIM arrived for this order but didn't pay it (too little, too late...). Have a person look.
+        flag_order_for_review(event["data"]["invoice"]["id"], event["data"]["issue"])
 
     remember(event["id"])
     return "", 200`,
@@ -207,6 +224,12 @@ if ($event['type'] === 'invoice.paid' && !$event['test']) {
   if ($order && (float) $invoice['total'] === (float) $order['total'] && $invoice['currency'] === $order['currency']) {
     mark_order_paid($order['id'], $invoice['payment']['txHash']);
   }
+} elseif ($event['type'] === 'invoice.expired' && !$event['test']) {
+  // Nobody paid in time, and it can't be paid now: release the stock held for the order.
+  cancel_order_by_nimbill_invoice_id($event['data']['invoice']['id']);
+} elseif ($event['type'] === 'invoice.payment_issue' && !$event['test']) {
+  // NIM arrived for this order but didn't pay it (too little, too late...). Have a person look.
+  flag_order_for_review($event['data']['invoice']['id'], $event['data']['issue']);
 }
 remember($event['id']);
 http_response_code(200);`,
@@ -235,6 +258,7 @@ export function paidPayload(base: string): string {
           total: "25.00",
           url: `${base}/i/89mwch33sp`,
           createdAt: "2026-11-14T10:38:51.402Z",
+          expiresAt: "2026-11-15T10:38:51.402Z",
           payment: {
             asset: "NIM",
             amount: "2512300000",
@@ -245,6 +269,47 @@ export function paidPayload(base: string): string {
             tip: null,
             usd: "25.00",
           },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+/** An invoice.payment_issue delivery: NIM with the invoice's memo that fell short of the locked price. */
+export function issuePayload(base: string): string {
+  return JSON.stringify(
+    {
+      id: "evt_2nf8r4kq7wz3mb6d",
+      type: "invoice.payment_issue",
+      createdAt: "2026-11-14T10:43:12.509Z",
+      test: false,
+      data: {
+        invoice: {
+          id: "89mwch33sp",
+          number: "NMN-89MWC-H33SP",
+          status: "unpaid",
+          reference: "order-1042",
+          metadata: { cart: "c_9f2" },
+          payerName: "Tunde Bakare",
+          productId: null,
+          items: [{ description: "Order order-1042", quantity: 1, unitPrice: 25 }],
+          currency: "USD",
+          total: "25.00",
+          url: `${base}/i/89mwch33sp`,
+          createdAt: "2026-11-14T10:38:51.402Z",
+          expiresAt: "2026-11-15T10:38:51.402Z",
+          payment: null,
+        },
+        issue: {
+          reason: "amount_too_low",
+          asset: "NIM",
+          amount: "2000000000",
+          lockedAmount: "2512300000",
+          txHash: "8c41…07ab",
+          from: "NQ12 3456 7890 ABCD EFGH JKLM NPQR STUV",
+          sentAt: "2026-11-14T10:41:58.000Z",
         },
       },
     },

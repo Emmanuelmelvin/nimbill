@@ -26,6 +26,7 @@
     "test:withdraw-status": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-withdraw-status.ts",
     "test:webhooks": "node --experimental-strip-types --no-warnings scripts/test-webhooks.ts",
     "test:webhook-health": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-webhook-health.ts",
+    "test:webhook-events": "node --conditions=react-server --import ./worker/loader.mjs --experimental-strip-types --no-warnings scripts/test-webhook-events.ts",
     "dev:seed": "node --import ./scripts/ts-resolve.mjs --experimental-strip-types --no-warnings scripts/dev-seed.ts",
     "format": "prettier --write .",
     "format:check": "prettier --check ."

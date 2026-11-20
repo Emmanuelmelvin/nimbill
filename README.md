@@ -119,6 +119,7 @@ Take NIM and USDT in your own shop without NimBill ever holding the money. There
 2. **Your server creates the invoice** with [`POST /api/pay/{tag}/invoices`](https://nimbill.mblob.me/docs/api/create-board-invoice), signed with the secret, adding your order `reference`, `metadata` and a `returnUrl` back to your store.
 3. **The customer pays** at `/i/{id}` from Nimiq Pay or any wallet, and a **Back to your shop** button returns them.
 4. **Your server gets `invoice.paid`**, signed the same way and retried for about 3 days until it answers 2xx. **Send test event** delivers a `webhook.test`, so you can check your handler without paying.
+5. **Or `invoice.expired`** if nobody paid in time (24 hours, or `expiresInMinutes`), so you can release the stock; never after `invoice.paid`. **`invoice.payment_issue`** says NIM arrived for an invoice but didn't pay it: too little, too late, or a second payment.
 
 ```text
 NimBill-Signature: t=<unix seconds>,v1=<hex HMAC-SHA256(secret, "<t>.<raw body>")>

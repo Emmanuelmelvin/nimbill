@@ -5,6 +5,7 @@ import { isValidPointHex } from "./cheque-crypto";
 import { CURRENCY_CODES } from "./currencies";
 import { UNIT_CODES } from "./money";
 import { normalizeAddress } from "./nimiq-address";
+import { STORE_INVOICE_EXPIRY_MAX_MIN, STORE_INVOICE_EXPIRY_MIN_MIN } from "./webhook-policy";
 
 export const LineItemInput = z.object({
   description: z.string().trim().min(1, "Each line needs a description").max(120),
@@ -221,6 +222,12 @@ export const BoardInvoiceBody = z
       .refine((m) => Object.keys(m).length <= 20, "metadata can have at most 20 keys")
       .optional(),
     returnUrl: z.string().trim().max(1000, "returnUrl is too long").optional(),
+    expiresInMinutes: z.coerce
+      .number("expiresInMinutes must be a number")
+      .int("expiresInMinutes must be a whole number")
+      .min(STORE_INVOICE_EXPIRY_MIN_MIN, `expiresInMinutes must be at least ${STORE_INVOICE_EXPIRY_MIN_MIN}`)
+      .max(STORE_INVOICE_EXPIRY_MAX_MIN, `expiresInMinutes can be at most ${STORE_INVOICE_EXPIRY_MAX_MIN} (3 days)`)
+      .optional(),
   })
   .refine(
     (b) => b.productId || (b.amount !== undefined && b.currency && b.description),

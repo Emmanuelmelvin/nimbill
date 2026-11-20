@@ -93,6 +93,7 @@ const STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
   unpaid: { label: "Awaiting payment", variant: "outline" },
   overdue: { label: "Overdue", variant: "strong" },
   cancelled: { label: "Cancelled", variant: "muted" },
+  expired: { label: "Expired", variant: "muted" },
 };
 
 export function StatusBadge({ status, dueDate }: { status: string; dueDate?: string | null }) {

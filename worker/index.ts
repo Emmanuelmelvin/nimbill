@@ -4,8 +4,10 @@
 // listens on a port: it only reads the same Postgres database and makes outgoing requests.
 //
 //   deliver   every 2 s   send queued webhook_events to stores, signed, with retries
-//   watch     every 15 s  look on-chain for payments to store invoices nobody is watching
-//   sweep     every 60 s  queue webhooks for paid store invoices that are missing one
+//   watch     every 15 s  look on-chain for payments to store invoices nobody is watching, and for
+//                         NIM that carried an invoice's memo but didn't pay it (invoice.payment_issue)
+//   expire    every 60 s  mark store invoices past their expiry "expired" (invoice.expired)
+//   sweep     every 60 s  queue webhooks for paid or expired store invoices that are missing one
 //   recurring every 5 min generate due invoices for active recurring schedules and email them
 //   health    every 5 min warn merchants whose URL keeps failing, then remove it (webhook-health.ts)
 //   withdraw  every 5 s   move open withdrawals forward: claim swaps, confirm delivery on-chain
@@ -20,7 +22,7 @@ import { logger } from "../src/lib/logger";
 import { advanceDueRecurring } from "../src/lib/recurring";
 import { deliverDue, sweepMissedEvents } from "../src/lib/webhook-delivery";
 import { checkEndpointHealth } from "../src/lib/webhook-health";
-import { watchStoreInvoices } from "../src/lib/webhook-watch";
+import { expireStoreInvoices, watchStoreInvoices } from "../src/lib/webhook-watch";
 import { advanceOpenWithdrawals, reportStuckWithdrawals, withdrawalsLive } from "../src/lib/withdraw/service";
 
 type Job = { name: string; everyMs: number; run: () => Promise<unknown> };
@@ -35,6 +37,7 @@ const JOBS: Job[] = [
     },
   },
   { name: "watch", everyMs: 15_000, run: watchStoreInvoices },
+  { name: "expire", everyMs: 60_000, run: () => expireStoreInvoices() },
   { name: "sweep", everyMs: 60_000, run: sweepMissedEvents },
   { name: "recurring", everyMs: 5 * 60_000, run: () => advanceDueRecurring() },
   { name: "health", everyMs: 5 * 60_000, run: () => checkEndpointHealth() },

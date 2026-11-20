@@ -390,7 +390,7 @@ function ClientList({ invoices, fx, currency }: Listing) {
     const today = localDate();
     // Newest first, so the first invoice seen for a client is their latest.
     for (const i of invoices) {
-      if (i.status === "cancelled") continue;
+      if (i.status === "cancelled" || i.status === "expired") continue;
       const key = i.clientName.trim().toLowerCase();
       const c = m.get(key) ?? { name: i.clientName.trim(), count: 0, paidUsd: 0, openUsd: 0, overdue: 0, latest: i };
       c.count += 1;

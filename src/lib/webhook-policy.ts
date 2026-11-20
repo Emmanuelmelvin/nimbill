@@ -10,6 +10,19 @@ export const DELIVERY_TIMEOUT_S = 10;
 /** How long the old secret keeps working after "New secret". */
 export const ROTATION_OVERLAP_HOURS = 24;
 
+// Store invoices expire, so a store can release stock that was held for an order nobody paid.
+/** How long a store invoice can be paid when the store doesn't say (`expiresInMinutes`). */
+export const STORE_INVOICE_EXPIRY_DEFAULT_MIN = 24 * 60;
+export const STORE_INVOICE_EXPIRY_MIN_MIN = 15;
+/** At most 3 days, well inside the 7 days payments are looked for (reconcileMerchant), price locks and watching included. */
+export const STORE_INVOICE_EXPIRY_MAX_MIN = 3 * 24 * 60;
+/**
+ * How long after a price lock ends its payment can still show up (grace + time to confirm). The
+ * worker watches store invoices this long after each lock, and only then sends invoice.expired, so
+ * a store never gets invoice.expired and then invoice.paid for the same invoice.
+ */
+export const WATCH_AFTER_LOCK_MIN = 30;
+
 // An endpoint that keeps failing (like Stripe and Svix: judged by how long, not just how many, so a
 // busy store isn't punished for one bad hour). Any delivery that gets a 2xx resets all of this.
 /** Never warn or remove before this many failed attempts in a row. */

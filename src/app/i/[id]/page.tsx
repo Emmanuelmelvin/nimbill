@@ -181,6 +181,17 @@ function InvoiceScreen() {
           </div>
         )}
         {inv.status === "cancelled" && <Alert>This invoice was cancelled by {inv.merchantName}. No payment is due.</Alert>}
+        {inv.status === "expired" && (
+          <>
+            <Alert>This invoice expired before it was paid, so it can&apos;t be paid now. No payment is due.</Alert>
+            {/* "Pay with NimBill": the store can start a new order (its address is checked server-side). */}
+            {inv.returnUrl && !isOwner && (
+              <AnchorButton href={inv.returnUrl} size="md" block className="min-h-11">
+                Back to {new URL(inv.returnUrl).host} →
+              </AnchorButton>
+            )}
+          </>
+        )}
 
         {isOwner && inv.status === "paid" && inv.payment?.asset === "NIM" && (
           <StakeCard suggestedLuna={Number(inv.payment.amount)} title="Stake what you just earned" />

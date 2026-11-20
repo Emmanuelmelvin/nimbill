@@ -9,7 +9,7 @@ export const alt = "NimBill invoice";
 export const size = OG_SIZE;
 export const contentType = "image/png";
 
-const STATUS: Record<string, string> = { paid: "PAID", unpaid: "AWAITING PAYMENT", cancelled: "CANCELLED" };
+const STATUS: Record<string, string> = { paid: "PAID", unpaid: "AWAITING PAYMENT", cancelled: "CANCELLED", expired: "EXPIRED" };
 
 /** "NGN 65,000.00": the image font has no glyphs for symbols like ₦ or ₵, so use the currency code. */
 function amountWithCode(total: string | number, currency: string): string {

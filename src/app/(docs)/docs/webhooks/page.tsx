@@ -56,6 +56,11 @@ export default function Webhooks() {
             </Link>
             .
           </p>
+          <p>
+            If nobody pays in time you get <span className="font-mono">invoice.expired</span> instead, so you can release the stock. If NIM
+            arrives that doesn&apos;t pay the invoice (too little, too late, or twice), you get{" "}
+            <span className="font-mono">invoice.payment_issue</span>.
+          </p>
         </Step>
       </Steps>
 

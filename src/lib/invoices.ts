@@ -2,7 +2,7 @@ import "server-only";
 import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import { getDb, schema } from "./db";
-import type { Invoice, LineItem, Quote } from "./db/schema";
+import type { Invoice, LineItem, PaymentIssueReason, Quote } from "./db/schema";
 import { Errors } from "./errors";
 import { notifyInvoicePaid } from "./notifications";
 import { metrics } from "./observability";
@@ -11,7 +11,7 @@ import { getRate } from "./rates";
 import { LUNA_PER_NIM, USDT_DECIMALS } from "./currencies";
 import { decodeData, nimiq, polygon, sameNimAddress, type NimTx } from "./clients";
 import { PRICE_LOCK_GRACE_MS, PRICE_LOCK_MS, txHashUsed, uniqueUsdtAmount } from "./usdt-amounts";
-import { recordInvoicePaid } from "./webhooks";
+import { recordInvoicePaid, recordPaymentIssue } from "./webhooks";
 
 export const QUOTE_TTL_MS = PRICE_LOCK_MS;
 // A payment broadcast just before a quote expires still counts if it lands within this window.
@@ -77,7 +77,14 @@ export async function createInvoice(input: {
   source?: "direct" | "board";
   productId?: string | null;
   /** "Pay with NimBill": set only for board invoices created by a signed store request. */
-  integration?: { id: string; reference?: string | null; metadata?: Record<string, string> | null; returnUrl?: string | null } | null;
+  integration?: {
+    id: string;
+    reference?: string | null;
+    metadata?: Record<string, string> | null;
+    returnUrl?: string | null;
+    /** No price can be locked after this; then invoice.expired is sent (lib/webhook-watch.ts). */
+    expiresAt?: Date | null;
+  } | null;
   /** Set when this invoice was generated from a recurring schedule (`recurring_invoices.id`). */
   recurringId?: string | null;
 }): Promise<Invoice> {
@@ -113,6 +120,7 @@ export async function createInvoice(input: {
       reference: input.integration?.reference ?? null,
       metadata: input.integration?.metadata ?? null,
       returnUrl: input.integration?.returnUrl ?? null,
+      expiresAt: input.integration?.expiresAt ?? null,
       recurringId: input.recurringId ?? null,
     })
     .returning();
@@ -174,7 +182,13 @@ export async function markViewed(inv: Invoice): Promise<Invoice> {
  * invoice currency: it is priced into the amount, so the tip reaches the merchant in the same
  * transaction, and is recorded on the invoice when that payment is verified.
  */
+/** Past its expiry: no new price can be locked, even before the worker marks it "expired". */
+export const isPastExpiry = (inv: Invoice, now = Date.now()) => !!inv.expiresAt && inv.expiresAt.getTime() <= now;
+
+const EXPIRED_MESSAGE = "This invoice has expired, so it can't be paid now. Go back to the shop to start again.";
+
 export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0, payerEmail?: string | null): Promise<Quote> {
+  if (inv.status === "expired" || (inv.status === "unpaid" && isPastExpiry(inv))) throw Errors.badRequest(EXPIRED_MESSAGE);
   if (inv.status !== "unpaid")
     throw Errors.badRequest(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
   if (asset === "USDT" && !inv.merchantEvmAddress) throw Errors.badRequest("This merchant does not accept USDT yet.");
@@ -314,6 +328,70 @@ function nimTxMatches(inv: Invoice, tx: NimTx): boolean {
   return tx.executionResult && sameNimAddress(tx.to, inv.merchantAddress) && decodeData(tx.recipientData).trim() === paymentMemo(inv.id);
 }
 
+/**
+ * Why a NIM transaction carrying this invoice's memo didn't pay it, or null when it did (or would:
+ * an unpaid invoice it settles is marked paid by verify / reconcile, not reported). NIM only: the
+ * memo proves which invoice the money was meant for. A USDT transfer has no memo, so one that
+ * doesn't match a price lock can't be tied to an invoice.
+ */
+export function nimPaymentIssue(
+  inv: Invoice,
+  quotes: Quote[],
+  tx: NimTx,
+): { reason: PaymentIssueReason; lockedAmount: string | null } | null {
+  if (!nimTxMatches(inv, tx)) return null;
+  if (inv.paidTxHash && inv.paidTxHash === tx.hash.toLowerCase()) return null;
+  if (inv.status === "paid") return { reason: "already_paid", lockedAmount: null };
+  if (inv.status !== "unpaid") return { reason: "invoice_closed", lockedAmount: null };
+  const value = BigInt(tx.value);
+  const nim = quotes.filter((q) => q.invoiceId === inv.id && q.asset === "NIM");
+  if (matchQuote(nim, "NIM", value, tx.timestamp)) return null;
+  // Sent while a price was locked, but less than it: report the latest lock it fell short of.
+  const during = nim
+    .filter((q) => tx.timestamp >= q.createdAt.getTime() - 60_000 && tx.timestamp <= q.expiresAt.getTime() + QUOTE_GRACE_MS)
+    .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+  return during.length ? { reason: "amount_too_low", lockedAmount: during[0].amount } : { reason: "price_lock_expired", lockedAmount: null };
+}
+
+/** Queue invoice.payment_issue for `tx` if it is one (store invoices only; see recordPaymentIssue). */
+async function reportNimIssue(inv: Invoice, quotes: Quote[], tx: NimTx): Promise<boolean> {
+  if (!inv.integrationId || inv.isDemo) return false;
+  const issue = nimPaymentIssue(inv, quotes, tx);
+  if (!issue) return false;
+  await recordPaymentIssue(inv, {
+    reason: issue.reason,
+    asset: "NIM",
+    amount: String(tx.value),
+    lockedAmount: issue.lockedAmount,
+    txHash: tx.hash.toLowerCase(),
+    from: tx.from,
+    sentAt: new Date(tx.timestamp).toISOString(),
+  });
+  return true;
+}
+
+/**
+ * Look through the merchant's recent NIM transactions for ones carrying these store invoices'
+ * memos that didn't pay them, and queue invoice.payment_issue for each (once per transaction).
+ * Run by the worker after reconcileMerchant, so payments that do settle an invoice are already
+ * marked paid. Throws when the chain can't be read, so the caller can try again.
+ */
+export async function scanNimPaymentIssues(merchantAddress: string, invoiceIds: string[]): Promise<number> {
+  if (!invoiceIds.length) return 0;
+  const db = await getDb();
+  const invs = await db
+    .select()
+    .from(schema.invoices)
+    .where(and(eq(schema.invoices.merchantAddress, merchantAddress), inArray(schema.invoices.id, invoiceIds)));
+  const signed = invs.filter((i) => i.integrationId && !i.isDemo);
+  if (!signed.length) return 0;
+  const quotes = await quotesFor(signed.map((i) => i.id));
+  const txs = await nimiq.getTransactionsByAddress(merchantAddress, 100);
+  let found = 0;
+  for (const inv of signed) for (const tx of txs) if (await reportNimIssue(inv, quotes, tx)) found++;
+  return found;
+}
+
 /** Verify a specific transaction hash the payer's wallet returned. */
 export async function verifyPayment(
   inv: Invoice,
@@ -322,17 +400,27 @@ export async function verifyPayment(
   payerEmail?: string | null,
 ): Promise<VerifyResult> {
   if (inv.status === "paid") return { status: "paid", invoice: inv };
-  if (inv.status === "cancelled") return { status: "rejected", message: "This invoice was cancelled." };
+  const closed =
+    inv.status === "cancelled" ? "This invoice was cancelled." : inv.status === "expired" ? "This invoice expired before it was paid." : null;
+  if (closed && asset !== "NIM") return { status: "rejected", message: closed };
   const quotes = await quotesFor([inv.id]);
 
   if (asset === "NIM") {
-    if (!/^[0-9a-f]{64}$/i.test(txHash)) return { status: "rejected", message: "Invalid transaction hash." };
+    if (!/^[0-9a-f]{64}$/i.test(txHash)) return { status: "rejected", message: closed ?? "Invalid transaction hash." };
     const tx = await nimiq.getTransaction(txHash.toLowerCase());
+    if (closed) {
+      // NIM sent to a closed invoice still reached the merchant: tell the store, so it can sort it out.
+      if (tx) await reportNimIssue(inv, quotes, tx);
+      return { status: "rejected", message: closed };
+    }
     if (!tx) return { status: "pending", message: "Waiting for the transaction to be included in a block…" };
     if (!tx.executionResult) return { status: "rejected", message: "The transaction failed on-chain." };
     if (!nimTxMatches(inv, tx)) return { status: "rejected", message: "This transaction does not pay this invoice." };
     const q = matchQuote(quotes, "NIM", BigInt(tx.value), tx.timestamp);
-    if (!q) return { status: "rejected", message: "The amount paid is lower than the locked price, or the price lock expired." };
+    if (!q) {
+      await reportNimIssue(inv, quotes, tx);
+      return { status: "rejected", message: "The amount paid is lower than the locked price, or the price lock expired." };
+    }
     const updated = await markPaid(inv, q, tx.hash, tx.from, new Date(tx.timestamp), BigInt(tx.value), payerEmail);
     if (updated) {
       metrics.invoicePaid("NIM", "hash");
@@ -372,8 +460,10 @@ export async function verifyPayment(
  * the app too early, or paid NIM from another wallet via the payment link / QR.
  * NIM: scan the merchant's recent transactions for the invoice memo.
  * USDT: scan Polygon for transfers to the merchant during each price lock, matched by exact amount.
+ * `strict`: throw when a chain can't be read, instead of leaving it to the next try (used before an
+ * invoice is expired, so an RPC outage can never expire an invoice that was paid).
  */
-export async function reconcileMerchant(merchantAddress: string, onlyInvoiceIds?: string[]): Promise<number> {
+export async function reconcileMerchant(merchantAddress: string, onlyInvoiceIds?: string[], opts: { strict?: boolean } = {}): Promise<number> {
   const db = await getDb();
   const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
   const conds = [
@@ -389,17 +479,18 @@ export async function reconcileMerchant(merchantAddress: string, onlyInvoiceIds?
   if (!unpaid.length) return 0;
   const quotes = await quotesFor(unpaid.map((i) => i.id));
   const paid = new Set<string>();
-  if (quotes.some((q) => q.asset === "NIM")) await reconcileNim(merchantAddress, unpaid, quotes, paid);
+  if (quotes.some((q) => q.asset === "NIM")) await reconcileNim(merchantAddress, unpaid, quotes, paid, !!opts.strict);
   const stillUnpaid = unpaid.filter((i) => !paid.has(i.id));
-  if (quotes.some((q) => q.asset === "USDT" && !paid.has(q.invoiceId))) await reconcileUsdt(stillUnpaid, quotes, paid);
+  if (quotes.some((q) => q.asset === "USDT" && !paid.has(q.invoiceId))) await reconcileUsdt(stillUnpaid, quotes, paid, !!opts.strict);
   return paid.size;
 }
 
-async function reconcileNim(merchantAddress: string, unpaid: Invoice[], quotes: Quote[], paid: Set<string>) {
+async function reconcileNim(merchantAddress: string, unpaid: Invoice[], quotes: Quote[], paid: Set<string>, strict: boolean) {
   let txs: NimTx[];
   try {
     txs = await nimiq.getTransactionsByAddress(merchantAddress, 100);
-  } catch {
+  } catch (e) {
+    if (strict) throw e;
     return;
   }
   for (const inv of unpaid) {
@@ -418,7 +509,7 @@ async function reconcileNim(merchantAddress: string, unpaid: Invoice[], quotes: 
 
 const MAX_USDT_QUOTES_SCANNED = 30;
 
-async function reconcileUsdt(unpaid: Invoice[], quotes: Quote[], paid: Set<string>) {
+async function reconcileUsdt(unpaid: Invoice[], quotes: Quote[], paid: Set<string>, strict: boolean) {
   const byId = new Map(unpaid.map((i) => [i.id, i]));
   // Most recent price locks first; each one is a ~9-minute window to search.
   const usdtQuotes = quotes
@@ -442,7 +533,8 @@ async function reconcileUsdt(unpaid: Invoice[], quotes: Quote[], paid: Set<strin
     let transfers;
     try {
       transfers = await polygon.getUsdtTransfersTo(addr, windows);
-    } catch {
+    } catch (e) {
+      if (strict) throw e;
       continue; // RPC hiccup: the next page load tries again
     }
     for (const t of transfers) {
@@ -493,6 +585,8 @@ export function publicInvoice(inv: Invoice) {
     // Where the payer goes back to after paying ("Pay with NimBill"). Only ever set by a signed
     // store request, on the store's saved address. `reference` and `metadata` stay private.
     returnUrl: inv.returnUrl,
+    /** Store invoices: the last moment a price can be locked. Null = doesn't expire. */
+    expiresAt: inv.expiresAt?.toISOString() ?? null,
     recurringId: inv.recurringId,
     memo: paymentMemo(inv.id),
     payment:

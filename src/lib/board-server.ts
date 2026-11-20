@@ -10,7 +10,7 @@ import { listProducts, productView } from "./products";
 import { enforceLimit } from "./rate-limit";
 import type { BoardInvoiceBody } from "./schemas";
 import { formatTag, normalizeTag, tagProblem } from "./tags";
-import { BOARD_INVOICES_PER_10_MIN, STORE_INVOICES_PER_10_MIN } from "./webhook-policy";
+import { BOARD_INVOICES_PER_10_MIN, STORE_INVOICE_EXPIRY_DEFAULT_MIN, STORE_INVOICES_PER_10_MIN } from "./webhook-policy";
 import { checkReturnUrl, verifyStoreRequest } from "./webhooks";
 
 const MINUTE = 60_000;
@@ -68,9 +68,14 @@ export async function createBoardInvoice(
   const endpoint = signed ? await verifyStoreRequest(m.address, signed.header, signed.rawBody) : null;
   if (!endpoint) {
     if (visitor === m.address) throw Errors.badRequest("This is your own board. Share the link with whoever is paying you.");
-    if (input.reference !== undefined || input.metadata !== undefined || input.returnUrl !== undefined)
+    if (
+      input.reference !== undefined ||
+      input.metadata !== undefined ||
+      input.returnUrl !== undefined ||
+      input.expiresInMinutes !== undefined
+    )
       throw Errors.badRequest(
-        "reference, metadata and returnUrl are only accepted from the merchant's store: sign the request with the webhook secret (NimBill-Signature header).",
+        "reference, metadata, returnUrl and expiresInMinutes are only accepted from the merchant's store: sign the request with the webhook secret (NimBill-Signature header).",
       );
   }
   const returnUrl = endpoint && input.returnUrl ? checkReturnUrl(endpoint, input.returnUrl) : null;
@@ -106,7 +111,16 @@ export async function createBoardInvoice(
     clientEmail: input.payerEmail || null,
     payerEmail: input.payerEmail || null,
     source: "board" as const,
-    integration: endpoint ? { id: endpoint.id, reference: input.reference ?? null, metadata: input.metadata ?? null, returnUrl } : null,
+    integration: endpoint
+      ? {
+          id: endpoint.id,
+          reference: input.reference ?? null,
+          metadata: input.metadata ?? null,
+          returnUrl,
+          // Store invoices always expire, so a store can release stock held for an unpaid order.
+          expiresAt: new Date(Date.now() + (input.expiresInMinutes ?? STORE_INVOICE_EXPIRY_DEFAULT_MIN) * 60_000),
+        }
+      : null,
   };
 
   if (input.productId) {

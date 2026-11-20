@@ -45,7 +45,8 @@ export const invoices = pgTable("invoices", {
   total: text("total").notNull(), // decimal string in `currency`
   note: text("note"),
   dueDate: text("due_date"), // YYYY-MM-DD
-  status: text("status").$type<"unpaid" | "paid" | "cancelled">().notNull().default("unpaid"),
+  // "expired": a store invoice that wasn't paid before `expiresAt` (see lib/webhook-watch.ts).
+  status: text("status").$type<"unpaid" | "paid" | "cancelled" | "expired">().notNull().default("unpaid"),
   isDemo: boolean("is_demo").notNull().default(false),
   // "direct": the merchant made it. "board": a visitor made it on the merchant's public board.
   // Board invoices are numbered "NMN-…" until paid, then get the merchant's next "INV-…" number,
@@ -80,6 +81,9 @@ export const invoices = pgTable("invoices", {
   reference: text("reference"), // the store's own order id; private to the merchant and the store
   metadata: jsonb("metadata").$type<Record<string, string>>(), // the store's key/values, sent back in webhooks
   returnUrl: text("return_url"), // where the payer goes back to after paying, on the store's allowed origin
+  // Store invoices only: no price can be locked after this. Once no lock can still be paid, the
+  // worker marks the invoice "expired" and sends invoice.expired. Null = never expires.
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
   // Set when this invoice was generated from a recurring schedule (`recurring_invoices.id`).
   recurringId: text("recurring_id"),
 });
@@ -282,16 +286,33 @@ export const webhookEndpoints = pgTable("webhook_endpoints", {
 });
 
 // "webhook.test": sent from Settings → Webhooks with a made-up invoice (`invoice_id` is "test_…").
-export type WebhookEventType = "invoice.paid" | "webhook.test";
+export type WebhookEventType = "invoice.paid" | "invoice.expired" | "invoice.payment_issue" | "webhook.test";
+
+/** Why a NIM transaction carrying an invoice's memo didn't pay it (invoice.payment_issue). */
+export type PaymentIssueReason = "amount_too_low" | "price_lock_expired" | "already_paid" | "invoice_closed";
+/** What an invoice.payment_issue event is about: the transaction, read from the chain when it was found. */
+export type PaymentIssue = {
+  reason: PaymentIssueReason;
+  asset: "NIM";
+  amount: string; // Luna, as received
+  /** The locked price the payment fell short of (amount_too_low only), in Luna. */
+  lockedAmount: string | null;
+  txHash: string;
+  from: string;
+  sentAt: string; // ISO time of the transaction's block
+};
 
 // Outbox: one row per thing that happened, written where it happens (markPaid) and delivered by
 // the webhook worker. A merchant has one endpoint, so the row also tracks its delivery.
-// unique(type, invoice_id) makes writing it idempotent, so missed rows can safely be added again.
+// unique(type, invoice_id, tx_hash) makes writing it idempotent, so missed rows can safely be added
+// again: one invoice.paid / invoice.expired per invoice, one invoice.payment_issue per transaction.
 export const webhookEvents = pgTable("webhook_events", {
   id: text("id").primaryKey(), // "evt_…", the same on every retry so stores can drop duplicates
   merchantAddress: text("merchant_address").notNull(),
   type: text("type").$type<WebhookEventType>().notNull(),
   invoiceId: text("invoice_id").notNull(),
+  txHash: text("tx_hash"), // invoice.payment_issue: the transaction it is about
+  issue: jsonb("issue").$type<PaymentIssue>(), // invoice.payment_issue only
   // pending -> delivered, or failed after the last retry. The payload is built when it is sent.
   status: text("status").$type<"pending" | "delivered" | "failed">().notNull().default("pending"),
   attempts: integer("attempts").notNull().default(0),
@@ -581,7 +602,6 @@ CREATE TABLE IF NOT EXISTS webhook_events (
   created_at timestamptz NOT NULL DEFAULT now(),
   delivered_at timestamptz
 );
-CREATE UNIQUE INDEX IF NOT EXISTS webhook_events_once_idx ON webhook_events (type, invoice_id);
 ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS failing_since timestamptz;
 ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS consecutive_failures integer NOT NULL DEFAULT 0;
 ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS warned_at timestamptz;
@@ -673,4 +693,10 @@ CREATE INDEX IF NOT EXISTS recurring_invoices_due_idx ON recurring_invoices (sta
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS payer_email text;
 ALTER TABLE invoices ADD COLUMN IF NOT EXISTS receipt_emails_sent integer NOT NULL DEFAULT 0;
 ALTER TABLE quotes ADD COLUMN IF NOT EXISTS payer_email text;
+ALTER TABLE invoices ADD COLUMN IF NOT EXISTS expires_at timestamptz;
+ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS tx_hash text;
+ALTER TABLE webhook_events ADD COLUMN IF NOT EXISTS issue jsonb;
+CREATE UNIQUE INDEX IF NOT EXISTS webhook_events_once_tx_idx ON webhook_events (type, invoice_id, tx_hash) NULLS NOT DISTINCT;
+DROP INDEX IF EXISTS webhook_events_once_idx;
+CREATE INDEX IF NOT EXISTS invoices_expiring_idx ON invoices (expires_at) WHERE status = 'unpaid' AND expires_at IS NOT NULL;
 `;

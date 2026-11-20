@@ -1,7 +1,7 @@
 import "server-only";
 import { and, asc, eq, inArray, lte, sql } from "drizzle-orm";
 import { getDb, schema } from "./db";
-import type { Invoice, WebhookEvent } from "./db/schema";
+import type { Invoice, PaymentIssue, WebhookEvent } from "./db/schema";
 import { logger } from "./logger";
 import { safePost } from "./safe-post";
 import { siteUrl } from "./site";
@@ -46,6 +46,8 @@ export function storeInvoice(inv: Invoice) {
     total: inv.total,
     url: new URL(`/i/${inv.id}`, siteUrl()).toString(),
     createdAt: inv.createdAt.toISOString(),
+    /** The last moment a price can be locked. invoice.expired follows once no lock can still be paid. */
+    expiresAt: inv.expiresAt?.toISOString() ?? null,
     payment:
       inv.status === "paid" && inv.paidAsset
         ? {
@@ -80,6 +82,7 @@ function sampleInvoice(merchantAddress: string, eventId: string, now: Date): Sto
     total: "1.00",
     url: new URL("/settings", siteUrl()).toString(),
     createdAt: now.toISOString(),
+    expiresAt: null,
     payment: {
       asset: "NIM",
       amount: "100000000",
@@ -93,15 +96,21 @@ function sampleInvoice(merchantAddress: string, eventId: string, now: Date): Sto
   };
 }
 
-export async function buildPayload(
-  ev: WebhookEvent,
-): Promise<{ id: string; type: string; createdAt: string; test: boolean; data: { invoice: StoreInvoice } } | null> {
+export async function buildPayload(ev: WebhookEvent): Promise<{
+  id: string;
+  type: string;
+  createdAt: string;
+  test: boolean;
+  data: { invoice: StoreInvoice; issue?: PaymentIssue };
+} | null> {
   const base = { id: ev.id, type: ev.type, createdAt: ev.createdAt.toISOString() };
   if (ev.type === "webhook.test") return { ...base, test: true, data: { invoice: sampleInvoice(ev.merchantAddress, ev.id, ev.createdAt) } };
   const db = await getDb();
   const [inv] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, ev.invoiceId));
   if (!inv) return null;
-  return { ...base, test: false, data: { invoice: storeInvoice(inv) } };
+  // invoice.payment_issue: the transaction as it was found, next to the invoice as it is now.
+  const issue = ev.type === "invoice.payment_issue" && ev.issue ? { issue: ev.issue } : {};
+  return { ...base, test: false, data: { invoice: storeInvoice(inv), ...issue } };
 }
 
 // ---------- claiming and sending ----------
@@ -202,20 +211,21 @@ export async function deliverDue(limit = 20): Promise<number> {
 // ---------- sweep ----------
 
 /**
- * Queue "invoice.paid" for signed invoices that were paid but have no event, in case writing it in
- * markPaid ever failed. Safe to run any time: unique(type, invoice_id) keeps it to one per invoice.
+ * Queue "invoice.paid" / "invoice.expired" for signed invoices that are paid / expired but have no
+ * event, in case writing it ever failed. Safe to run any time: unique(type, invoice_id, tx_hash)
+ * keeps it to one per invoice. (invoice.payment_issue comes from the chain, so it has no sweep.)
  */
 export async function sweepMissedEvents(): Promise<number> {
   const db = await getDb();
   const res = await db.execute(sql`
     INSERT INTO webhook_events (id, merchant_address, type, invoice_id)
-    SELECT 'evt_' || substr(md5(random()::text || i.id), 1, 16), i.merchant_address, 'invoice.paid', i.id
+    SELECT 'evt_' || substr(md5(random()::text || i.id), 1, 16), i.merchant_address, 'invoice.' || i.status, i.id
     FROM invoices i
     WHERE i.integration_id IS NOT NULL
-      AND i.status = 'paid'
+      AND i.status IN ('paid', 'expired')
       AND NOT i.is_demo
       AND i.created_at > now() - interval '14 days'
-      AND NOT EXISTS (SELECT 1 FROM webhook_events e WHERE e.type = 'invoice.paid' AND e.invoice_id = i.id)
+      AND NOT EXISTS (SELECT 1 FROM webhook_events e WHERE e.type = 'invoice.' || i.status AND e.invoice_id = i.id)
     ON CONFLICT DO NOTHING
   `);
   return (res as { affectedRows?: number; rowCount?: number }).affectedRows ?? (res as { rowCount?: number }).rowCount ?? 0;
