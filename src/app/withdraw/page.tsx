@@ -19,7 +19,7 @@ export default function Withdraw() {
           onChange={setTab}
           options={[
             { value: "crypto", label: "Crypto" },
-            { value: "fiat", label: "Bank and mobile money" },
+            { value: "fiat", label: "Bank and mobile money (soon)" },
           ]}
         />
         {tab === "crypto" ? <CryptoWithdraw /> : <FiatWithdraw />}
