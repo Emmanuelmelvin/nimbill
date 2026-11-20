@@ -21,9 +21,9 @@ Try it: tap "Pay a sample invoice" for the full flow for about $0.05. Live usage
 
 ## Checklist before submitting
 
-- [ ] Public GitHub repo with LICENSE (MIT): the copyright line names you
+- [x] Public GitHub repo with LICENSE (MIT): the copyright line names you
 - [ ] Deployed on HTTPS (Vercel) with DATABASE_URL, SESSION_SECRET, DEMO_MERCHANT_ADDRESS set
 - [ ] Paid the sample invoice yourself inside Nimiq Pay (mainnet), then checked that the receipt and /stats show it
 - [ ] Sent real invoices to a few real clients or friends (Real usage = 15 points)
-- [ ] Short demo video (optional but encouraged)
+- [x] Short demo video (optional but encouraged)
 - [ ] Posted about it on X / Skool, tagging Nimiq (promotion checklist)
