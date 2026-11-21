@@ -146,7 +146,7 @@ Then find the order by the `invoice.id` you saved, check the total and currency,
 
 </details>
 
-- **A worker you run next to the app** ([`worker/`](worker/README.md), `npm run worker` or its Dockerfile). It opens no port: it delivers queued events, watches the chain for store payments (so a closed tab doesn't matter), and re-queues any paid store invoice that is missing its webhook.
+- **A worker you run next to the app** ([`worker/`](worker/README.md), `bun run worker` or its Dockerfile). It opens no port: it delivers queued events, watches the chain for store payments (so a closed tab doesn't matter), and re-queues any paid store invoice that is missing its webhook.
 - **Safe outgoing requests.** Webhooks only go to public https hosts; the resolved address is checked and pinned, and redirects are not followed.
 - **Rate limits you can read.** Limited endpoints answer with `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (plus `Retry-After` on 429), readable from other sites too. Signed store requests get their own, larger allowance.
 
@@ -209,9 +209,9 @@ In a desktop browser the app works too, but wallet actions show an "Open in Nimi
 ## Run locally
 
 ```bash
-npm install
+bun install
 cp .env.example .env.local   # set DEMO_MERCHANT_ADDRESS to your Nimiq address
-npm run dev -- -H 0.0.0.0
+bun run dev -- -H 0.0.0.0
 ```
 
 Open `http://<your-computer's-LAN-IP>:3000` in Nimiq Pay → Mini Apps → Custom URL (your phone must be on the same Wi-Fi).
@@ -219,18 +219,18 @@ Open `http://<your-computer's-LAN-IP>:3000` in Nimiq Pay → Mini Apps → Custo
 To try webhooks locally, also run the worker (see [`worker/README.md`](worker/README.md) for sharing the database with the dev server):
 
 ```bash
-npm run worker
+bun run worker
 ```
 
 Tests:
 
 ```bash
-npm run test:api        # 130+ end-to-end API checks against the running dev server, simulating wallets with throwaway keys
-npm run test:tags       # tag rules, request validation, agent docs and the OpenAPI spec
-npm run test:earnings   # earnings and goals maths
-npm run test:address    # Nimiq address derivation
-npm run test:mcp        # the MCP agent wallet's tools
-npm run test:webhooks   # the NimBill-Signature format used both ways
+bun run test:api        # 130+ end-to-end API checks against the running dev server, simulating wallets with throwaway keys
+bun run test:tags       # tag rules, request validation, agent docs and the OpenAPI spec
+bun run test:earnings   # earnings and goals maths
+bun run test:address    # Nimiq address derivation
+bun run test:mcp        # the MCP agent wallet's tools
+bun run test:webhooks   # the NimBill-Signature format used both ways
 ```
 
 ## Deploy (Vercel + Neon)
