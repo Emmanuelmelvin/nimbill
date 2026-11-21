@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { withCoins } from "./coins";
 import { cx } from "./cx";
 
@@ -97,7 +97,8 @@ const STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
 };
 
 export function StatusBadge({ status, dueDate }: { status: string; dueDate?: string | null }) {
-  const overdue = status === "unpaid" && dueDate && dueDate < new Date().toISOString().slice(0, 10);
+  const [today] = useState(() => new Date().toISOString().slice(0, 10));
+  const overdue = status === "unpaid" && dueDate && dueDate < today;
   const s = STATUS[overdue ? "overdue" : status] ?? STATUS.unpaid;
   return (
     <Badge variant={s.variant} className={status === "cancelled" ? "line-through" : undefined}>

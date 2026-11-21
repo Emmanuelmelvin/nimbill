@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
+import Link from "next/link";
 import { LogoStrip } from "@/components/docs/AiParts";
 import { Card, Cards, CtaBox, DocPage, H2, Tile } from "@/components/docs/DocsParts";
 import { LinkButton, cx } from "@/components/ui";
@@ -80,9 +81,9 @@ export default async function Introduction() {
         <Tile icon="₦" title="Checkout for your shop or app">
           Price in Naira, Shillings, Euros or 16 more currencies. Create an invoice when a customer checks out, show them the invoice link,
           and mark the order paid when NimBill&apos;s webhook confirms it on-chain. See{" "}
-          <a href="/docs/webhooks" className="text-ink underline underline-offset-4">
+          <Link href="/docs/webhooks" className="text-ink underline underline-offset-4">
             Pay with NimBill
-          </a>
+          </Link>
           .
         </Tile>
         <Tile icon="#" title="Bots that take payments">
