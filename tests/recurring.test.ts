@@ -1,5 +1,6 @@
 // Unit & integration checks for recurring invoices (date math, schedule lifecycle, unsubscribe, email templates).
-// Run: npm run test:recurring
+// Run: bun test tests/recurring.test.ts
+import { expect, test } from "bun:test";
 import { addDaysToDate, addInterval, nextFutureDate, recurringUnsubscribeToken, verifyUnsubscribeToken } from "../src/lib/recurring.ts";
 import {
   paidEmail,
@@ -12,11 +13,8 @@ import { buildReceiptPdf } from "../src/lib/receipt-pdf.ts";
 import { BoardInvoiceBody, NewInvoiceBody, QuoteBody, ReceiptEmailBody, VerifyBody } from "../src/lib/schemas.ts";
 import type { Invoice } from "../src/lib/db/schema.ts";
 
-let failed = 0;
-const ok = (c: boolean, m: string) => {
-  console.log((c ? "PASS " : "FAIL ") + m);
-  if (!c) failed++;
-};
+// Each check is its own test: the condition is worked out in order, then reported.
+const ok = (c: unknown, m: string) => test(m, () => expect(c).toBeTruthy());
 
 // 1. Date arithmetic & month-end clamping
 ok(addDaysToDate("2026-11-18", 0) === "2026-11-18", "addDaysToDate: 0 days");
@@ -193,5 +191,3 @@ ok(
   "BoardInvoiceBody accepts optional payerEmail",
 );
 ok(ReceiptEmailBody.safeParse({ email: "tunde@example.com" }).success, "ReceiptEmailBody validates email");
-
-process.exit(failed ? 1 : 0);

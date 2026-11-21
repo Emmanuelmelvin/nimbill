@@ -57,7 +57,7 @@ export default function McpSecurity() {
         Run the automated MCP test suite in the repository to verify wallet generation, Albatross transaction signing, and all{" "}
         {TOOLS.length} tools:
       </p>
-      <Code label="terminal">npm run test:mcp</Code>
+      <Code label="terminal">bun run test tests/mcp.test.mjs</Code>
 
       <div className="pt-6">
         <CtaBox

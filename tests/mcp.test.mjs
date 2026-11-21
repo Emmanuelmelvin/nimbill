@@ -1,4 +1,5 @@
 // Unit & end-to-end stdio integration test for the NimBill Agent Wallet MCP server.
+import { expect, test } from "bun:test";
 import { spawn } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -33,13 +34,10 @@ import {
 
 const bytesToHexLocal = (b) => Buffer.from(b).toString("hex");
 
-const B = process.argv[2] || process.env.NIMBILL_URL || "http://localhost:3000";
+const B = process.env.NIMBILL_URL || "http://localhost:3000";
 
-let failed = 0;
-const ok = (cond, msg) => {
-  console.log((cond ? "PASS " : "FAIL ") + msg);
-  if (!cond) failed++;
-};
+// Each check is its own test: the condition is worked out in order, then reported.
+const ok = (cond, msg) => test(msg, () => expect(cond).toBeTruthy());
 
 // 1. Wallet creation & persistence
 const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "nimbill-mcp-test-"));
@@ -282,7 +280,8 @@ ok(
 }
 
 // 4. Spawn MCP stdio server and run full JSON-RPC conversation
-const proc = spawn(process.execPath, [path.resolve("mcp/index.mjs")], {
+// The published MCP server runs on Node, so test it on Node.
+const proc = spawn("node", [path.resolve("mcp/index.mjs")], {
   env: { ...process.env, NIMBILL_WALLET_FILE: walletPath, NIMBILL_URL: B },
   stdio: ["pipe", "pipe", "inherit"],
 });
@@ -453,8 +452,3 @@ if (serverUp) {
 
 proc.kill();
 fs.rmSync(tmpDir, { recursive: true, force: true });
-
-if (failed > 0) {
-  console.error(`\n${failed} MCP test(s) failed`);
-  process.exitCode = 1;
-}

@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "files": {
+    "tests/webhook-health.test.ts": 5648,
+    "tests/webhook-events.test.ts": 5182,
+    "tests/withdraw-status.test.ts": 4933,
+    "tests/recurring-lifecycle.test.ts": 4433,
+    "tests/receipt-email.test.ts": 4144,
+    "tests/mcp.test.mjs": 2086,
+    "tests/withdraw.test.ts": 810,
+    "tests/tags.test.ts": 335,
+    "tests/recurring.test.ts": 232,
+    "tests/earnings.test.ts": 80,
+    "tests/webhooks.test.ts": 16,
+    "tests/address.test.ts": 6
+  }
+}

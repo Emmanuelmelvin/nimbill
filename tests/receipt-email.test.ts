@@ -1,22 +1,14 @@
 // Checks the cap on requested receipt emails (claimReceiptEmail in src/lib/invoices.ts), which keeps
 // the public POST /api/invoices/[id]/receipt from sending unlimited emails to arbitrary addresses.
 // Runs against an in-memory PGlite, never .data or a real database, and sends no email.
-// Run: npm run test:receipt-email
+// Run: bun test tests/receipt-email.test.ts
+import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
 import { eq } from "drizzle-orm";
 import * as schema from "../src/lib/db/schema.ts";
+import { memoryDb } from "./memory-db.ts";
 
-delete process.env.DATABASE_URL;
-delete process.env.RESEND_API_KEY;
-
-// Hand getDb() an in-memory database through its connection cache (see src/lib/db/index.ts).
-const client = new PGlite();
-(globalThis as Record<string, unknown>).__nimbillConn = Promise.resolve({
-  db: drizzle(client, { schema }),
-  migrate: async (sql: string) => void (await client.exec(sql)),
-});
+memoryDb();
 
 const { getDb } = await import("../src/lib/db/index.ts");
 const { claimReceiptEmail, createInvoice } = await import("../src/lib/invoices.ts");
@@ -34,19 +26,14 @@ const newInvoice = () =>
   });
 const markPaid = (id: string) => db.update(schema.invoices).set({ status: "paid", paidAt: new Date() }).where(eq(schema.invoices.id, id));
 
-let passed = 0;
-const check = async (name: string, fn: () => Promise<void>) => {
-  await fn();
-  passed++;
-  console.log(`PASS ${name}`);
-};
+const check = (name: string, fn: () => Promise<void>) => test(name, fn);
 
-await check("an unpaid invoice can't have its receipt emailed", async () => {
+check("an unpaid invoice can't have its receipt emailed", async () => {
   const inv = await newInvoice();
   assert.equal(await claimReceiptEmail(inv.id, "a@example.com", 3), null);
 });
 
-await check("a paid invoice allows up to the cap, then refuses", async () => {
+check("a paid invoice allows up to the cap, then refuses", async () => {
   const inv = await newInvoice();
   await markPaid(inv.id);
   for (let i = 1; i <= 3; i++) {
@@ -58,7 +45,7 @@ await check("a paid invoice allows up to the cap, then refuses", async () => {
   assert.equal(await claimReceiptEmail(inv.id, "another@example.com", 3), null);
 });
 
-await check("parallel requests can't get past the cap", async () => {
+check("parallel requests can't get past the cap", async () => {
   const inv = await newInvoice();
   await markPaid(inv.id);
   const results = await Promise.all(Array.from({ length: 8 }, (_, i) => claimReceiptEmail(inv.id, `x${i}@example.com`, 3)));
@@ -66,6 +53,3 @@ await check("parallel requests can't get past the cap", async () => {
   const [row] = await db.select().from(schema.invoices).where(eq(schema.invoices.id, inv.id));
   assert.equal(row.receiptEmailsSent, 3);
 });
-
-console.log(`\n${passed} receipt email checks passed`);
-process.exit(0);

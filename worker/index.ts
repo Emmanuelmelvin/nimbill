@@ -14,7 +14,7 @@
 //   stuck     every 5 min log withdrawals paid but not delivered after 30 minutes
 //
 // It runs the app's own code from src/lib (one set of payment rules, one schema), loaded by
-// worker/loader.mjs. Start it with `npm run worker`, or `npm run worker -- --once` to run every
+// worker/loader.mjs. Start it with `bun run worker`, or `bun run worker -- --once` to run every
 // job one time and exit. See worker/README.md.
 import { env, isProd } from "../src/lib/env";
 import { getDb } from "../src/lib/db";
@@ -65,7 +65,7 @@ function checkConfig() {
   // and the worker on it at the same time each keep their own copy and overwrite each other.
   if (!isProd && !env.DATABASE_URL && !process.argv.includes("--embedded-db"))
     problems.push(
-      "No DATABASE_URL. Give the web app and the worker the same Postgres DATABASE_URL, or stop `npm run dev` and run `npm run worker -- --embedded-db` to use the embedded database (never both at once).",
+      "No DATABASE_URL. Give the web app and the worker the same Postgres DATABASE_URL, or stop `bun run dev` and run `bun run worker -- --embedded-db` to use the embedded database (never both at once).",
     );
   if (problems.length) {
     for (const p of problems) logger.error(`worker config: ${p}`);

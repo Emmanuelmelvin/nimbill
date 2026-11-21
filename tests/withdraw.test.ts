@@ -1,15 +1,13 @@
 // Unit tests for withdrawals: which chains and tokens are offered, and destination address checks.
+import { expect, test } from "bun:test";
 import { getAddress } from "viem";
 import { checkDestination } from "../src/lib/withdraw/address.ts";
 import { CHAINS, findRoute, getChain, offerNimiqPayAddress, tokensFor } from "../src/lib/withdraw/chains.ts";
 import { QuoteBody } from "../src/lib/withdraw/schemas.ts";
 import { hasExcessiveQuoteDrift, swapCostsMoreThanQuoted } from "../src/lib/withdraw/service.ts";
 
-let failed = 0;
-const ok = (c: unknown, m: string) => {
-  console.log((c ? "PASS " : "FAIL ") + m);
-  if (!c) failed++;
-};
+// Each check is its own test: the condition is worked out in order, then reported.
+const ok = (c: unknown, m: string) => test(m, () => expect(c).toBeTruthy());
 
 // ---- chains ----
 const live = CHAINS.filter((c) => c.available).map((c) => c.id);
@@ -91,9 +89,3 @@ ok(
   }).success,
   "QuoteBody accepts optional expectedSendEstimate",
 );
-
-if (failed) {
-  console.error(`\n${failed} failed`);
-  process.exit(1);
-}
-console.log("\nAll withdraw tests passed");

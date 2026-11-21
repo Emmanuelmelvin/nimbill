@@ -1,6 +1,6 @@
 // Makes a new recovery phrase for WITHDRAW_MNEMONIC (live withdrawals, see src/lib/env.ts).
 //
-//   npm run withdraw:new-phrase
+//   bun run withdraw:new-phrase
 //
 // Run it once, on your own computer. Then:
 //   1. Write the phrase down and keep it offline. Anyone with it can claim in-progress withdrawals;

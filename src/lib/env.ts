@@ -28,7 +28,7 @@ const Schema = z.object({
 
   // Withdrawals (lib/withdraw). Off unless WITHDRAW_LIVE is "true": the Withdraw screen then shows
   // sample quotes and no money can move. WITHDRAW_MNEMONIC is the 12/24-word recovery phrase every
-  // swap's secret and claim key come from (`npm run withdraw:new-phrase` makes one). Set the SAME
+  // swap's secret and claim key come from (`bun run withdraw:new-phrase` makes one). Set the SAME
   // phrase on the web app and the worker, back it up offline, and never change or lose it while a
   // withdrawal is in progress, or that withdrawal can't be claimed.
   WITHDRAW_LIVE: withDefault(z.enum(["true", "false"]), "false"),

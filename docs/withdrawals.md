@@ -37,7 +37,7 @@ If anything stops before step 5, the held payment is cancelled and the money goe
 1. **Make a recovery phrase**, on your own computer:
 
    ```bash
-   npm run withdraw:new-phrase
+   bun run withdraw:new-phrase
    ```
 
    Write the 12 words down and keep them **offline**. They derive every swap's secret. Without them
@@ -63,7 +63,7 @@ If anything stops before step 5, the held payment is cancelled and the money goe
 Check the setup without spending anything (it creates one unpaid 2 USDC swap that simply expires):
 
 ```bash
-npm run test:withdraw-live -- --create
+bun run test:withdraw-live -- --create
 ```
 
 ## The first real test (about $2)

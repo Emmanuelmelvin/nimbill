@@ -5,10 +5,10 @@
 //   - with --create: creates ONE unpaid swap at Lendaswap and checks it matches what was asked.
 //     Unpaid, it simply expires; nothing is spent.
 // Uses a throwaway recovery phrase unless WITHDRAW_MNEMONIC is set, and the local embedded
-// database (stop `npm run dev` first).
+// database (stop `bun run dev` first).
 //
-//   npm run test:withdraw-live            (storage, quotes and RPCs)
-//   npm run test:withdraw-live -- --create
+//   bun run test:withdraw-live            (storage, quotes and RPCs)
+//   bun run test:withdraw-live -- --create
 import { Client, InMemorySwapStorage, InMemoryWalletStorage } from "@lendasat/lendaswap-sdk-pure";
 
 if (!process.env.WITHDRAW_MNEMONIC) {

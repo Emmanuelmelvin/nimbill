@@ -225,12 +225,9 @@ bun run worker
 Tests:
 
 ```bash
+bun run test            # every test in tests/: no database, dev server or secrets needed (what CI runs)
+bun run test tests/mcp.test.mjs   # one file, e.g. the MCP agent wallet's tools
 bun run test:api        # 130+ end-to-end API checks against the running dev server, simulating wallets with throwaway keys
-bun run test:tags       # tag rules, request validation, agent docs and the OpenAPI spec
-bun run test:earnings   # earnings and goals maths
-bun run test:address    # Nimiq address derivation
-bun run test:mcp        # the MCP agent wallet's tools
-bun run test:webhooks   # the NimBill-Signature format used both ways
 ```
 
 ## Deploy (Vercel + Neon)

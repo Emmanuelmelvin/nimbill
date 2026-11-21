@@ -1,12 +1,10 @@
-// Unit checks for the earnings maths (chart buckets, comparison, goals). Run: npm run test:earnings
+// Unit checks for the earnings maths (chart buckets, comparison, goals). Run: bun test tests/earnings.test.ts
+import { expect, test } from "bun:test";
 import { buildSeries, changePercent, goalProgress, localDate, splitByAsset, topClients, type EarningPoint } from "../src/lib/earnings.ts";
 import { formatMoney, fromUsd, toUsd, type Fx } from "../src/lib/money.ts";
 
-let failed = 0;
-const ok = (c: boolean, m: string) => {
-  console.log((c ? "PASS " : "FAIL ") + m);
-  if (!c) failed++;
-};
+// Each check is its own test: the condition is worked out in order, then reported.
+const ok = (c: unknown, m: string) => test(m, () => expect(c).toBeTruthy());
 const near = (a: number | null, b: number) => a !== null && Math.abs(a - b) < 1e-6;
 
 // Wednesday 11 Nov 2026, 15:30 local time.
@@ -89,5 +87,3 @@ g = goalProgress({ ...goal, startDate: "2026-12-01", endDate: "2026-12-31" }, po
 ok(g.state === "upcoming" && g.daysLeft === 31 && g.earned === 0, "December goal has not started");
 ok(goalProgress(goal, points, null, now).earned === null, "no rates: progress unknown rather than wrong");
 ok(localDate(now) === "2026-11-11", "localDate");
-
-process.exit(failed ? 1 : 0);

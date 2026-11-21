@@ -3,7 +3,7 @@
 // list have something to show. Nothing here touches a blockchain or a production database.
 //
 // Run from the project folder while the dev server is STOPPED (PGlite allows one process at a time):
-//   npm run dev:seed
+//   bun run dev:seed
 // Running it again replaces the seeded rows; your own invoices are left alone.
 import { PGlite } from "@electric-sql/pglite";
 import { ed25519 } from "@noble/curves/ed25519.js";
