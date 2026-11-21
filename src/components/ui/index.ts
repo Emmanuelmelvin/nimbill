@@ -5,6 +5,7 @@ export * from "./coins";
 export * from "./data";
 export * from "./dropdown";
 export * from "./feedback";
+export * from "./status-badge";
 export * from "./form";
 export * from "./navigation";
 export * from "./nimiq";
