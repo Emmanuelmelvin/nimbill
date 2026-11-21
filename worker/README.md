@@ -40,22 +40,22 @@ is no build step.
 Locally:
 
 ```bash
-npm run worker
+bun run worker
 ```
 
 Run each job once and exit (handy for checking a setup):
 
 ```bash
-npm run worker -- --once
+bun run worker -- --once
 ```
 
 Locally, give the web app and the worker the same Postgres `DATABASE_URL` (a local Postgres or a
 Neon dev branch). The embedded development database (`.data/pglite`) can only be open in **one**
-process: with it, stop `npm run dev` first and pass `--embedded-db` (the worker refuses to start on
+process: with it, stop `bun run dev` first and pass `--embedded-db` (the worker refuses to start on
 it otherwise, because two processes on it overwrite each other's data):
 
 ```bash
-npm run worker -- --embedded-db --once
+bun run worker -- --embedded-db --once
 ```
 
 ## Deploy
