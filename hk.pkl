@@ -1,0 +1,33 @@
+amends "package://github.com/jdx/hk/releases/download/v2.13.0/hk@2.13.0#/Config.pkl"
+
+// Git hooks, installed with `hk install` (see README). A hook rather than a line in AGENTS.md,
+// because agents skip steps; budget 9 s.
+hooks {
+  // Formats and lints the staged files, stages the fixes, and keeps unstaged work aside meanwhile.
+  ["pre-commit"] {
+    fix = true
+    stage = true
+    stash = "git"
+    steps {
+      ["format"] {
+        glob = List("*.ts", "*.tsx", "*.js", "*.mjs", "*.json", "*.css", "*.md", "*.yml", "*.yaml")
+        check = "bun fmt --check {{files}}"
+        fix = "bun fmt {{files}}"
+      }
+      ["lint"] {
+        glob = List("*.ts", "*.tsx", "*.js", "*.mjs")
+        depends = List("format")
+        check = "bun lint {{files}}"
+        fix = "bun lint --fix {{files}}"
+      }
+    }
+  }
+  // The same checks as CI's checks job, plus the tests this branch can reach.
+  ["pre-push"] {
+    steps {
+      ["ci"] {
+        check = "bun scripts/pre-push.ts"
+      }
+    }
+  }
+}

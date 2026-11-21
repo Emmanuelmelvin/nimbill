@@ -79,7 +79,7 @@ jobs:
         run: bun install --frozen-lockfile
       # In-memory databases, no dev server, no secrets. Random order, one worker per core.
       - name: Tests
-        run: timeout 30s bash scripts/ci-test.sh
+        run: timeout 30s bun scripts/ci-test.ts
         env:
           MERGE_QUEUE: ${{ vars.MERGE_QUEUE }}
 

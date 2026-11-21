@@ -230,6 +230,8 @@ bun run test tests/mcp.test.mjs   # one file, e.g. the MCP agent wallet's tools
 bun run test:api        # 130+ end-to-end API checks against the running dev server, simulating wallets with throwaway keys
 ```
 
+Git hooks ([hk](https://hk.jdx.dev), configured in `hk.pkl`): before a commit, the staged files are formatted and linted; before a push, the same checks as CI run, then the tests your branch can reach. Install hk once (`mise use hk`, `brew install hk` or a [release binary](https://github.com/jdx/hk/releases)), then run `hk install` in this folder.
+
 ## Deploy (Vercel + Neon)
 
 1. Push this repo to GitHub (public, MIT).
