@@ -1,22 +1,33 @@
 name: CI
 
+# Budgets (CI fails when a job goes over; see scripts/ci-budget.ts and the `timeout`s below):
+#   waiting ≤ 5 s, setup ≤ 15 s, whole job ≤ 35 s,
+#   lint ≤ 1 s, format ≤ 1 s, typecheck ≤ 5 s, tests ≤ 30 s.
+# Lint, typecheck, tests and build run in parallel. The full suite runs on every push and in the
+# merge queue; pull requests run only the tests their diff can reach once MERGE_QUEUE=on.
+
 on:
   push:
     branches: [main, withdrawals]
   pull_request:
+  merge_group:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # A new commit on a PR cancels the run in progress. Runs on main finish, so they fill the caches.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
+env:
+  NEXT_TELEMETRY_DISABLED: 1
+
 jobs:
-  check:
-    name: Lint, typecheck and tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  checks:
+    name: Lint, format and typecheck
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -24,10 +35,6 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
-      # The test scripts and the app still run on Node.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
       # node_modules itself is cached, keyed on the lockfile. Pushes to main fill it; PRs read main's copy.
       - id: modules
         uses: actions/cache@v4
@@ -36,22 +43,50 @@ jobs:
           key: modules-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - if: steps.modules.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
-
+      # Each check runs even when one before it failed, so one run lists every failure.
       - name: Lint
-        run: bun lint
+        if: success() || failure()
+        run: timeout 1s bun lint
       - name: Format
-        run: bun fmt --check
+        if: success() || failure()
+        run: timeout 1s bun fmt --check
       - name: Typecheck
-        run: bunx next typegen && bun check
+        if: success() || failure()
+        run: timeout 5s sh -c 'bunx next typegen && bun check'
 
-      # Every file in tests/: in-memory databases, no dev server, no secrets. Random order, one worker per core.
+  tests:
+    name: Tests
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          fetch-depth: 0
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      # The MCP server under test runs on Node, as published.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: modules-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+      - if: steps.modules.outputs.cache-hit != 'true'
+        run: bun install --frozen-lockfile
+      # In-memory databases, no dev server, no secrets. Random order, one worker per core.
       - name: Tests
-        run: bun run test
+        run: timeout 30s bash scripts/ci-test.sh
+        env:
+          MERGE_QUEUE: ${{ vars.MERGE_QUEUE }}
 
   build:
     name: Build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
@@ -69,7 +104,52 @@ jobs:
           key: modules-${{ runner.os }}-${{ hashFiles('bun.lock') }}
       - if: steps.modules.outputs.cache-hit != 'true'
         run: bun install --frozen-lockfile
-      # Every env var is optional, so the build runs without production secrets.
+      # Turbopack keeps its build work in .next/cache. Every run starts from the latest saved copy;
+      # only pushes save a new one.
+      - uses: actions/cache/restore@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+          restore-keys: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
+      # Every env var is optional, so the build runs without production secrets. The Typecheck
+      # step above runs the same type check, so the build skips its own copy (Vercel still runs it).
       - run: bun run build
         env:
-          NEXT_TELEMETRY_DISABLED: 1
+          NIMBILL_CI_TYPECHECKED: 1
+      - if: github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: .next/cache
+          key: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-${{ github.sha }}
+
+  budgets:
+    name: Budgets
+    needs: [checks, tests, build]
+    if: always()
+    runs-on: ${{ vars.CI_RUNNER || 'ubuntu-latest' }}
+    timeout-minutes: 2
+    permissions:
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          filter: blob:none
+          sparse-checkout: scripts
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
+      - run: bun scripts/ci-budget.ts
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+  # The one check to require in branch protection and the merge queue.
+  ci:
+    name: CI
+    needs: [checks, tests, build, budgets]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 1
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1
+      - run: echo "Every job passed and stayed in budget."
