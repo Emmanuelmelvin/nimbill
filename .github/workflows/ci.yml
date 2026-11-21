@@ -122,6 +122,8 @@ jobs:
       - run: bun scripts/ci-budget.ts
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Off: waiting and setup over budget only warn. Turn on once CI runs on warm machines.
+          ENFORCE_SETUP_BUDGETS: ${{ vars.ENFORCE_SETUP_BUDGETS }}
 
   # The one check to require in branch protection and the merge queue.
   ci:
