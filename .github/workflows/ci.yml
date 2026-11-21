@@ -60,10 +60,9 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
-      # The MCP server under test runs on Node, as published.
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
+      # The MCP server under test runs on Node, as published: the runner's own Node 24 (the step below
+      # prints it), so no setup-node.
+      - run: node --version
       # A plain install: restoring a cached node_modules took 5–7 s on GitHub's runners, no faster than this.
       - run: bun install --frozen-lockfile
       # In-memory databases, no dev server, no secrets. Random order, one worker per core.
