@@ -61,9 +61,9 @@ export default function McpOverview() {
       <div className="grid gap-4 sm:grid-cols-2">
         <Tile icon="01" title="Own Non-Custodial Nimiq Wallet">
           On first launch, the MCP server generates an Ed25519 keypair at{" "}
-          <span className="font-mono text-ink">~/.nimbill/agent-wallet.json</span>, derives its <span className="font-mono text-ink">NQ…</span>{" "}
-          address, and signs NimBill&apos;s challenge message to log into its own account. Your agent&apos;s private key never leaves your
-          computer.
+          <span className="font-mono text-ink">~/.nimbill/agent-wallet.json</span>, derives its{" "}
+          <span className="font-mono text-ink">NQ…</span> address, and signs NimBill&apos;s challenge message to log into its own account.
+          Your agent&apos;s private key never leaves your computer.
         </Tile>
         <Tile icon="02" title="Pay Invoices & Boards On-Chain">
           The agent can read any <span className="font-mono text-ink">/pay/&lt;tag&gt;</span> board or{" "}
@@ -72,8 +72,8 @@ export default function McpOverview() {
         </Tile>
         <Tile icon="03" title="Write & Cash Cheques">
           Hand your agent a <span className="font-mono text-ink">CHQ-…</span> code in chat and it can cash the NIM straight into its wallet
-          (or route it to any <span className="font-mono text-ink">@tag</span>) — or ask your agent to write a funded cheque and hand you the
-          link.
+          (or route it to any <span className="font-mono text-ink">@tag</span>) — or ask your agent to write a funded cheque and hand you
+          the link.
         </Tile>
         <Tile icon="04" title="Claim a @tag & Bill Clients">
           Your agent can claim its own handle like <span className="font-mono text-ink">studiobot@nimbill</span>, issue invoices in 19

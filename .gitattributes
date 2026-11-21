@@ -1,0 +1,6 @@
+# LF everywhere, also on Windows, so bun fmt --check gives the same answer locally and in CI.
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.mp4 binary
+*.ico binary

@@ -54,8 +54,8 @@ export default async function McpConnect() {
       <ToolCard id="cursor" logos={["cursor"]} title="Cursor">
         <p>
           Save this in your project&apos;s <span className="font-mono text-ink">.cursor/mcp.json</span> (or globally in{" "}
-          <span className="font-mono text-ink">~/.cursor/mcp.json</span>), then enable the <span className="font-mono text-ink">nimbill</span>{" "}
-          server under Cursor Settings → MCP:
+          <span className="font-mono text-ink">~/.cursor/mcp.json</span>), then enable the{" "}
+          <span className="font-mono text-ink">nimbill</span> server under Cursor Settings → MCP:
         </p>
         <Code label=".cursor/mcp.json">{json(config)}</Code>
       </ToolCard>

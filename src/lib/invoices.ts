@@ -232,13 +232,7 @@ export async function claimReceiptEmail(invoiceId: string, email: string, max: n
   const [claimed] = await db
     .update(schema.invoices)
     .set({ payerEmail: email, receiptEmailsSent: sql`${schema.invoices.receiptEmailsSent} + 1` })
-    .where(
-      and(
-        eq(schema.invoices.id, invoiceId),
-        eq(schema.invoices.status, "paid"),
-        lt(schema.invoices.receiptEmailsSent, max),
-      ),
-    )
+    .where(and(eq(schema.invoices.id, invoiceId), eq(schema.invoices.status, "paid"), lt(schema.invoices.receiptEmailsSent, max)))
     .returning();
   return claimed ?? null;
 }
@@ -350,7 +344,9 @@ export function nimPaymentIssue(
   const during = nim
     .filter((q) => tx.timestamp >= q.createdAt.getTime() - 60_000 && tx.timestamp <= q.expiresAt.getTime() + QUOTE_GRACE_MS)
     .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  return during.length ? { reason: "amount_too_low", lockedAmount: during[0].amount } : { reason: "price_lock_expired", lockedAmount: null };
+  return during.length
+    ? { reason: "amount_too_low", lockedAmount: during[0].amount }
+    : { reason: "price_lock_expired", lockedAmount: null };
 }
 
 /** Queue invoice.payment_issue for `tx` if it is one (store invoices only; see recordPaymentIssue). */
@@ -401,7 +397,11 @@ export async function verifyPayment(
 ): Promise<VerifyResult> {
   if (inv.status === "paid") return { status: "paid", invoice: inv };
   const closed =
-    inv.status === "cancelled" ? "This invoice was cancelled." : inv.status === "expired" ? "This invoice expired before it was paid." : null;
+    inv.status === "cancelled"
+      ? "This invoice was cancelled."
+      : inv.status === "expired"
+        ? "This invoice expired before it was paid."
+        : null;
   if (closed && asset !== "NIM") return { status: "rejected", message: closed };
   const quotes = await quotesFor([inv.id]);
 
@@ -463,7 +463,11 @@ export async function verifyPayment(
  * `strict`: throw when a chain can't be read, instead of leaving it to the next try (used before an
  * invoice is expired, so an RPC outage can never expire an invoice that was paid).
  */
-export async function reconcileMerchant(merchantAddress: string, onlyInvoiceIds?: string[], opts: { strict?: boolean } = {}): Promise<number> {
+export async function reconcileMerchant(
+  merchantAddress: string,
+  onlyInvoiceIds?: string[],
+  opts: { strict?: boolean } = {},
+): Promise<number> {
   const db = await getDb();
   const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
   const conds = [

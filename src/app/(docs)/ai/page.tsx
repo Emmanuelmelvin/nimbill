@@ -108,12 +108,10 @@ export default async function AiOverview() {
         <p>
           The <span className="font-mono text-ink">nimbill-mcp</span> server (on npm) gives your agent its own non-custodial Ed25519 Nimiq
           wallet (<span className="font-mono text-ink">~/.nimbill/agent-wallet.json</span>) and 15 tools to claim a{" "}
-          <span className="font-mono text-ink">@tag</span>, pay invoices and boards on-chain, send NIM by tag, and write or cash cheques. See
-          the full guide and all 15 tools on <TextLink href="/mcp">/mcp</TextLink>.
+          <span className="font-mono text-ink">@tag</span>, pay invoices and boards on-chain, send NIM by tag, and write or cash cheques.
+          See the full guide and all 15 tools on <TextLink href="/mcp">/mcp</TextLink>.
         </p>
-        <Code label="mcp.json">
-          {JSON.stringify(mcpConfig(base), null, 2)}
-        </Code>
+        <Code label="mcp.json">{JSON.stringify(mcpConfig(base), null, 2)}</Code>
       </ToolCard>
 
       <H2 id="files">Files for agents</H2>

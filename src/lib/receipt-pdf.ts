@@ -84,9 +84,7 @@ export function buildReceiptPdf(inv: Invoice): Buffer {
   const ops: string[] = [];
 
   const text = (x: number, y: number, str: string, font: "F1" | "F2" | "F3" = "F1", size = 10, colorGray = 0) => {
-    ops.push(
-      `BT /${font} ${size} Tf ${colorGray.toFixed(2)} g 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEscape(str)}) Tj ET`,
-    );
+    ops.push(`BT /${font} ${size} Tf ${colorGray.toFixed(2)} g 1 0 0 1 ${x.toFixed(2)} ${y.toFixed(2)} Tm (${pdfEscape(str)}) Tj ET`);
   };
 
   // Approximate character widths in Helvetica/Courier to right-align labels cleanly
@@ -171,7 +169,10 @@ export function buildReceiptPdf(inv: Invoice): Buffer {
   for (let i = 0; i < maxItems; i++) {
     const it = inv.items[i];
     const lineTotal = it.quantity * it.unitPrice;
-    const desc = it.quantity !== 1 ? `${truncate(it.description, 52)} (${it.quantity} x ${pdfFiat(it.unitPrice, inv.currency)})` : truncate(it.description, 68);
+    const desc =
+      it.quantity !== 1
+        ? `${truncate(it.description, 52)} (${it.quantity} x ${pdfFiat(it.unitPrice, inv.currency)})`
+        : truncate(it.description, 68);
     text(margin, y, desc, "F1", 10, 0);
     textRight(rightEdge, y, pdfFiat(lineTotal, inv.currency), "F1", 10, 0);
     y -= 8;
@@ -234,14 +235,7 @@ export function buildReceiptPdf(inv: Invoice): Buffer {
   }
 
   y = boxBottom - 22;
-  text(
-    margin,
-    y,
-    "This receipt is backed by a public blockchain transaction verified on-chain by NimBill.",
-    "F1",
-    8.5,
-    0.45,
-  );
+  text(margin, y, "This receipt is backed by a public blockchain transaction verified on-chain by NimBill.", "F1", 8.5, 0.45);
 
   const streamContent = ops.join("\n");
   const streamBytes = Buffer.from(streamContent, "latin1");

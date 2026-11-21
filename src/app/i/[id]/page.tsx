@@ -242,23 +242,10 @@ function PaidBanner({
         <LinkButton href={`/i/${inv.id}/receipt`} size="sm" className="min-h-11">
           View receipt
         </LinkButton>
-        <AnchorButton
-          href={pdfHref}
-          download={`NimBill-Receipt-${inv.number}.pdf`}
-          variant="secondary"
-          size="sm"
-          className="min-h-11"
-        >
+        <AnchorButton href={pdfHref} download={`NimBill-Receipt-${inv.number}.pdf`} variant="secondary" size="sm" className="min-h-11">
           Download PDF
         </AnchorButton>
-        <AnchorButton
-          href={explorer}
-          target="_blank"
-          rel="noreferrer"
-          variant="secondary"
-          size="sm"
-          className="col-span-2 min-h-11"
-        >
+        <AnchorButton href={explorer} target="_blank" rel="noreferrer" variant="secondary" size="sm" className="col-span-2 min-h-11">
           On-chain proof ↗
         </AnchorButton>
         {/* "Pay with NimBill": back to the store that sent the payer here (its address is checked server-side). */}

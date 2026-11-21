@@ -790,7 +790,9 @@ export function completeDualHtlcCreationSignature({ secret, tx, nonceScalar, ser
 
   const dVar = encodeVarint(recipientData.length);
   const pVar = encodeVarint(sigProof.length);
-  const raw = new Uint8Array(1 + 20 + 1 + 1 + 20 + 1 + dVar.length + recipientData.length + 8 + 8 + 4 + 1 + 1 + pVar.length + sigProof.length);
+  const raw = new Uint8Array(
+    1 + 20 + 1 + 1 + 20 + 1 + dVar.length + recipientData.length + 8 + 8 + 4 + 1 + 1 + pVar.length + sigProof.length,
+  );
   const dv = new DataView(raw.buffer);
   let p = 0;
   raw[p++] = 1;

@@ -5,14 +5,17 @@ import { LinkButton } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "Under the hood and security",
-  description: "How the NimBill MCP server signs in, builds Nimiq Albatross transactions and 2-of-2 cheques, and keeps your main wallet safe.",
+  description:
+    "How the NimBill MCP server signs in, builds Nimiq Albatross transactions and 2-of-2 cheques, and keeps your main wallet safe.",
 };
 
 export default function McpSecurity() {
   return (
     <DocPage title="Under the hood and security" description="Real Nimiq Albatross cryptography, zero custody.">
       <H2 id="architecture">How it works under the hood</H2>
-      <p className="text-muted">The MCP server speaks Nimiq Mainnet Albatross (network ID 24) and NimBill&apos;s session protocol directly.</p>
+      <p className="text-muted">
+        The MCP server speaks Nimiq Mainnet Albatross (network ID 24) and NimBill&apos;s session protocol directly.
+      </p>
       <div className="grid gap-4 sm:grid-cols-3">
         <Tile title="Passwordless Wallet Sign-In">
           When a tool requires authentication, <span className="font-mono text-ink">mcp/client.mjs</span> fetches{" "}

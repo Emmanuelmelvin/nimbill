@@ -127,13 +127,7 @@ function InvoicesScreen() {
               }
             />
           ) : view === "invoices" ? (
-            <InvoiceList
-              invoices={data.invoices}
-              recurring={data.recurring ?? []}
-              filter={filter}
-              onFilter={setFilter}
-              onChanged={load}
-            />
+            <InvoiceList invoices={data.invoices} recurring={data.recurring ?? []} filter={filter} onFilter={setFilter} onChanged={load} />
           ) : (
             <ClientList {...data} />
           )}

@@ -6,7 +6,8 @@ import { Badge } from "@/components/ui";
 
 export const metadata: Metadata = {
   title: "MCP tools",
-  description: "Every tool the NimBill Agent Wallet MCP server exposes, with arguments and example responses, plus the nimbill://wallet resource.",
+  description:
+    "Every tool the NimBill Agent Wallet MCP server exposes, with arguments and example responses, plus the nimbill://wallet resource.",
 };
 
 const json = (v: unknown) => JSON.stringify(v, null, 2);

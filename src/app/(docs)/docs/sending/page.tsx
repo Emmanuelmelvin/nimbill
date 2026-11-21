@@ -25,7 +25,9 @@ export default function Sending() {
         <li>Paying more than the quote is accepted. Less is rejected.</li>
         <li>
           No wallet code? Hand the person this link, which any Nimiq wallet opens:
-          <span className="mt-1 block font-mono text-xs break-all text-ink">nimiq:NQ16ADMA…FQE4?amount=752.66&amp;message=NimBill%2089mwch33sp</span>
+          <span className="mt-1 block font-mono text-xs break-all text-ink">
+            nimiq:NQ16ADMA…FQE4?amount=752.66&amp;message=NimBill%2089mwch33sp
+          </span>
         </li>
       </ul>
 

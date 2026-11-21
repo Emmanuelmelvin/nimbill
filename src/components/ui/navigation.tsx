@@ -189,7 +189,10 @@ export function TabBar({ tabs = TABS }: { tabs?: Tab[] }) {
   return (
     <>
       {/* Keeps the last bit of the page clear of the fixed bar. */}
-      <div aria-hidden className="no-print h-[calc(4rem+max(var(--safe-area-inset-bottom,0px),env(safe-area-inset-bottom,0px)))] lg:hidden" />
+      <div
+        aria-hidden
+        className="no-print h-[calc(4rem+max(var(--safe-area-inset-bottom,0px),env(safe-area-inset-bottom,0px)))] lg:hidden"
+      />
       {/* The larger of Nimiq Pay's injected inset and the browser's own: Nimiq Pay may report 0 while
           the web view still runs under the system gesture bar (Android edge to edge). */}
       <nav

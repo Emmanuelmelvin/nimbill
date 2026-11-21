@@ -727,10 +727,11 @@ export function verifyRawHtlcRegularTransferTx(
  * the writer can broadcast this transaction directly to any Nimiq RPC node to move the full balance
  * to `recipient` (their own wallet).
  */
-export function buildAndSignHtlcTimeoutResolveTx(params: {
-  refundSecret: string;
-  tx: HtlcSpendTxFields;
-}): { rawTx: string; txHash: string; refundAddress: string } {
+export function buildAndSignHtlcTimeoutResolveTx(params: { refundSecret: string; tx: HtlcSpendTxFields }): {
+  rawTx: string;
+  txHash: string;
+  refundAddress: string;
+} {
   const refund = refundKeyFromSecret(params.refundSecret);
   const txContent = serializeHtlcSpendTxContent(params.tx);
   const sig = ed25519.sign(txContent, refund.secretKey);

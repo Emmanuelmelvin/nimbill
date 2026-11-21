@@ -192,10 +192,7 @@ ok(
     nonceScalar: nCreate.nonceScalar,
     ...partCreate,
   });
-  ok(
-    app.verifyRawHtlcCreationTx(signedCreate.rawTx, htlcCreateTx).valid,
-    "MCP + app produce a valid 2-of-2 HTLC creation transaction",
-  );
+  ok(app.verifyRawHtlcCreationTx(signedCreate.rawTx, htlcCreateTx).valid, "MCP + app produce a valid 2-of-2 HTLC creation transaction");
 
   const htlcSpendTx = {
     htlcAddress: signedCreate.contractAddress,

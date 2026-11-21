@@ -167,10 +167,9 @@ export async function lockChequeInHtlc(params: {
     serverPartialSig: prepared.serverPartialSig,
   });
 
-  return api<{ txHash: string; htlcAddress: string; cheque: PublicCheque }>(
-    `/api/cheques/${encodeURIComponent(params.id)}/htlc`,
-    { body: { step: "broadcast", ...common, rawTx } },
-  );
+  return api<{ txHash: string; htlcAddress: string; cheque: PublicCheque }>(`/api/cheques/${encodeURIComponent(params.id)}/htlc`, {
+    body: { step: "broadcast", ...common, rawTx },
+  });
 }
 
 /**
@@ -284,7 +283,7 @@ async function directNimiqRpc<T>(rpcUrl: string, method: string, params: unknown
   const body = (await res.json()) as { result?: { data?: T } | T; error?: { message?: string; data?: string } };
   if (body.error) throw new Error(body.error.data || body.error.message || "The Nimiq network server returned an error.");
   const r = body.result as { data?: T } | T | undefined;
-  return (r && typeof r === "object" && "data" in r ? (r as { data: T }).data : (r as T));
+  return r && typeof r === "object" && "data" in r ? (r as { data: T }).data : (r as T);
 }
 
 /**
