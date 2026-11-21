@@ -55,6 +55,7 @@ export default function NewInvoice() {
   const [rows, setRows] = useState<Row[]>([emptyRow()]);
   const [note, setNote] = useState("");
   const [dueDate, setDueDate] = useState("");
+  const [today] = useState(() => new Date().toISOString().slice(0, 10));
   const [isRepeat, setIsRepeat] = useState(false);
   const [interval, setInterval] = useState<RecurringIntervalInput>("monthly");
   const [dueDays, setDueDays] = useState<(typeof DUE_DAYS_OPTIONS)[number]["value"]>("7");
@@ -241,7 +242,7 @@ export default function NewInvoice() {
                   id="due"
                   type="date"
                   value={dueDate}
-                  min={new Date().toISOString().slice(0, 10)}
+                  min={today}
                   onChange={(e) => setDueDate(e.target.value)}
                 />
               </Field>

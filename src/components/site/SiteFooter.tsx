@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CoinText, LogoMark, cx } from "@/components/ui";
+import { CurrentYear } from "./CurrentYear";
 
 type FooterLink = { href: string; label: string; external?: boolean };
 
@@ -64,7 +65,6 @@ function FooterAnchor({ link, className }: { link: FooterLink; className?: strin
  * Not shown in the signed-in app screens. Full width: put it inside a `.bleed` page.
  */
 export function SiteFooter({ className }: { className?: string }) {
-  const year = new Date().getFullYear();
   return (
     <footer className={cx("no-print border-t border-ink bg-paper", className)}>
       <div className="mx-auto w-full max-w-5xl px-4 sm:px-6">
@@ -96,7 +96,7 @@ export function SiteFooter({ className }: { className?: string }) {
         </div>
 
         <div className="flex flex-col gap-3 border-t border-line py-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>© {year} NimBill. Non-custodial: your money never passes through us.</p>
+          <p>© <CurrentYear /> NimBill. Non-custodial: your money never passes through us.</p>
           <p>
             Built by{" "}
             <a

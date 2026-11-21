@@ -586,7 +586,8 @@ export async function executeTool(name, args = {}, client) {
           note: args.note,
         },
       });
-      let { cheque, payment } = created;
+      const { payment } = created;
+      let { cheque } = created;
       const url = `${baseUrl}/c/${cheque.id}#${secret}`;
       const code = formatChequeCode(cheque.id, secret);
 

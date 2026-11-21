@@ -88,24 +88,6 @@ export function Badge({ variant = "outline", children, className }: { variant?: 
   );
 }
 
-const STATUS: Record<string, { label: string; variant: BadgeVariant }> = {
-  paid: { label: "Paid", variant: "solid" },
-  unpaid: { label: "Awaiting payment", variant: "outline" },
-  overdue: { label: "Overdue", variant: "strong" },
-  cancelled: { label: "Cancelled", variant: "muted" },
-  expired: { label: "Expired", variant: "muted" },
-};
-
-export function StatusBadge({ status, dueDate }: { status: string; dueDate?: string | null }) {
-  const overdue = status === "unpaid" && dueDate && dueDate < new Date().toISOString().slice(0, 10);
-  const s = STATUS[overdue ? "overdue" : status] ?? STATUS.unpaid;
-  return (
-    <Badge variant={s.variant} className={status === "cancelled" ? "line-through" : undefined}>
-      {s.label}
-    </Badge>
-  );
-}
-
 export function EmptyState({ title, description, action }: { title: ReactNode; description?: ReactNode; action?: ReactNode }) {
   return (
     <div className="border border-dashed border-edge px-5 py-10 text-center">
