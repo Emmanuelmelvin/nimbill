@@ -35,14 +35,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
-      # node_modules itself is cached, keyed on the lockfile. Pushes to main fill it; PRs read main's copy.
-      - id: modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-      - if: steps.modules.outputs.cache-hit != 'true'
-        run: bun install --frozen-lockfile
+      # A plain install: restoring a cached node_modules took 5–7 s on GitHub's runners, no faster than this.
+      - run: bun install --frozen-lockfile
       # Each check runs even when one before it failed, so one run lists every failure.
       - name: Lint
         if: success() || failure()
@@ -70,13 +64,8 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - id: modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-      - if: steps.modules.outputs.cache-hit != 'true'
-        run: bun install --frozen-lockfile
+      # A plain install: restoring a cached node_modules took 5–7 s on GitHub's runners, no faster than this.
+      - run: bun install --frozen-lockfile
       # In-memory databases, no dev server, no secrets. Random order, one worker per core.
       - name: Tests
         run: timeout 30s bun scripts/ci-test.ts
@@ -94,16 +83,8 @@ jobs:
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version-file: package.json
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 24
-      - id: modules
-        uses: actions/cache@v4
-        with:
-          path: node_modules
-          key: modules-${{ runner.os }}-${{ hashFiles('bun.lock') }}
-      - if: steps.modules.outputs.cache-hit != 'true'
-        run: bun install --frozen-lockfile
+      # A plain install: restoring a cached node_modules took 5–7 s on GitHub's runners, no faster than this.
+      - run: bun install --frozen-lockfile
       # Turbopack keeps its build work in .next/cache. Every run starts from the latest saved copy;
       # only pushes save a new one.
       - uses: actions/cache/restore@v4
@@ -113,7 +94,8 @@ jobs:
           restore-keys: next-${{ runner.os }}-${{ hashFiles('bun.lock') }}-
       # Every env var is optional, so the build runs without production secrets. The Typecheck
       # step above runs the same type check, so the build skips its own copy (Vercel still runs it).
-      - run: bun run build
+      # next build runs on the Node the runner already has (Next 16 needs 20.9 or newer).
+      - run: node --version && bun run build
         env:
           NIMBILL_CI_TYPECHECKED: 1
       - if: github.event_name == 'push'
