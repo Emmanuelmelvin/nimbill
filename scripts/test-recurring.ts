@@ -88,8 +88,7 @@ ok(clientMail.subject === "Invoice INV-0042 from Studio Kibo ($500.00)", `client
 ok(clientMail.text.includes("/i/abc2345678") && clientMail.text.includes("NIM or USDT"), "client email includes link and accepted coins");
 ok(clientMail.html.includes("View &amp; pay invoice"), "client email HTML has CTA button");
 ok(
-  clientMail.text.includes("/r/rec_23456789ab/unsubscribe?token=") &&
-    clientMail.html.includes("Unsubscribe from this recurring invoice"),
+  clientMail.text.includes("/r/rec_23456789ab/unsubscribe?token=") && clientMail.html.includes("Unsubscribe from this recurring invoice"),
   "client email includes signed unsubscribe link in text and HTML",
 );
 
@@ -159,13 +158,9 @@ for (const [label, msg] of [
   ok(msg.html?.includes("/email-banner.png") ?? false, `${label} includes top README banner image (/email-banner.png)`);
 }
 
+ok(payerPaidMail.subject === "Receipt for INV-0042: $525.00 paid to Studio Kibo", `payer receipt email subject: ${payerPaidMail.subject}`);
 ok(
-  payerPaidMail.subject === "Receipt for INV-0042: $525.00 paid to Studio Kibo",
-  `payer receipt email subject: ${payerPaidMail.subject}`,
-);
-ok(
-  payerPaidMail.text.includes("/api/invoices/abc2345678/receipt") &&
-    (payerPaidMail.html?.includes("Download receipt (PDF)") ?? false),
+  payerPaidMail.text.includes("/api/invoices/abc2345678/receipt") && (payerPaidMail.html?.includes("Download receipt (PDF)") ?? false),
   "payer receipt email includes PDF receipt download link and button",
 );
 ok(

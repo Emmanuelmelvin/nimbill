@@ -110,15 +110,7 @@ type ReminderPick = "" | "whatsapp" | "email" | "copy";
  * beside it (WhatsApp, Email when the client's address is known, Copy message). Nothing is shown
  * expanded; picking an option opens the merchant's own app or copies the message.
  */
-export function RemindMenu({
-  inv,
-  clientEmail,
-  className,
-}: {
-  inv: PublicInvoice;
-  clientEmail?: string | null;
-  className?: string;
-}) {
+export function RemindMenu({ inv, clientEmail, className }: { inv: PublicInvoice; clientEmail?: string | null; className?: string }) {
   const origin = useOrigin();
   if (!origin) return null;
   const late = daysOverdue(inv);

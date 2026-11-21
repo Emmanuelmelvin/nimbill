@@ -299,15 +299,7 @@ export function PayPanel({
 }
 
 /** Optional email input so the payer receives the paid invoice details and a downloadable PDF receipt. */
-function PayerEmailField({
-  value,
-  onChange,
-  invalid,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  invalid: boolean;
-}) {
+function PayerEmailField({ value, onChange, invalid }: { value: string; onChange: (v: string) => void; invalid: boolean }) {
   return (
     <div className="border-t border-line pt-4">
       <Field

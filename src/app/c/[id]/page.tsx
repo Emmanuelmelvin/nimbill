@@ -483,7 +483,8 @@ function ChequeScreen({
                 Cancel this cheque before it&apos;s cashed to sweep the {formatAsset(cheque.amount, "NIM")} back into your wallet.
                 {cheque.htlc?.contractAddress && htlcTimeoutDate && (
                   <>
-                    {" "}Safety refund is on: if it&apos;s still uncashed after {htlcTimeoutDate}, you can take the money back even if NimBill is
+                    {" "}
+                    Safety refund is on: if it&apos;s still uncashed after {htlcTimeoutDate}, you can take the money back even if NimBill is
                     down, using this cheque&apos;s refund key.
                   </>
                 )}
@@ -518,7 +519,10 @@ function ChequeScreen({
 
       <p className="text-center text-xs text-muted">
         Non-custodial: NimBill never holds the key to this cheque
-        {cheque.htlc?.contractAddress && htlcTimeoutDate ? `, and the writer can take back an uncashed cheque after ${htlcTimeoutDate}` : ""}.{" "}
+        {cheque.htlc?.contractAddress && htlcTimeoutDate
+          ? `, and the writer can take back an uncashed cheque after ${htlcTimeoutDate}`
+          : ""}
+        .{" "}
         <TextLink href="/cheques" muted>
           Write a cheque
         </TextLink>

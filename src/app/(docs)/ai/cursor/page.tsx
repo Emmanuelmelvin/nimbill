@@ -15,9 +15,8 @@ export default async function CursorSetup() {
   return (
     <DocPage title="Cursor" description="Add a project rule.">
       <p className="text-muted">
-        For building NimBill payments into your own app. Save this as{" "}
-        <span className="font-mono text-ink">.cursor/rules/nimbill.mdc</span>, and Cursor&apos;s agent will use it when you ask it to add
-        NimBill checkout, invoices or verification.
+        For building NimBill payments into your own app. Save this as <span className="font-mono text-ink">.cursor/rules/nimbill.mdc</span>,
+        and Cursor&apos;s agent will use it when you ask it to add NimBill checkout, invoices or verification.
       </p>
 
       <H2 id="rule">Add a project rule</H2>

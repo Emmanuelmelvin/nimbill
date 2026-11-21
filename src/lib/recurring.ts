@@ -77,12 +77,7 @@ export function addInterval(dateStr: string, interval: RecurringInterval, anchor
 }
 
 /** Advance `dateStr` by `interval` (on `anchorDay`) until it is strictly after `afterDate`. */
-export function nextFutureDate(
-  dateStr: string,
-  interval: RecurringInterval,
-  afterDate: string,
-  anchorDay?: number | null,
-): string {
+export function nextFutureDate(dateStr: string, interval: RecurringInterval, afterDate: string, anchorDay?: number | null): string {
   let next = addInterval(dateStr, interval, anchorDay);
   let guard = 0;
   while (next <= afterDate && guard++ < 500) {
@@ -357,9 +352,7 @@ export async function updateRecurringSchedule(
   // Resuming keeps the schedule on its own dates (and day of the month); a cycle that fell due
   // while paused is skipped, not billed late.
   const nextRunDate =
-    action === "resume" && rec.nextRunDate <= today
-      ? nextFutureDate(rec.nextRunDate, rec.interval, today, rec.anchorDay)
-      : rec.nextRunDate;
+    action === "resume" && rec.nextRunDate <= today ? nextFutureDate(rec.nextRunDate, rec.interval, today, rec.anchorDay) : rec.nextRunDate;
 
   const [updated] = await db
     .update(schema.recurringInvoices)

@@ -18,13 +18,13 @@ export default function McpFunding() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Tile icon="1" title="Hand it a NimBill Cheque">
           Write a cheque on <TextLink href="/cheques">/cheques</TextLink> and paste the <span className="font-mono text-ink">CHQ-…</span>{" "}
-          code into chat: <span className="text-ink italic">&ldquo;Cash this cheque into your wallet.&rdquo;</span> Because the cheque itself
-          holds the funds, your agent can claim it even when its balance is 0 NIM.
+          code into chat: <span className="text-ink italic">&ldquo;Cash this cheque into your wallet.&rdquo;</span> Because the cheque
+          itself holds the funds, your agent can claim it even when its balance is 0 NIM.
         </Tile>
         <Tile icon="2" title="Send to its @tag">
           Ask your agent to run <span className="font-mono text-ink">setup_profile</span> to claim a tag like{" "}
-          <span className="font-mono text-ink">mybot@nimbill</span>, then send NIM to that tag from <TextLink href="/send">/send</TextLink> in
-          Nimiq Pay.
+          <span className="font-mono text-ink">mybot@nimbill</span>, then send NIM to that tag from <TextLink href="/send">/send</TextLink>{" "}
+          in Nimiq Pay.
         </Tile>
         <Tile icon="3" title="Send to its NQ… address">
           Ask your agent <span className="text-ink italic">&ldquo;What is your Nimiq wallet address?&rdquo;</span> (calls{" "}

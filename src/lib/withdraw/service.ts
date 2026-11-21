@@ -189,7 +189,12 @@ async function load(id: string, nimiqAddress?: string): Promise<Withdrawal> {
 
 /** Move a withdrawal to `status`, recording when (and why) in its history. */
 /** Exported for scripts/test-withdraw-status.ts only; app code goes through advance/markPaid/markCancelled. */
-export async function setStatus(w: Withdrawal, status: WithdrawalStatus, changes: Partial<Withdrawal> = {}, note?: string): Promise<Withdrawal> {
+export async function setStatus(
+  w: Withdrawal,
+  status: WithdrawalStatus,
+  changes: Partial<Withdrawal> = {},
+  note?: string,
+): Promise<Withdrawal> {
   const db = await getDb();
   const now = new Date();
   const history =

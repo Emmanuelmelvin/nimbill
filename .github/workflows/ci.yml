@@ -39,6 +39,8 @@ jobs:
 
       - name: Lint
         run: bun lint
+      - name: Format
+        run: bun fmt --check
       - name: Typecheck
         run: bunx next typegen && bunx tsc --noEmit
 

@@ -96,7 +96,9 @@ export function SiteFooter({ className }: { className?: string }) {
         </div>
 
         <div className="flex flex-col gap-3 border-t border-line py-6 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>© <CurrentYear /> NimBill. Non-custodial: your money never passes through us.</p>
+          <p>
+            © <CurrentYear /> NimBill. Non-custodial: your money never passes through us.
+          </p>
           <p>
             Built by{" "}
             <a

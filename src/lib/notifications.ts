@@ -369,10 +369,7 @@ export function notifyRecurringInvoiceIssued(
 }
 
 /** Email sent to the client when a recurring invoice is generated. */
-export function recurringClientEmail(
-  inv: Invoice,
-  rec: Pick<RecurringInvoice, "id" | "interval">,
-): Omit<MailMessage, "to"> {
+export function recurringClientEmail(inv: Invoice, rec: Pick<RecurringInvoice, "id" | "interval">): Omit<MailMessage, "to"> {
   const merchant = oneLine(inv.merchantName);
   const client = oneLine(inv.clientName);
   const amount = formatFiat(inv.total, inv.currency);
@@ -426,10 +423,7 @@ ${rows
 }
 
 /** Email sent to the merchant when a scheduled recurring invoice is generated. */
-export function recurringMerchantEmail(
-  inv: Invoice,
-  rec: Pick<RecurringInvoice, "interval" | "nextRunDate">,
-): Omit<MailMessage, "to"> {
+export function recurringMerchantEmail(inv: Invoice, rec: Pick<RecurringInvoice, "interval" | "nextRunDate">): Omit<MailMessage, "to"> {
   const client = oneLine(inv.clientName);
   const amount = formatFiat(inv.total, inv.currency);
   const cadence = INTERVAL_NOUN[rec.interval] ?? rec.interval;

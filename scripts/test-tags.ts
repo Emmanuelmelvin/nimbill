@@ -197,10 +197,7 @@ ok(
 const sampleRefundSecret = newChequeSecret();
 const refundKey = refundKeyFromSecret(sampleRefundSecret);
 ok(/^NQ\d{2}(\s[0-9A-Z]{4}){8}$/.test(refundKey.address), "refundKeyFromSecret derives a valid Nimiq refund address");
-ok(
-  refundKeyFromSecret(sampleSecret).address !== refundKey.address,
-  "the cheque link secret does not give the cheque's refund key",
-);
+ok(refundKeyFromSecret(sampleSecret).address !== refundKey.address, "the cheque link secret does not give the cheque's refund key");
 const { preImage, hashRoot } = chequeHtlcPreImage(sampleId);
 ok(preImage.length === 64 && hashRoot.length === 64, "chequeHtlcPreImage derives 32-byte pre-image and SHA-256 root");
 
@@ -286,7 +283,8 @@ ok(
 );
 // Someone holding only the link can sign a TimeoutResolve, but not as the HTLC's refund sender.
 ok(
-  buildAndSignHtlcTimeoutResolveTx({ refundSecret: sampleSecret, tx: htlcSpendFields }).refundAddress !== htlcCreateFields.htlcSenderAddress,
+  buildAndSignHtlcTimeoutResolveTx({ refundSecret: sampleSecret, tx: htlcSpendFields }).refundAddress !==
+    htlcCreateFields.htlcSenderAddress,
   "a TimeoutResolve signed with the link secret is not from the HTLC's refund address",
 );
 

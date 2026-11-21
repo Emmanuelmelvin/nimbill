@@ -225,8 +225,8 @@ function EmergencyReclaimCard() {
           <p className="text-sm font-semibold">Get back an uncashed cheque</p>
           <p className="text-xs text-muted">
             30 days after you write a cheque, you can take back money nobody cashed, even if NimBill is down. This goes straight to the
-            Nimiq network, without NimBill. You need the cheque&apos;s refund key from your cheque key backup. The cheque link won&apos;t work
-            here, so nobody you sent it to can do this.
+            Nimiq network, without NimBill. You need the cheque&apos;s refund key from your cheque key backup. The cheque link won&apos;t
+            work here, so nobody you sent it to can do this.
           </p>
         </div>
         <TextButton onClick={() => setOpen(false)} className="text-xs">
@@ -272,20 +272,13 @@ function EmergencyReclaimCard() {
           spellCheck={false}
         />
       </Field>
-      <Field
-        label="Nimiq network server"
-        hint="Advanced. Leave this as it is unless it doesn't respond."
-        htmlFor="reclaim-rpc"
-        optional
-      >
+      <Field label="Nimiq network server" hint="Advanced. Leave this as it is unless it doesn't respond." htmlFor="reclaim-rpc" optional>
         <Input id="reclaim-rpc" mono value={rpcUrl} onChange={(e) => setRpcUrl(e.target.value)} />
       </Field>
       {error && <Alert kind="error">{error}</Alert>}
       {done && (
         <Alert kind="info">
-          <CoinText>
-            Done: {formatAsset(done.valueLuna, "NIM")} is on its way back to your wallet.
-          </CoinText>
+          <CoinText>Done: {formatAsset(done.valueLuna, "NIM")} is on its way back to your wallet.</CoinText>
         </Alert>
       )}
       <Button
@@ -437,7 +430,13 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
           // The refund key only matters while the cheque can still be refunded: skip the backup step
           // for a cheque that was cashed before we got here.
           const needsBackup = finalCheque.status === "funded" && !!finalCheque.htlc?.refundAddress;
-          return setPhase({ k: "done", cheque: finalCheque, secret, refundSecret: needsBackup ? refundSecret : null, backedUp: !needsBackup });
+          return setPhase({
+            k: "done",
+            cheque: finalCheque,
+            secret,
+            refundSecret: needsBackup ? refundSecret : null,
+            backedUp: !needsBackup,
+          });
         }
         if (r.status === "rejected") {
           setError(r.message ?? "This cheque could not be confirmed.");
@@ -503,11 +502,7 @@ function WriteChequeForm({ defaultCurrency, myTag }: { defaultCurrency: string; 
     return (
       <div className="space-y-4">
         <ChequeCard cheque={phase.cheque} />
-        <RefundKeyBackup
-          cheque={phase.cheque}
-          refundSecret={phase.refundSecret}
-          onDone={() => setPhase({ ...phase, backedUp: true })}
-        />
+        <RefundKeyBackup cheque={phase.cheque} refundSecret={phase.refundSecret} onDone={() => setPhase({ ...phase, backedUp: true })} />
       </div>
     );
   }
@@ -693,9 +688,9 @@ function RefundKeyBackup({ cheque, refundSecret, onDone }: { cheque: PublicChequ
       <div>
         <p className="font-semibold">Save your refund key first</p>
         <p className="text-xs text-muted">
-          If nobody cashes this cheque, this key lets you take the money back after {after}, even if NimBill is down. It isn&apos;t in
-          the cheque link, and NimBill doesn&apos;t keep a copy. It&apos;s only saved in this browser, so if you clear it or change phones,
-          this copy is the only one.
+          If nobody cashes this cheque, this key lets you take the money back after {after}, even if NimBill is down. It isn&apos;t in the
+          cheque link, and NimBill doesn&apos;t keep a copy. It&apos;s only saved in this browser, so if you clear it or change phones, this
+          copy is the only one.
         </p>
       </div>
       <CodeBlock className="space-y-1">

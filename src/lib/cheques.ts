@@ -275,9 +275,7 @@ export async function reconcileCheque(c: Cheque): Promise<Cheque> {
     const proof = typeof outTx.proof === "string" ? outTx.proof.toLowerCase().replace(/^0x/, "") : "";
     const isTimeoutRefund =
       spentFromHtlc &&
-      (proof
-        ? proof.startsWith("02")
-        : !ownBroadcast && !!current.htlcTimeoutAt && outTx.timestamp >= current.htlcTimeoutAt.getTime());
+      (proof ? proof.startsWith("02") : !ownBroadcast && !!current.htlcTimeoutAt && outTx.timestamp >= current.htlcTimeoutAt.getTime());
     const isCancel = isTimeoutRefund || sameNimAddress(outTx.to, current.writerAddress);
     const [recipientMerchant] = await db.select().from(schema.merchants).where(eq(schema.merchants.address, outTx.to));
     const [updated] = await db
@@ -366,9 +364,7 @@ export async function listCheques(address: string): Promise<Cheque[]> {
  * Live balance (Luna) of a cheque, and which account currently holds it (`"htlc"` when locked in
  * its Nimiq HTLC contract, or `"basic"` when sitting in the 2-of-2 Basic wallet).
  */
-export async function chequeBalanceInfo(
-  c: Cheque,
-): Promise<{ balance: string | null; spendFrom: "basic" | "htlc" }> {
+export async function chequeBalanceInfo(c: Cheque): Promise<{ balance: string | null; spendFrom: "basic" | "htlc" }> {
   if (c.status !== "funded") return { balance: null, spendFrom: c.htlcAddress ? "htlc" : "basic" };
   try {
     if (c.htlcAddress) {

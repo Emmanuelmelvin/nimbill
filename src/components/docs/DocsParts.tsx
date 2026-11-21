@@ -100,7 +100,7 @@ const ANCHOR = "after:ml-2 after:text-muted after:opacity-0 after:transition-opa
 /** A section heading with an anchor link. The "On this page" list is made from these. */
 export function H2({ id, children, className }: { id: string; children: ReactNode; className?: string }) {
   return (
-    <h2 id={id} className={cx("scroll-mt-28 border-t border-line pt-8 text-2xl leading-tight font-bold tracking-tight mt-12", className)}>
+    <h2 id={id} className={cx("mt-12 scroll-mt-28 border-t border-line pt-8 text-2xl leading-tight font-bold tracking-tight", className)}>
       <a href={`#${id}`} className={ANCHOR}>
         {children}
       </a>
@@ -110,7 +110,7 @@ export function H2({ id, children, className }: { id: string; children: ReactNod
 
 export function H3({ id, children, className }: { id: string; children: ReactNode; className?: string }) {
   return (
-    <h3 id={id} className={cx("scroll-mt-28 text-lg font-bold mt-8", className)}>
+    <h3 id={id} className={cx("mt-8 scroll-mt-28 text-lg font-bold", className)}>
       <a href={`#${id}`} className={ANCHOR}>
         {children}
       </a>

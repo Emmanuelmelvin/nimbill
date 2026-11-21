@@ -238,13 +238,7 @@ export default function NewInvoice() {
                 <CurrencySelect id="currency" value={currency} onChange={setCurrency} />
               </Field>
               <Field label="Due date" htmlFor="due" optional>
-                <Input
-                  id="due"
-                  type="date"
-                  value={dueDate}
-                  min={today}
-                  onChange={(e) => setDueDate(e.target.value)}
-                />
+                <Input id="due" type="date" value={dueDate} min={today} onChange={(e) => setDueDate(e.target.value)} />
               </Field>
             </div>
           )}

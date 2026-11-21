@@ -641,8 +641,8 @@ function Review({
         ]}
       />
       <p className="mt-3 text-xs text-muted">
-        Nimiq Pay shows the exact amount when you approve, including its own fee. Swaps are executed non-custodially by{" "}
-        {quote.providerName} via a Lightning hold invoice; NimBill never holds your funds.
+        Nimiq Pay shows the exact amount when you approve, including its own fee. Swaps are executed non-custodially by {quote.providerName}{" "}
+        via a Lightning hold invoice; NimBill never holds your funds.
       </p>
       <div className="mt-4 flex items-center justify-between border-t border-line pt-4 text-sm">
         <span className="text-muted">Quote valid for</span>
@@ -820,11 +820,7 @@ function RecentWithdrawals({ list, onSelect }: { list: WithdrawalView[]; onSelec
                   <p className="flex items-center gap-1.5 font-semibold tabular-nums">
                     <TokenLogo asset={w.asset} className="h-4 w-4" />
                     {stable(w.receiveAmount)} {w.asset}
-                    {chain && (
-                      <span className="font-normal text-muted">
-                        on {chain.name}
-                      </span>
-                    )}
+                    {chain && <span className="font-normal text-muted">on {chain.name}</span>}
                   </p>
                   <p className="mt-0.5 truncate font-mono text-xs text-muted">
                     {shortHex(w.destination)} · {w.id}

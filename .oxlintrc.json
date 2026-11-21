@@ -1,32 +1,11 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": [
-    "eslint",
-    "typescript",
-    "react",
-    "nextjs",
-    "jsx_a11y",
-    "import",
-    "unicorn",
-    "oxc",
-    "promise",
-    "node",
-    "react_perf"
-  ],
-  "jsPlugins": [
-    "@next/eslint-plugin-next"
-  ],
+  "plugins": ["eslint", "typescript", "react", "nextjs", "jsx_a11y", "import", "unicorn", "oxc", "promise", "node", "react_perf"],
+  "jsPlugins": ["@next/eslint-plugin-next"],
   "categories": {
     "correctness": "off"
   },
-  "ignorePatterns": [
-    ".next/**",
-    "out/**",
-    "build/**",
-    "next-env.d.ts",
-    "node_modules/**",
-    ".data/**"
-  ],
+  "ignorePatterns": [".next/**", "out/**", "build/**", "next-env.d.ts", "node_modules/**", ".data/**"],
   "rules": {
     "@next/next/no-location-assign-relative-destination": "warn",
     "bun/axios-no-unbounded-requests": "error",
@@ -237,12 +216,8 @@
     "jsx_a11y/alt-text": [
       "warn",
       {
-        "elements": [
-          "img"
-        ],
-        "img": [
-          "Image"
-        ]
+        "elements": ["img"],
+        "img": ["Image"]
       }
     ],
     "jsx_a11y/anchor-ambiguous-text": "error",
