@@ -1,0 +1,6 @@
+[test]
+root = "tests"
+# Files run in a random order, so a test that only passes after another one shows up as a failure.
+# Module isolation is set on the command line (`bun run test`, and CI): bun test ignores an
+# `isolate` key here, and without it every file shares one copy of src/lib.
+randomize = true

@@ -44,19 +44,9 @@ jobs:
       - name: Typecheck
         run: bunx next typegen && bun check
 
-      # None of these need a database, a dev server or any secrets.
-      - run: bun run test:address
-      - run: bun run test:tags
-      - run: bun run test:earnings
-      - run: bun run test:webhooks
-      - run: bun run test:webhook-health
-      - run: bun run test:webhook-events
-      - run: bun run test:recurring
-      - run: bun run test:recurring-lifecycle
-      - run: bun run test:receipt-email
-      - run: bun run test:withdraw
-      - run: bun run test:withdraw-status
-      - run: bun run test:mcp
+      # Every file in tests/: in-memory databases, no dev server, no secrets. Random order, one worker per core.
+      - name: Tests
+        run: bun run test
 
   build:
     name: Build

@@ -2,22 +2,14 @@
 // cycle, the worker's claim (no double invoices when runs overlap), "issue now", resume, and the
 // client's unsubscribe link. Runs against an in-memory PGlite, never .data or a real database, and
 // sends no email.
-// Run: npm run test:recurring-lifecycle
+// Run: bun test tests/recurring-lifecycle.test.ts
+import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { PGlite } from "@electric-sql/pglite";
-import { drizzle } from "drizzle-orm/pglite";
 import { eq } from "drizzle-orm";
 import * as schema from "../src/lib/db/schema.ts";
+import { memoryDb } from "./memory-db.ts";
 
-delete process.env.DATABASE_URL;
-delete process.env.RESEND_API_KEY;
-
-// Hand getDb() an in-memory database through its connection cache (see src/lib/db/index.ts).
-const client = new PGlite();
-(globalThis as Record<string, unknown>).__nimbillConn = Promise.resolve({
-  db: drizzle(client, { schema }),
-  migrate: async (sql: string) => void (await client.exec(sql)),
-});
+memoryDb();
 
 const { getDb } = await import("../src/lib/db/index.ts");
 const rec = await import("../src/lib/recurring.ts");
@@ -41,14 +33,9 @@ const invoicesFor = async (id: string) => db.select().from(schema.invoices).wher
 const get = async (id: string) => (await rec.getRecurringInvoice(id))!;
 const setNext = (id: string, nextRunDate: string) => db.update(t).set({ nextRunDate }).where(eq(t.id, id));
 
-let passed = 0;
-const check = async (name: string, fn: () => Promise<void>) => {
-  await fn();
-  passed++;
-  console.log(`PASS ${name}`);
-};
+const check = (name: string, fn: () => Promise<void>) => test(name, fn);
 
-await check("starting today issues the first invoice and stores the anchor day", async () => {
+check("starting today issues the first invoice and stores the anchor day", async () => {
   const { recurring, invoice } = await rec.createRecurringInvoice({ ...base, interval: "monthly" });
   assert.ok(invoice);
   assert.equal(invoice.recurringId, recurring.id);
@@ -57,7 +44,7 @@ await check("starting today issues the first invoice and stores the anchor day",
   assert.equal(recurring.nextRunDate, rec.addInterval(today, "monthly", recurring.anchorDay));
 });
 
-await check("a future start date issues nothing yet", async () => {
+check("a future start date issues nothing yet", async () => {
   const start = rec.addDaysToDate(today, 10);
   const { recurring, invoice } = await rec.createRecurringInvoice({ ...base, interval: "weekly", startDate: start });
   assert.equal(invoice, null);
@@ -65,7 +52,7 @@ await check("a future start date issues nothing yet", async () => {
   assert.equal(recurring.generatedCount, 0);
 });
 
-await check("overlapping worker runs issue a due cycle exactly once", async () => {
+check("overlapping worker runs issue a due cycle exactly once", async () => {
   const { recurring } = await rec.createRecurringInvoice({ ...base, interval: "weekly" });
   await setNext(recurring.id, today);
   await Promise.all([rec.advanceDueRecurring(merchant), rec.advanceDueRecurring(merchant), rec.advanceDueRecurring()]);
@@ -75,7 +62,7 @@ await check("overlapping worker runs issue a due cycle exactly once", async () =
   assert.ok(after.nextRunDate > today);
 });
 
-await check("missed cycles catch up with one invoice and keep the anchor day", async () => {
+check("missed cycles catch up with one invoice and keep the anchor day", async () => {
   const { recurring } = await rec.createRecurringInvoice({ ...base, interval: "monthly" });
   // Pretend the schedule began on a 31st and the worker was down for about three months.
   const past = rec.addDaysToDate(today, -95);
@@ -87,7 +74,7 @@ await check("missed cycles catch up with one invoice and keep the anchor day", a
   assert.ok(after.nextRunDate > today);
 });
 
-await check("issue now bills the upcoming cycle and moves the schedule past it", async () => {
+check("issue now bills the upcoming cycle and moves the schedule past it", async () => {
   const start = rec.addDaysToDate(today, 5);
   const { recurring } = await rec.createRecurringInvoice({ ...base, interval: "weekly", startDate: start });
   const { recurring: after, invoice } = await rec.updateRecurringSchedule(recurring.id, merchant, "issue_now");
@@ -100,7 +87,7 @@ await check("issue now bills the upcoming cycle and moves the schedule past it",
   assert.equal((await invoicesFor(recurring.id)).length, 1);
 });
 
-await check("issue now racing the worker on a due cycle issues it once", async () => {
+check("issue now racing the worker on a due cycle issues it once", async () => {
   const { recurring } = await rec.createRecurringInvoice({ ...base, interval: "weekly" });
   await setNext(recurring.id, today);
   const results = await Promise.allSettled([
@@ -112,7 +99,7 @@ await check("issue now racing the worker on a due cycle issues it once", async (
   assert.equal((await invoicesFor(recurring.id)).length, 2); // the first cycle + one for today
 });
 
-await check("resume skips cycles missed while paused and keeps the anchor day", async () => {
+check("resume skips cycles missed while paused and keeps the anchor day", async () => {
   const { recurring } = await rec.createRecurringInvoice({ ...base, interval: "monthly" });
   await rec.updateRecurringSchedule(recurring.id, merchant, "pause");
   const past = rec.addDaysToDate(today, -40);
@@ -124,12 +111,12 @@ await check("resume skips cycles missed while paused and keeps the anchor day", 
   assert.equal(after.nextRunDate, rec.nextFutureDate(past, "monthly", today, 31));
 });
 
-await check("another merchant can't control the schedule", async () => {
+check("another merchant can't control the schedule", async () => {
   const { recurring } = await rec.createRecurringInvoice({ ...base, interval: "weekly" });
   await assert.rejects(rec.updateRecurringSchedule(recurring.id, "NQ00 SOMEONE ELSE", "cancel"), /not found/i);
 });
 
-await check("unsubscribe needs a valid token and cancels once", async () => {
+check("unsubscribe needs a valid token and cancels once", async () => {
   const { recurring } = await rec.createRecurringInvoice({ ...base, interval: "weekly" });
   await assert.rejects(rec.unsubscribeRecurringSchedule(recurring.id, "0".repeat(32)), /invalid/i);
   const token = rec.recurringUnsubscribeToken(recurring.id);
@@ -143,6 +130,3 @@ await check("unsubscribe needs a valid token and cancels once", async () => {
   assert.equal(after.cancelledBy, "client");
   await assert.rejects(rec.updateRecurringSchedule(recurring.id, merchant, "issue_now"), /cancelled/);
 });
-
-console.log(`\n${passed} recurring lifecycle checks passed`);
-process.exit(0);

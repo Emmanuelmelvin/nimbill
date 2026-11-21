@@ -1,4 +1,5 @@
 // Unit tests for the rules shared by the browser and the server: tags, board requests, cheques, agent docs.
+import { expect, test } from "bun:test";
 import { agentStepsText, agentUrl } from "../src/lib/agent-docs.ts";
 import { ENDPOINTS, openApiSpec, skillMarkdown } from "../src/lib/api-reference.ts";
 import {
@@ -29,11 +30,8 @@ import {
 import { BoardInvoiceBody, ChequeClaimBody, ChequeHtlcBody, NewChequeBody, NewTransferBody, ProductBody } from "../src/lib/schemas.ts";
 import { TagInput, avatarUrl, formatTag, normalizeTag, suggestTag, tagProblem } from "../src/lib/tags.ts";
 
-let failed = 0;
-const ok = (c: unknown, m: string) => {
-  console.log((c ? "PASS " : "FAIL ") + m);
-  if (!c) failed++;
-};
+// Each check is its own test: the condition is worked out in order, then reported.
+const ok = (c: unknown, m: string) => test(m, () => expect(c).toBeTruthy());
 
 // ---- tags ----
 ok(normalizeTag("  @Chidi@NimBill ") === "chidi", "normalize strips @, @nimbill, case and spaces");
@@ -287,8 +285,3 @@ ok(
     htlcCreateFields.htlcSenderAddress,
   "a TimeoutResolve signed with the link secret is not from the HTLC's refund address",
 );
-
-if (failed) {
-  console.log(`\n${failed} failed`);
-  process.exitCode = 1;
-}
