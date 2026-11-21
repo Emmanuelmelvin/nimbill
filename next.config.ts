@@ -5,6 +5,9 @@ const nextConfig: NextConfig = {
   // PGlite (local dev database) ships WASM + data files that must not be bundled; winston loads
   // its transports dynamically and runs best unbundled on the server.
   serverExternalPackages: ["@electric-sql/pglite", "winston", "winston-transport"],
+  // CI type checks in its own job (bun check, the same tsconfig and route types), so its Build job
+  // sets NIMBILL_CI_TYPECHECKED to skip this copy. Every other build, Vercel's included, still checks.
+  typescript: { ignoreBuildErrors: process.env.NIMBILL_CI_TYPECHECKED === "1" },
   // Allow loading the dev server from a phone on the LAN (Nimiq Pay "Custom URL").
   // 172.* covers the whole 172.16–31 private range, including iPhone hotspots (172.20.10.x).
   // *.outray.app: HTTPS tunnel for testing in Nimiq Pay from anywhere (`outray 3000`).
