@@ -42,7 +42,7 @@ jobs:
       - name: Format
         run: bun fmt --check
       - name: Typecheck
-        run: bunx next typegen && bunx tsc --noEmit
+        run: bunx next typegen && bun check
 
       # None of these need a database, a dev server or any secrets.
       - run: bun run test:address
