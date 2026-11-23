@@ -3,6 +3,7 @@ import {
   assertSpendAllowed,
   broadcastRawTx,
   buildAndSignNimiqTx,
+  checkTagProof,
   chequeHtlcPreImage,
   clientNonceForTx,
   completeDualHtlcCreationSignature,
@@ -23,8 +24,10 @@ import {
   serializeBasicTxContent,
   serializeHtlcCreationTxContent,
   serializeHtlcSpendTxContent,
+  signNimiqMessage,
   spendingLimits,
   spentLast24h,
+  tagProofMessage,
 } from "./wallet.mjs";
 
 export const MCP_TOOLS = [
@@ -40,7 +43,7 @@ export const MCP_TOOLS = [
   {
     name: "setup_profile",
     description:
-      "Set or update the AI agent's NimBill merchant profile: display name, public @tag (e.g. 'shopbot' -> shopbot@nimbill), bio, default currency, or notification email.",
+      "Set or update the AI agent's NimBill merchant profile: display name, public @tag (e.g. 'shopbot' -> shopbot@nimbill), bio, default currency, or notification email. The agent's wallet signs the tag, so people paying it can check it goes to this wallet.",
     inputSchema: {
       type: "object",
       properties: {
@@ -54,7 +57,8 @@ export const MCP_TOOLS = [
   },
   {
     name: "lookup_tag",
-    description: "Resolve a NimBill @tag (e.g. 'ada' or 'ada@nimbill') to its owner's name, Nimiq wallet address, and avatar.",
+    description:
+      "Resolve a NimBill @tag (e.g. 'ada' or 'ada@nimbill') to its owner's name, Nimiq wallet address, and avatar. confirmedByOwner is true when the owner's wallet signed that the tag is theirs (checked locally, not taken from NimBill); if false, have the user check the name and address before paying.",
     inputSchema: {
       type: "object",
       properties: {
@@ -174,7 +178,7 @@ export const MCP_TOOLS = [
   {
     name: "send_to_tag",
     description:
-      "Send NIM from the agent's wallet to someone's NimBill @tag (amount in NIM or any supported fiat currency). Signs and broadcasts the on-chain Nimiq transaction with the transfer memo. Irreversible; spending limits apply.",
+      "Send NIM from the agent's wallet to someone's NimBill @tag (amount in NIM or any supported fiat currency). Signs and broadcasts the on-chain Nimiq transaction with the transfer memo. Refuses, sending nothing, if the tag's owner signature doesn't match its address. Irreversible; spending limits apply.",
     inputSchema: {
       type: "object",
       properties: {
@@ -414,7 +418,16 @@ export async function executeTool(name, args = {}, client) {
     case "setup_profile": {
       const body = {
         ...(args.name !== undefined ? { name: args.name } : {}),
-        ...(args.tag !== undefined ? { tag: args.tag } : {}),
+        // Signed by the agent's wallet, so whoever pays the tag can check it goes to this wallet.
+        ...(args.tag !== undefined
+          ? {
+              tag: args.tag,
+              tagProof: {
+                publicKey: wallet.publicKeyHex,
+                signature: signNimiqMessage(tagProofMessage(cleanTag(args.tag), wallet.address), wallet.secretKey),
+              },
+            }
+          : {}),
         ...(args.bio !== undefined ? { bio: args.bio } : {}),
         ...(args.defaultCurrency !== undefined ? { displayCurrency: args.defaultCurrency } : {}),
       };
@@ -426,8 +439,11 @@ export async function executeTool(name, args = {}, client) {
       };
     }
 
-    case "lookup_tag":
-      return await client.request(`/api/tags/${encodeURIComponent(cleanTag(args.tag))}`);
+    case "lookup_tag": {
+      const res = await client.request(`/api/tags/${encodeURIComponent(cleanTag(args.tag))}`);
+      // true: the owner's wallet signed that this tag is theirs, checked here and not taken from NimBill.
+      return { ...res, confirmedByOwner: checkTagProof(res.owner.tag, res.owner.address, res.owner.proof) };
+    }
 
     case "get_rates": {
       const currency = (args.currency || "USD").toUpperCase();
@@ -528,6 +544,15 @@ export async function executeTool(name, args = {}, client) {
     }
 
     case "send_to_tag": {
+      // Check the owner's signature ourselves before any money moves (see tagProofMessage).
+      const toTag = cleanTag(args.to);
+      const { owner } = await client.request(`/api/tags/${encodeURIComponent(toTag)}`);
+      if (owner.proof && !checkTagProof(owner.tag, owner.address, owner.proof)) {
+        throw toolError(
+          "TAG_NOT_CONFIRMED",
+          `Couldn't confirm that ${owner.tag}@nimbill belongs to ${owner.address}. Nothing was sent. Ask the recipient for their address.`,
+        );
+      }
       const created = await client.request("/api/transfers", {
         method: "POST",
         auth: true,
@@ -537,6 +562,9 @@ export async function executeTool(name, args = {}, client) {
       const t = created.transfer;
       // What to send (recipient, Luna, memo) is in `payment`, not on the transfer itself.
       const pay = created.payment;
+      if (normalizeAddress(pay.recipient) !== normalizeAddress(owner.address)) {
+        throw toolError("TAG_NOT_CONFIRMED", `NimBill gave a different wallet for ${owner.tag}@nimbill than its lookup. Nothing was sent.`);
+      }
 
       if (args.dryRun) {
         const signed = buildAndSignNimiqTx({

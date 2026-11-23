@@ -17,6 +17,8 @@ export const GET = handle(async () => {
       displayCurrency: null,
       tag: null,
       tagChangedAt: null,
+      tagPublicKey: null,
+      tagSignature: null,
       bio: null,
       boardOpenAmounts: true,
       avatarVersion: null,

@@ -56,6 +56,7 @@ Running from a clone of this repo instead? Use `"command": "node"` with `"args":
 - **Keep only small amounts in the agent wallet.** Anything that can run the agent can spend from it.
 - **Encrypt the key.** Without `NIMBILL_WALLET_PASSPHRASE` the key is stored in plain text. On Windows the file's owner-only mode has no effect, so other programs running as you can read it.
 - **Spending limits** stop a single call, or a run of calls, from draining the wallet. They are enforced locally and logged in `spend-log.json` next to the wallet file.
+- **Tags are checked locally.** `lookup_tag` and `send_to_tag` check the tag owner's wallet signature on your machine, so a wallet address swapped in on NimBill's side is refused. Tags whose owners haven't signed yet show `confirmedByOwner: false`.
 - **`buy_from_board` doesn't pay unless `payNow: true`**, and the paying tools are marked `destructiveHint` so MCP clients can ask before running them.
 - **Cheque secrets are saved** in `cheques.json` next to the wallet file before a cheque is funded, so the agent can always cancel cheques it wrote (`cancel_cheque` accepts just the cheque number).
 
@@ -66,8 +67,8 @@ Running from a clone of this repo instead? Use `"command": "node"` with `"args":
 | Tool             | Description                                                                                              |
 | ---------------- | -------------------------------------------------------------------------------------------------------- |
 | `wallet_status`  | Check the agent's `NQ…` address, live on-chain NIM balance, and NimBill `@tag` profile                   |
-| `setup_profile`  | Set the agent's display name, bio, default currency, and claim a `@tag`                                  |
-| `lookup_tag`     | Resolve any `tag@nimbill` to its owner's name, Nimiq address, and avatar                                 |
+| `setup_profile`  | Set the agent's display name, bio, default currency, and claim a `@tag` (signed by the agent's wallet)   |
+| `lookup_tag`     | Resolve any `tag@nimbill` to its owner's name and Nimiq address, and check the owner's signature         |
 | `get_rates`      | Live NIM and USDT prices in 19 supported fiat currencies                                                 |
 | `get_board`      | Read a merchant's `/pay/<tag>` board and listed products                                                 |
 | `buy_from_board` | Create an order on `/pay/<tag>` and pay it on-chain from the agent's wallet                              |
@@ -75,7 +76,7 @@ Running from a clone of this repo instead? Use `"command": "node"` with `"args":
 | `pay_invoice`    | Lock a quote, sign & broadcast the NIM payment with memo, and verify on-chain                            |
 | `create_invoice` | Create a new invoice so clients or other agents can pay the agent                                        |
 | `list_invoices`  | List all invoices created by the agent                                                                   |
-| `send_to_tag`    | Send NIM to any `@tag` and verify the transfer on-chain                                                  |
+| `send_to_tag`    | Send NIM to any `@tag` (refused if its signature fails) and verify the transfer on-chain                 |
 | `write_cheque`   | Create and fund a non-custodial cheque (free or locked to a `@tag`), returning the link and `CHQ-…` code |
 | `cash_cheque`    | Cash a cheque link or `CHQ-…` code on-chain to the agent's wallet or any `@tag`                          |
 | `cancel_cheque`  | Cancel an uncashed cheque written by the agent and reclaim the NIM                                       |

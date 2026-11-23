@@ -29,11 +29,21 @@ import { useSession } from "@/lib/client/session";
 import { polygonWallet } from "@/lib/client/wallet";
 import { formatAsset, formatFiat, LUNA_PER_NIM, USDT_DECIMALS } from "@/lib/currencies";
 import { AppError, Errors } from "@/lib/errors";
+import { normalizeAddress } from "@/lib/nimiq-address";
+import { type TagProof, checkTagProof } from "@/lib/tag-proof";
 import { formatTag, normalizeTag, tagProblem } from "@/lib/tags";
 import type { TransferView } from "@/lib/transfers";
 
 type Asset = "NIM" | "USDT";
-type Owner = { tag: string; handle: string; name: string; address: string; acceptsUsdt: boolean; avatarUrl: string | null };
+type Owner = {
+  tag: string;
+  handle: string;
+  name: string;
+  address: string;
+  acceptsUsdt: boolean;
+  avatarUrl: string | null;
+  proof: TagProof | null;
+};
 type Payment = { asset: Asset; recipient: string; amount: string; memo: string | null };
 
 const ASSETS = [
@@ -89,20 +99,35 @@ function Send() {
   );
 }
 
-/** Looks up the tag a moment after typing stops, so the sender sees who it belongs to. */
+/**
+ * Looks up the tag a moment after typing stops, so the sender sees who it belongs to. The owner's
+ * signature is checked here in the browser: a tag whose signature doesn't match its address is
+ * refused, so money can't go to a wallet that was swapped in on NimBill's side.
+ */
 function useRecipient(value: string, myTag: string | null) {
   const tag = normalizeTag(value);
   const problem = tag ? tagProblem(tag) : null;
-  const [found, setFound] = useState<{ tag: string; owner: Owner | null; message: string | null } | null>(null);
+  const [found, setFound] = useState<{ tag: string; owner: Owner | null; confirmed: boolean; message: string | null } | null>(null);
   useEffect(() => {
     if (!tag || problem || tag === myTag) return;
     const t = setTimeout(() => {
       api<{ owner: Owner }>(`/api/tags/${encodeURIComponent(tag)}`)
-        .then((r) => setFound({ tag, owner: r.owner, message: null }))
+        .then(({ owner }) => {
+          const confirmed = checkTagProof(owner.tag, owner.address, owner.proof);
+          if (owner.proof && !confirmed)
+            return setFound({
+              tag,
+              owner: null,
+              confirmed: false,
+              message: `We couldn't confirm that ${owner.handle} goes to its owner's wallet, so we won't send to it. Ask them for their wallet address instead.`,
+            });
+          setFound({ tag, owner, confirmed, message: null });
+        })
         .catch((e) =>
           setFound({
             tag,
             owner: null,
+            confirmed: false,
             message: AppError.is(e) && e.code === "NOT_FOUND" ? "No one has that tag. Check the spelling." : (e as Error).message,
           }),
         );
@@ -110,11 +135,12 @@ function useRecipient(value: string, myTag: string | null) {
     return () => clearTimeout(t);
   }, [tag, problem, myTag]);
 
-  if (!tag) return { tag, owner: null, message: null, checking: false };
-  if (problem) return { tag, owner: null, message: "That isn't a NimBill tag.", checking: false };
-  if (tag === myTag) return { tag, owner: null, message: "That's your own tag.", checking: false };
-  if (found?.tag !== tag) return { tag, owner: null, message: null, checking: true };
-  return { tag, owner: found.owner, message: found.message, checking: false };
+  const none = { owner: null, confirmed: false };
+  if (!tag) return { tag, ...none, message: null, checking: false };
+  if (problem) return { tag, ...none, message: "That isn't a NimBill tag.", checking: false };
+  if (tag === myTag) return { tag, ...none, message: "That's your own tag.", checking: false };
+  if (found?.tag !== tag) return { tag, ...none, message: null, checking: true };
+  return { tag, owner: found.owner, confirmed: found.confirmed, message: found.message, checking: false };
 }
 
 function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; defaultCurrency: string; myTag: string | null }) {
@@ -211,6 +237,13 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
       created = await create();
     } catch (e) {
       setError((e as Error).message);
+      return setPhase({ k: "form" });
+    }
+    // Only ever pay the address that was shown (and, for a confirmed tag, checked above).
+    if (normalizeAddress(created.payment.recipient) !== normalizeAddress(recipient.owner.address)) {
+      setError(
+        `NimBill gave a different wallet for ${recipient.owner.handle} than the one shown, so nothing was sent. Look the tag up again.`,
+      );
       return setPhase({ k: "form" });
     }
     setPhase({ k: "wallet", ...created });
@@ -353,12 +386,18 @@ function SendFlow({ initialTo, defaultCurrency, myTag }: { initialTo: string; de
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-3">
                     <p className="min-w-0 truncate font-semibold">{recipient.owner.name}</p>
-                    <span className="shrink-0 font-mono text-[11px] font-semibold">✓ TAG FOUND</span>
+                    <span className="shrink-0 font-mono text-[11px] font-semibold">
+                      {recipient.confirmed ? "✓ CONFIRMED" : "✓ TAG FOUND"}
+                    </span>
                   </div>
                   <p className="mt-0.5 font-mono text-xs text-muted">{shortAddress(recipient.owner.address)}</p>
                 </div>
               </div>
-              <p className="mt-2 text-xs text-muted">Check the name before you send. Payments can&apos;t be undone.</p>
+              <p className="mt-2 text-xs text-muted">
+                {recipient.confirmed
+                  ? "Their wallet confirmed this tag is theirs. Check the name before you send. Payments can't be undone."
+                  : "They haven't confirmed this tag with their wallet yet. Check the name and address with them before you send. Payments can't be undone."}
+              </p>
             </div>
           )}
         </Card>

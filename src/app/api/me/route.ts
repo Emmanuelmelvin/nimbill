@@ -8,6 +8,8 @@ import { ensureMerchant } from "@/lib/invoices";
 import { CURRENCY_CODES } from "@/lib/currencies";
 import { setMerchantTag } from "@/lib/merchant-tags";
 import { MerchantEmail } from "@/lib/schemas";
+import { Errors } from "@/lib/errors";
+import { TagProofInput } from "@/lib/tag-proof";
 import { TagInput } from "@/lib/tags";
 
 const Body = z.object({
@@ -24,6 +26,9 @@ const Body = z.object({
   displayCurrency: z.enum(CURRENCY_CODES, { error: "Unsupported currency" }).nullable().optional(),
   // The public handle ("chidi" or "chidi@nimbill"). Once claimed it can be changed but not removed.
   tag: TagInput.optional(),
+  // The wallet's signature that `tag` belongs to this account (lib/tag-proof.ts). Sent with the
+  // current tag, it only adds the signature.
+  tagProof: TagProofInput.optional(),
   // Public board settings. An empty bio clears it.
   bio: z.string().trim().max(160, "Keep the bio under 160 characters").optional(),
   boardOpenAmounts: z.boolean().optional(),
@@ -36,7 +41,8 @@ export const POST = handle(async (req: Request) => {
   const body = Body.parse(await req.json());
   await ensureMerchant(address);
   // First, so a taken tag stops the whole save and nothing is half-updated.
-  if (body.tag !== undefined) await setMerchantTag(address, body.tag);
+  if (body.tagProof && body.tag === undefined) throw Errors.validation("Send the tag the signature is for.");
+  if (body.tag !== undefined) await setMerchantTag(address, body.tag, body.tagProof);
   const db = await getDb();
   const changes = {
     ...(body.name !== undefined ? { name: body.name } : {}),

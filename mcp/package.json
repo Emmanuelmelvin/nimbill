@@ -1,6 +1,6 @@
 {
   "name": "nimbill-mcp",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "NimBill Agent Wallet MCP server: gives any AI agent its own non-custodial Nimiq wallet, @tag, on-chain payments, invoices and cheques.",
   "type": "module",
   "bin": {

@@ -19,7 +19,13 @@ export default function Safety() {
       <ul className="list-disc space-y-1.5 pl-5 text-muted">
         <li>Give agents a spending limit, and a wallet that holds only what they may spend.</li>
         <li>Never ask anyone for a seed phrase or private key. Hand off with a link instead.</li>
-        <li>Check the tag (GET /api/tags/&#123;tag&#125;): lookalike tags exist.</li>
+        <li>
+          Check the tag (GET /api/tags/&#123;tag&#125;) and its owner&apos;s signature (see{" "}
+          <Link href="/docs/tags" className="underline underline-offset-4">
+            Checking a tag
+          </Link>
+          ): lookalike tags exist.
+        </li>
       </ul>
 
       <H2 id="limits">Limits and guarantees</H2>

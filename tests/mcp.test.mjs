@@ -393,6 +393,7 @@ if (serverUp) {
 
   const looked = await callTool("lookup_tag", { tag: agentTag });
   ok(!looked.isError && looked.data.owner?.address === w1.address, `MCP lookup_tag resolves ${agentTag}@nimbill to ${w1.address}`);
+  ok(looked.data?.confirmedByOwner === true, "MCP setup_profile signs the tag, and lookup_tag checks that signature");
 
   const board = await callTool("get_board", { tag: agentTag });
   ok(!board.isError && board.data.merchant?.name === "Ada AI Agent", "MCP get_board reads agent's public pay board");

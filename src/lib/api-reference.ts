@@ -230,7 +230,7 @@ export const ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/api/tags/{tag}",
     summary: "Look up a tag",
-    why: "Check who owns a tag before money moves: their name, wallet address and whether they take USDT.",
+    why: "Check who owns a tag before money moves: their name, wallet address and whether they take USDT. `proof` is the owner's wallet signature that the tag is theirs (null until they sign); check it yourself, see /docs/tags.",
     params: [{ name: "tag", type: "string", required: true, description: "The tag, with or without @nimbill." }],
     example: {
       response: {
@@ -241,6 +241,7 @@ export const ENDPOINTS: Endpoint[] = [
           address: "NQ16 ADMA EM3A 32VA BTBJ SA58 B0FV 909J FQE4",
           acceptsUsdt: true,
           avatarUrl: "/api/avatars/ada?v=1",
+          proof: { publicKey: "<64 hex characters>", signature: "<128 hex characters>" },
         },
       },
     },

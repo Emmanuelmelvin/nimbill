@@ -13,6 +13,10 @@ export const merchants = pgTable("merchants", {
   // Public handle, shown as "<tag>@nimbill" (see lib/tags.ts). Unique; null until claimed.
   tag: text("tag").unique(),
   tagChangedAt: timestamp("tag_changed_at", { withTimezone: true }),
+  // The owner's wallet signature that `tag` belongs to `address` (see lib/tag-proof.ts), and the
+  // public key it was made with. Both hex. Null for tags set before signing, until the owner signs.
+  tagPublicKey: text("tag_public_key"),
+  tagSignature: text("tag_signature"),
   // Public board: a line about the merchant, and whether visitors may pay any amount they type.
   bio: text("bio"),
   boardOpenAmounts: boolean("board_open_amounts").notNull().default(true),
@@ -486,6 +490,8 @@ ALTER TABLE invoices ADD COLUMN IF NOT EXISTS paid_tip text;
 ALTER TABLE merchants ADD COLUMN IF NOT EXISTS tag text;
 ALTER TABLE merchants ADD COLUMN IF NOT EXISTS tag_changed_at timestamptz;
 CREATE UNIQUE INDEX IF NOT EXISTS merchants_tag_idx ON merchants (tag);
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS tag_public_key text;
+ALTER TABLE merchants ADD COLUMN IF NOT EXISTS tag_signature text;
 CREATE TABLE IF NOT EXISTS retired_tags (
   tag text PRIMARY KEY,
   address text NOT NULL,

@@ -4,7 +4,9 @@ import { api, type MerchantInfo } from "@/lib/client/api";
 import { useSession } from "@/lib/client/session";
 import { toast } from "@/lib/client/toast";
 import { inNimiqPay, walletErrorMessage } from "@/lib/client/nimiq";
+import { signTag } from "@/lib/client/tag-proof";
 import { polygonWallet } from "@/lib/client/wallet";
+import type { TagProof } from "@/lib/tag-proof";
 import { TAG_CHANGE_COOLDOWN_DAYS, suggestTag } from "@/lib/tags";
 import { TagField, useTagStatus } from "./TagField";
 import { Alert, Button, Card, Checkbox, Field, Input } from "./ui";
@@ -57,6 +59,17 @@ export function ProfileForm({
         e.preventDefault();
         setBusy(true);
         setError(null);
+        const tagChanged = tagCheck.tag !== merchant?.tag;
+        let tagProof: TagProof | null = null;
+        if (tagChanged && merchant) {
+          // The wallet confirms the new tag is this account's, so people paying it can check that.
+          try {
+            tagProof = await signTag(tagCheck.tag, merchant.address);
+          } catch (err) {
+            setError(walletErrorMessage(err) ?? "Nothing was saved. Approve the request in Nimiq Pay to confirm the tag is yours.");
+            return setBusy(false);
+          }
+        }
         try {
           const { merchant: m } = await api<{ merchant: MerchantInfo }>("/api/me", {
             // An empty email clears the saved one, which turns the notifications off.
@@ -65,7 +78,7 @@ export function ProfileForm({
               evmAddress: usdt ? evm || null : null,
               ...(withEmail ? { email: email.trim() } : {}),
               // Only when it changed, so saving other fields never runs into the tag's waiting period.
-              ...(tagCheck.tag !== merchant?.tag ? { tag: tagCheck.tag } : {}),
+              ...(tagChanged ? { tag: tagCheck.tag, ...(tagProof ? { tagProof } : {}) } : {}),
             },
           });
           setMerchant(m);

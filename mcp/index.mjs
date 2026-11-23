@@ -45,7 +45,7 @@ async function handleRequest(req) {
         return sendResult(id, {
           protocolVersion: SUPPORTED_VERSIONS.includes(requested) ? requested : SUPPORTED_VERSIONS[0],
           capabilities: { tools: {}, resources: {} },
-          serverInfo: { name: "nimbill-agent-wallet", version: "1.1.0" },
+          serverInfo: { name: "nimbill-agent-wallet", version: "1.2.0" },
           instructions:
             `You have your own non-custodial Nimiq wallet (${wallet.address}) connected to NimBill (${client.baseUrl}). ` +
             "Call wallet_status to inspect your balance, @tag and spending limits, and setup_profile to set your name and claim a @tag. " +

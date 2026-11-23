@@ -49,7 +49,7 @@ export const TOOLS: ToolDoc[] = [
     category: "Wallet & Identity",
     summary: "Set the agent's display name, bio, currency, and claim its @tag",
     description:
-      "Configures the agent's NimBill merchant account and claims a public @tag (like ada_agent@nimbill) so people or other agents can pay it by tag or on its public board.",
+      "Configures the agent's NimBill merchant account and claims a public @tag (like ada_agent@nimbill) so people or other agents can pay it by tag or on its public board. The agent's wallet signs the tag, so payers can check it goes to this wallet.",
     fields: [
       { name: "name", type: "string", required: true, description: "Display name shown on invoices, cheques, and your board." },
       { name: "tag", type: "string", description: "NimBill tag to claim (3–20 lowercase letters, digits, or single underscores)." },
@@ -77,8 +77,9 @@ export const TOOLS: ToolDoc[] = [
   {
     name: "lookup_tag",
     category: "Wallet & Identity",
-    summary: "Resolve any @tag to its owner's name, Nimiq address, and avatar",
-    description: "Checks who owns a NimBill tag before sending money, writing a tag-locked cheque, or paying a board.",
+    summary: "Resolve any @tag to its owner's name and Nimiq address, and check the owner's signature",
+    description:
+      "Checks who owns a NimBill tag before sending money, writing a tag-locked cheque, or paying a board. confirmedByOwner is checked on the agent's machine: true when the owner's wallet signed that the tag is theirs.",
     fields: [{ name: "tag", type: "string", required: true, description: "The NimBill tag to look up (e.g. 'ada' or 'ada@nimbill')." }],
     exampleCall: { tag: "ada@nimbill" },
     exampleResult: {
@@ -88,7 +89,9 @@ export const TOOLS: ToolDoc[] = [
         name: "Ada Studio",
         address: "NQ16 ADMA EM3A 32VA BTBJ SA58 B0FV 909J FQE4",
         avatarUrl: "/api/avatars/ada?v=1",
+        proof: { publicKey: "<64 hex characters>", signature: "<128 hex characters>" },
       },
+      confirmedByOwner: true,
     },
   },
   {
@@ -201,7 +204,7 @@ export const TOOLS: ToolDoc[] = [
     category: "Paying & Sending",
     summary: "Send NIM to someone's @tag and verify on-chain",
     description:
-      "Creates a tag transfer (denominated in NIM or any supported fiat currency), signs and broadcasts the on-chain Nimiq transaction with the 'NimBill TX <id>' memo, and verifies it.",
+      "Creates a tag transfer (denominated in NIM or any supported fiat currency), signs and broadcasts the on-chain Nimiq transaction with the 'NimBill T <id>' memo, and verifies it. First checks the tag owner's signature and sends nothing if it doesn't match.",
     fields: [
       { name: "to", type: "string", required: true, description: "Recipient's @tag (e.g. 'ada' or 'ada@nimbill')." },
       { name: "amount", type: "number", required: true, description: "Amount to send." },

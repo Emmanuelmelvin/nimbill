@@ -1,14 +1,54 @@
 "use client";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Button, Card, CodeBlock, CopyButton, Eyebrow, Field, Header, OpenInNimiqPay, PageTitle } from "@/components/ui";
+import { Alert, Button, Card, CodeBlock, CopyButton, Eyebrow, Field, Header, OpenInNimiqPay, PageTitle } from "@/components/ui";
 import { CurrencySelect } from "@/components/CurrencySelect";
 import { ProfileForm } from "@/components/ProfileForm";
 import { WebhooksCard } from "@/components/WebhooksCard";
 import { api, type MerchantInfo } from "@/lib/client/api";
+import { walletErrorMessage } from "@/lib/client/nimiq";
 import { signOut, useSession } from "@/lib/client/session";
+import { signTag } from "@/lib/client/tag-proof";
 import { toast } from "@/lib/client/toast";
+import { Errors } from "@/lib/errors";
 import { formatTag } from "@/lib/tags";
+
+/**
+ * For tags set before signing: the wallet signs that the tag is this account's, so people sending
+ * money can check it hasn't been switched to another wallet.
+ */
+function ConfirmTag({ tag, address }: { tag: string; address: string }) {
+  const { setMerchant } = useSession();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function confirm() {
+    setBusy(true);
+    setError(null);
+    try {
+      const tagProof = await signTag(tag, address);
+      if (!tagProof) throw Errors.wallet("Open NimBill in Nimiq Pay to confirm your tag.");
+      const { merchant } = await api<{ merchant: MerchantInfo }>("/api/me", { body: { tag, tagProof } });
+      setMerchant(merchant);
+      toast.success("Tag confirmed");
+    } catch (e) {
+      setError(walletErrorMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+  return (
+    <div className="space-y-3 border-b border-line pb-3">
+      <Alert kind="info" title="Confirm your tag">
+        Approve one request in Nimiq Pay to show that {formatTag(tag)} is yours. People who send you money can then check it really goes to
+        your wallet. Nothing is sent and it costs nothing.
+      </Alert>
+      {error && <Alert kind="error">{error}</Alert>}
+      <Button variant="secondary" size="sm" block className="min-h-11" loading={busy} onClick={confirm}>
+        Confirm with my wallet
+      </Button>
+    </div>
+  );
+}
 
 /** The currency totals, the earnings chart and new goals are shown in. Saves as soon as it is picked. */
 function DisplayCurrency() {
@@ -76,6 +116,7 @@ export default function Settings() {
               <CopyButton text={formatTag(merchant.tag)} size="sm" className="min-h-11 shrink-0" />
             </div>
           )}
+          {merchant.tag && !merchant.tagSignature && <ConfirmTag tag={merchant.tag} address={merchant.address} />}
           <Eyebrow>Payments go to</Eyebrow>
           <CodeBlock className="text-sm">{merchant.address}</CodeBlock>
           <CopyButton text={merchant.address} label="Copy address" size="sm" block className="min-h-11" />

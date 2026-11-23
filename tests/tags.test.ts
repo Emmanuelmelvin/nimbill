@@ -285,3 +285,40 @@ ok(
     htlcCreateFields.htlcSenderAddress,
   "a TimeoutResolve signed with the link secret is not from the HTLC's refund address",
 );
+
+// ---- signed tags (lib/tag-proof.ts, and the agent's copy in mcp/wallet.mjs) ----
+{
+  const { ed25519 } = await import("@noble/curves/ed25519.js");
+  const { bytesToHex } = await import("@noble/hashes/utils.js");
+  const { checkTagProof, tagProofMessage, verifyNimiqSignedMessage } = await import("../src/lib/tag-proof.ts");
+  const { addressFromPublicKey } = await import("../src/lib/nimiq-address.ts");
+  const agent = await import("../mcp/wallet.mjs");
+
+  const owner = ed25519.utils.randomSecretKey();
+  const other = ed25519.utils.randomSecretKey();
+  const ownerAddress = addressFromPublicKey(ed25519.getPublicKey(owner));
+  const otherAddress = addressFromPublicKey(ed25519.getPublicKey(other));
+  const sign = (sk: Uint8Array, message: string) => ({
+    publicKey: bytesToHex(ed25519.getPublicKey(sk)),
+    signature: agent.signNimiqMessage(message, sk),
+  });
+  const proof = sign(owner, tagProofMessage("ada", ownerAddress));
+
+  ok(
+    tagProofMessage("@Ada@NimBill", ownerAddress.replace(/ /g, "").toLowerCase()) === `NimBill tag\nada@nimbill belongs to ${ownerAddress}`,
+    "the signed sentence uses the clean tag and the grouped address",
+  );
+  ok(tagProofMessage("ada", ownerAddress) === agent.tagProofMessage("ada", ownerAddress), "the agent builds the same sentence");
+  ok(checkTagProof("ada", ownerAddress, proof), "a tag signed by its owner checks out");
+  ok(checkTagProof("ADA@nimbill", ownerAddress.replace(/ /g, ""), proof), "the check accepts any spelling of the same tag and address");
+  ok(agent.checkTagProof("ada", ownerAddress, proof), "the agent's check agrees");
+  ok(!checkTagProof("ada", otherAddress, proof), "refuses the signature when the address was swapped");
+  ok(!checkTagProof("bob", ownerAddress, proof), "refuses the signature for a different tag");
+  ok(!agent.checkTagProof("ada", otherAddress, proof), "the agent refuses a swapped address too");
+  // Someone else signs "ada belongs to <owner's address>": their key isn't the owner's.
+  ok(!checkTagProof("ada", ownerAddress, sign(other, tagProofMessage("ada", ownerAddress))), "refuses a signature by another wallet");
+  ok(!checkTagProof("ada", ownerAddress, null), "no proof is not a confirmed tag");
+  ok(!checkTagProof("ada", ownerAddress, { publicKey: "zz", signature: proof.signature }), "refuses a malformed key");
+  ok(!checkTagProof("ada", "NQ00 nonsense", proof), "refuses a malformed address");
+  ok(!verifyNimiqSignedMessage("Sign in to NimBill", proof.publicKey, proof.signature), "a tag signature can't be used to sign in");
+}

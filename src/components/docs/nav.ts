@@ -115,6 +115,18 @@ export const DOC_TABS: DocTab[] = [
             ],
           },
           {
+            href: "/docs/tags",
+            title: "Checking a tag",
+            isNew: true,
+            keywords: "tag lookup resolve signature verify confirmed handle @nimbill wallet",
+            headings: [
+              ["lookup", "Look the tag up"],
+              ["sentence", "What the owner signs"],
+              ["check", "Check it before you pay"],
+              ["results", "What to do with the result"],
+            ],
+          },
+          {
             href: "/docs/safety",
             title: "Safety and limits",
             headings: [

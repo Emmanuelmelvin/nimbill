@@ -1,12 +1,12 @@
 import "server-only";
 import { cookies } from "next/headers";
-import { ed25519 } from "@noble/curves/ed25519.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hmac } from "@noble/hashes/hmac.js";
 import { bytesToHex, hexToBytes, randomBytes, utf8ToBytes } from "@noble/hashes/utils.js";
 import { env, isProd } from "./env";
 import { Errors } from "./errors";
 import { addressFromPublicKey } from "./nimiq-address";
+import { verifyNimiqSignedMessage } from "./tag-proof";
 
 const COOKIE = "nimbill_session";
 const SESSION_TTL_S = 60 * 60 * 24 * 30; // 30 days
@@ -50,20 +50,10 @@ function checkChallenge(message: string): boolean {
   return Number.isFinite(t) && Date.now() - t < CHALLENGE_TTL_MS && t - Date.now() < 60_000;
 }
 
-/** Nimiq signed-message scheme: ed25519(sha256("\x16Nimiq Signed Message:\n" + len + message)). */
-export function verifyNimiqSignature(message: string, publicKeyHex: string, signatureHex: string): boolean {
-  try {
-    const data = utf8ToBytes(`\x16Nimiq Signed Message:\n${message.length}${message}`);
-    return ed25519.verify(hexToBytes(signatureHex), sha256(data), hexToBytes(publicKeyHex));
-  } catch {
-    return false;
-  }
-}
-
 export function verifySignIn(message: string, publicKeyHex: string, signatureHex: string): string | null {
   if (!checkChallenge(message)) return null;
   if (!/^[0-9a-f]{64}$/i.test(publicKeyHex) || !/^[0-9a-f]{128}$/i.test(signatureHex)) return null;
-  if (!verifyNimiqSignature(message, publicKeyHex, signatureHex)) return null;
+  if (!verifyNimiqSignedMessage(message, publicKeyHex, signatureHex)) return null;
   return addressFromPublicKey(hexToBytes(publicKeyHex));
 }
 

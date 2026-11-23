@@ -299,6 +299,33 @@ export function signNimiqMessage(message, secretKey) {
   return bytesToHex(ed25519.sign(digest, secretKey));
 }
 
+// ---------- Signed tags (the same rules as src/lib/tag-proof.ts in the NimBill app) ----------
+
+/** The sentence a tag's owner signs: that `tag` (already cleaned, no "@nimbill") belongs to `address`. */
+export function tagProofMessage(tag, address) {
+  return `NimBill tag\n${tag}@nimbill belongs to ${normalizeAddress(address) ?? address}`;
+}
+
+/**
+ * Whether the owner of `address` signed that `tag` is theirs. `proof` is the { publicKey, signature }
+ * a tag lookup returns. False for a missing or broken proof.
+ */
+export function checkTagProof(tag, address, proof) {
+  if (!proof || !/^[0-9a-f]{64}$/i.test(proof.publicKey) || !/^[0-9a-f]{128}$/i.test(proof.signature)) return false;
+  const wallet = normalizeAddress(address);
+  if (!wallet || addressFromPublicKey(hexToBytes(proof.publicKey)) !== wallet) return false;
+  const bytes = utf8ToBytes(tagProofMessage(tag, wallet));
+  const prefix = utf8ToBytes(`\x16Nimiq Signed Message:\n${bytes.length}`);
+  const payload = new Uint8Array(prefix.length + bytes.length);
+  payload.set(prefix, 0);
+  payload.set(bytes, prefix.length);
+  try {
+    return ed25519.verify(hexToBytes(proof.signature), sha256(payload), hexToBytes(proof.publicKey));
+  } catch {
+    return false;
+  }
+}
+
 function encodeVarint(n) {
   const out = [];
   let v = n >>> 0;
