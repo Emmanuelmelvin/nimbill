@@ -12,6 +12,8 @@
 //   health    every 5 min warn merchants whose URL keeps failing, then remove it (webhook-health.ts)
 //   withdraw  every 5 s   move open withdrawals forward: claim swaps, confirm delivery on-chain
 //   stuck     every 5 min log withdrawals paid but not delivered after 30 minutes
+//   payin     every 10 s  follow payments from other chains (lib/payin): once the USDT reaches the
+//                         merchant on Polygon, mark the invoice paid, even after the client closed the page
 //
 // It runs the app's own code from src/lib (one set of payment rules, one schema), loaded by
 // worker/loader.mjs. Start it with `bun run worker`, or `bun run worker -- --once` to run every
@@ -23,6 +25,7 @@ import { advanceDueRecurring } from "../src/lib/recurring";
 import { deliverDue, sweepMissedEvents } from "../src/lib/webhook-delivery";
 import { checkEndpointHealth } from "../src/lib/webhook-health";
 import { expireStoreInvoices, watchStoreInvoices } from "../src/lib/webhook-watch";
+import { advanceOpenPayins, payinsLive } from "../src/lib/payin/service";
 import { advanceOpenWithdrawals, reportStuckWithdrawals, withdrawalsLive } from "../src/lib/withdraw/service";
 
 type Job = { name: string; everyMs: number; run: () => Promise<unknown> };
@@ -41,6 +44,8 @@ const JOBS: Job[] = [
   { name: "sweep", everyMs: 60_000, run: sweepMissedEvents },
   { name: "recurring", everyMs: 5 * 60_000, run: () => advanceDueRecurring() },
   { name: "health", everyMs: 5 * 60_000, run: () => checkEndpointHealth() },
+  // Payments from other chains also advance while the pay screen is open; this finishes the rest.
+  ...(payinsLive() ? [{ name: "payin", everyMs: 10_000, run: () => advanceOpenPayins() }] : []),
   // Withdrawals only run where they are switched on (WITHDRAW_LIVE). They also advance whenever
   // the Withdraw screen asks for a status, but only this job finishes them once the app is closed.
   ...(withdrawalsLive()

@@ -7,7 +7,8 @@ import { logger } from "./logger";
 export const metrics = {
   invoiceCreated: (currency: string) => Sentry.metrics.count("invoice.created", 1, { attributes: { currency } }),
   quoteCreated: (asset: "NIM" | "USDT") => Sentry.metrics.count("quote.created", 1, { attributes: { asset } }),
-  invoicePaid: (asset: "NIM" | "USDT", via: "hash" | "recovery") => Sentry.metrics.count("invoice.paid", 1, { attributes: { asset, via } }),
+  invoicePaid: (asset: "NIM" | "USDT", via: "hash" | "recovery" | "swap") =>
+    Sentry.metrics.count("invoice.paid", 1, { attributes: { asset, via } }),
   apiError: (code: string, status: number) => Sentry.metrics.count("api.error", 1, { attributes: { code, status: String(status) } }),
 };
 

@@ -395,6 +395,50 @@ export const withdrawSwaps = pgTable("withdraw_swaps", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+// "Pay from another chain" (lib/payin): a client paying an invoice with USDT/USDC on another chain.
+// 1Click gave a one-time deposit address on `sourceId`'s chain; it swaps what arrives there into
+// exactly `receiveAmount` USDT on Polygon and sends it to the merchant. `quoteId` is the NimBill
+// USDT price lock it pays, so the Polygon transfer settles the invoice the same way a Nimiq Pay
+// USDT payment does.
+export type PayinStatus =
+  | "awaiting_deposit" // waiting for the client to send
+  | "incomplete" // less than the amount to send arrived; more can still be sent before the deadline
+  | "swapping" // the deposit arrived; 1Click is swapping and sending it to the merchant
+  | "paid" // the USDT reached the merchant and the invoice is paid
+  | "delivered_unmatched" // the USDT reached the merchant, but the invoice was already paid or closed
+  | "refunded" // it couldn't go through; the money went back to `refundTo`
+  | "failed" // 1Click reports a failure: needs a human
+  | "expired"; // nothing arrived before the deadline
+
+export const payins = pgTable("payins", {
+  id: text("id").primaryKey(), // "pi_…"
+  invoiceId: text("invoice_id").notNull(),
+  quoteId: text("quote_id").notNull(),
+  sourceId: text("source_id").notNull(), // a PAYIN_SOURCES id, e.g. "tron-usdt"
+  refundTo: text("refund_to").notNull(), // the client's own address on the source chain
+  depositAddress: text("deposit_address").notNull().unique(),
+  depositMemo: text("deposit_memo"),
+  // Smallest units of the source token: what the client is asked to send (rounded up to the cent),
+  // and the least 1Click accepts.
+  sendAmount: text("send_amount").notNull(),
+  minSendAmount: text("min_send_amount"),
+  receiveAmount: text("receive_amount").notNull(), // 6-decimal USDT reaching the merchant
+  deadline: timestamp("deadline", { withTimezone: true }).notNull(), // what the client is told: send before this
+  // When 1Click stops accepting deposits to the address (it adds 72 hours to `deadline`). A late
+  // deposit before then can still go through, so the payment is watched until this.
+  providerDeadline: timestamp("provider_deadline", { withTimezone: true }),
+  status: text("status").$type<PayinStatus>().notNull().default("awaiting_deposit"),
+  providerStatus: text("provider_status"), // 1Click's last status, as it said it
+  depositTxHash: text("deposit_tx_hash"),
+  payoutTxHash: text("payout_tx_hash"), // the Polygon USDT transfer to the merchant
+  refundedAmount: text("refunded_amount"),
+  correlationId: text("correlation_id"), // 1Click's id for the quote, for support
+  quoteSignature: text("quote_signature"), // 1Click's signature over the quote, kept in case of a dispute
+  checkedAt: timestamp("checked_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 // Who wants to cash out to a bank or mobile money once that exists, and how: demand data for
 // choosing the first fiat partner. One row per Nimiq address.
 export const fiatWaitlist = pgTable("fiat_waitlist", {
@@ -407,6 +451,7 @@ export const fiatWaitlist = pgTable("fiat_waitlist", {
 });
 
 export type Withdrawal = typeof withdrawals.$inferSelect;
+export type Payin = typeof payins.$inferSelect;
 export type WebhookEndpoint = typeof webhookEndpoints.$inferSelect;
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type Cheque = typeof cheques.$inferSelect;
@@ -709,4 +754,30 @@ CREATE UNIQUE INDEX IF NOT EXISTS webhook_events_once_tx_idx ON webhook_events (
 DROP INDEX IF EXISTS webhook_events_once_idx;
 CREATE INDEX IF NOT EXISTS invoices_expiring_idx ON invoices (expires_at) WHERE status = 'unpaid' AND expires_at IS NOT NULL;
 ALTER TABLE webhook_endpoints ADD COLUMN IF NOT EXISTS events jsonb NOT NULL DEFAULT '["invoice.paid","invoice.expired","invoice.payment_issue"]';
+CREATE TABLE IF NOT EXISTS payins (
+  id text PRIMARY KEY,
+  invoice_id text NOT NULL,
+  quote_id text NOT NULL,
+  source_id text NOT NULL,
+  refund_to text NOT NULL,
+  deposit_address text NOT NULL UNIQUE,
+  deposit_memo text,
+  send_amount text NOT NULL,
+  min_send_amount text,
+  receive_amount text NOT NULL,
+  deadline timestamptz NOT NULL,
+  status text NOT NULL DEFAULT 'awaiting_deposit',
+  provider_status text,
+  deposit_tx_hash text,
+  payout_tx_hash text,
+  refunded_amount text,
+  correlation_id text,
+  quote_signature text,
+  checked_at timestamptz,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE payins ADD COLUMN IF NOT EXISTS provider_deadline timestamptz;
+CREATE INDEX IF NOT EXISTS payins_invoice_idx ON payins (invoice_id);
+CREATE INDEX IF NOT EXISTS payins_open_idx ON payins (created_at) WHERE status IN ('awaiting_deposit', 'incomplete', 'swapping');
 `;

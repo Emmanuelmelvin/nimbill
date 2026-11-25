@@ -5,6 +5,7 @@ import { isValidPointHex } from "./cheque-crypto";
 import { CURRENCY_CODES } from "./currencies";
 import { UNIT_CODES } from "./money";
 import { normalizeAddress } from "./nimiq-address";
+import { PAYIN_SOURCE_IDS } from "./payin/sources";
 import { STORE_INVOICE_EXPIRY_MAX_MIN, STORE_INVOICE_EXPIRY_MIN_MIN } from "./webhook-policy";
 
 export const LineItemInput = z.object({
@@ -98,6 +99,12 @@ export const QuoteBody = z.object({
     .transform((n) => Math.round(n * 100) / 100),
   /** Optional email where the payer receives a copy of the paid invoice and downloadable PDF receipt. */
   payerEmail: PayerEmail,
+});
+
+/** "Pay from another chain" (lib/payin): the coin paid with, and where it goes back if the payment can't go through. */
+export const PayinStartBody = QuoteBody.omit({ asset: true }).extend({
+  source: z.enum(PAYIN_SOURCE_IDS, "Pick a coin to pay with."),
+  refundTo: z.string().trim().min(1, "Paste your refund address.").max(100),
 });
 
 export const VerifyBody = z.object({
