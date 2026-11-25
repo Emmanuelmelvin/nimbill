@@ -5,6 +5,7 @@ import { api, type PublicInvoice, type PublicPayin } from "@/lib/client/api";
 import { AppError } from "@/lib/errors";
 import { PAYIN_SOURCES, checkRefundAddress, getPayinSource, type Coin, type PayinSource } from "@/lib/payin/sources";
 import type { ChainId } from "@/lib/withdraw/chains";
+import { BTC_LOGO, DOGE_LOGO, LTC_LOGO } from "./coin-logo-shapes";
 import { ChainLogo, TokenLogo } from "./withdraw/logos";
 import {
   Alert,
@@ -55,25 +56,21 @@ const COIN_CHAIN: Partial<Record<Coin, ChainId>> = {
   POL: "polygon",
   AVAX: "avalanche",
 };
-// Coins whose chain NimBill has no logo for: the coin's sign on its brand colour.
-const COIN_GLYPH: Partial<Record<Coin, { sign: string; color: string }>> = {
-  BTC: { sign: "₿", color: "#F7931A" },
-  LTC: { sign: "Ł", color: "#345D9D" },
-  DOGE: { sign: "Ð", color: "#C2A633" },
-};
+// Coins on chains withdrawals don't use, so withdraw/logos.tsx has no logo for them.
+const COIN_SHAPES: Partial<Record<Coin, typeof BTC_LOGO>> = { BTC: BTC_LOGO, LTC: LTC_LOGO, DOGE: DOGE_LOGO };
 
 /** A coin's logo on its own: USDT, USDC, BTC, ETH, SOL… */
 export function CoinLogo({ coin, className }: { coin: Coin; className?: string }) {
   if (coin === "USDT" || coin === "USDC") return <TokenLogo asset={coin} className={className} />;
   const chain = COIN_CHAIN[coin];
   if (chain) return <ChainLogo chain={chain} className={className} />;
-  const g = COIN_GLYPH[coin]!;
+  const logo = COIN_SHAPES[coin]!;
   return (
-    <svg aria-hidden viewBox="0 0 24 24" className={cx("shrink-0", className)}>
-      <circle cx="12" cy="12" r="11" fill={g.color} />
-      <text x="12" y="16.5" textAnchor="middle" fontSize="13" fontWeight="700" fill="#fff" fontFamily="system-ui, sans-serif">
-        {g.sign}
-      </text>
+    <svg aria-hidden viewBox="0 0 24 24" fill="none" className={cx("shrink-0", className)}>
+      {logo.background && <circle cx="12" cy="12" r="12" fill={logo.background} />}
+      {logo.shapes.map(([fill, d], i) => (
+        <path key={i} fill={fill} d={d} />
+      ))}
     </svg>
   );
 }
