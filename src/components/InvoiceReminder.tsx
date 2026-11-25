@@ -1,7 +1,6 @@
 "use client";
 import { AnchorButton, Badge, CopyButton, copyText, cx, Dropdown, useOrigin, type DropdownOption } from "@/components/ui";
 import type { PublicInvoice } from "@/lib/client/api";
-import { openInNimiqPayLink } from "@/lib/client/nimiq";
 import { toast } from "@/lib/client/toast";
 import { formatFiat } from "@/lib/currencies";
 import { localDate, parseLocalDate } from "@/lib/earnings";
@@ -74,7 +73,7 @@ export function RemindActions({
 }) {
   const origin = useOrigin();
   if (!origin) return null;
-  const message = reminderMessage(inv, openInNimiqPayLink(`${origin}/i/${inv.id}`));
+  const message = reminderMessage(inv, `${origin}/i/${inv.id}`);
   const btn = size === "sm" ? "min-h-10" : undefined;
   const subject = `Reminder: invoice ${inv.number} from ${inv.merchantName}`;
   return (
@@ -114,7 +113,7 @@ export function RemindMenu({ inv, clientEmail, className }: { inv: PublicInvoice
   const origin = useOrigin();
   if (!origin) return null;
   const late = daysOverdue(inv);
-  const message = reminderMessage(inv, openInNimiqPayLink(`${origin}/i/${inv.id}`));
+  const message = reminderMessage(inv, `${origin}/i/${inv.id}`);
   const subject = `Reminder: invoice ${inv.number} from ${inv.merchantName}`;
   const options: DropdownOption<ReminderPick>[] = [
     { value: "whatsapp", label: "WhatsApp" },

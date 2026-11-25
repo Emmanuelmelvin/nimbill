@@ -3,6 +3,7 @@ import { and, desc, eq, gt, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { getAddress } from "viem";
 import { getDb, schema } from "./db";
 import type { Invoice, LineItem, PaymentIssueReason, Quote } from "./db/schema";
+import { env } from "./env";
 import { Errors } from "./errors";
 import { notifyInvoicePaid } from "./notifications";
 import { metrics } from "./observability";
@@ -187,7 +188,14 @@ export const isPastExpiry = (inv: Invoice, now = Date.now()) => !!inv.expiresAt 
 
 const EXPIRED_MESSAGE = "This invoice has expired, so it can't be paid now. Go back to the shop to start again.";
 
-export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0, payerEmail?: string | null): Promise<Quote> {
+export async function createQuote(
+  inv: Invoice,
+  asset: "NIM" | "USDT",
+  tip = 0,
+  payerEmail?: string | null,
+  /** How long the price holds. Payments from another chain (lib/payin) need longer than the usual 5 minutes. */
+  ttlMs = QUOTE_TTL_MS,
+): Promise<Quote> {
   if (inv.status === "expired" || (inv.status === "unpaid" && isPastExpiry(inv))) throw Errors.badRequest(EXPIRED_MESSAGE);
   if (inv.status !== "unpaid")
     throw Errors.badRequest(inv.status === "paid" ? "This invoice is already paid." : "This invoice was cancelled.");
@@ -216,10 +224,16 @@ export async function createQuote(inv: Invoice, asset: "NIM" | "USDT", tip = 0, 
       rate: String(rate),
       tip: tipFiat.toFixed(2),
       payerEmail: cleanPayerEmail,
-      expiresAt: new Date(Date.now() + QUOTE_TTL_MS),
+      expiresAt: new Date(Date.now() + ttlMs),
     })
     .returning();
   return q;
+}
+
+export async function getQuoteById(id: string): Promise<Quote | null> {
+  const db = await getDb();
+  const [q] = await db.select().from(schema.quotes).where(eq(schema.quotes.id, id));
+  return q ?? null;
 }
 
 /**
@@ -456,6 +470,41 @@ export async function verifyPayment(
 }
 
 /**
+ * Settle an invoice with the Polygon USDT transfer a swap made for `q` ("Pay from another chain",
+ * lib/payin). The swap service names the transaction; this reads it on Polygon and only accepts a
+ * transfer to the merchant's address of at least the locked price before its unique cents tag
+ * (see usdt-amounts.ts), made after the price was locked. The payment is tied to this quote by the swap
+ * itself, so the tag doesn't need to match to the last unit.
+ */
+export async function settleSwapPayment(inv: Invoice, q: Quote, txHash: string): Promise<VerifyResult> {
+  if (inv.status === "paid") return { status: "paid", invoice: inv };
+  if (inv.status !== "unpaid") return { status: "rejected", message: "This invoice was closed before the payment arrived." };
+  if (q.invoiceId !== inv.id || q.asset !== "USDT") return { status: "rejected", message: "This payment is for another invoice." };
+  if (!/^0x[0-9a-f]{64}$/i.test(txHash)) return { status: "rejected", message: "Invalid transaction hash." };
+  if (!inv.merchantEvmAddress) return { status: "rejected", message: "This merchant does not accept USDT." };
+  const tx = await polygon.getUsdtTransfers(txHash);
+  if (tx.status === "pending") return { status: "pending", message: "Waiting for Polygon to confirm the payment…" };
+  if (tx.status === "reverted") return { status: "rejected", message: "The payment to the merchant failed on Polygon." };
+  const merchant = getAddress(inv.merchantEvmAddress);
+  const priceUnits = BigInt(q.amount) - (BigInt(q.amount) % BigInt(10 ** (USDT_DECIMALS - 2)));
+  const t = tx.transfers.find((x) => getAddress(x.to) === merchant && x.value >= priceUnits);
+  if (!t) return { status: "rejected", message: "This transaction doesn't pay the merchant the invoice amount." };
+  if (!t.confirmed) return { status: "pending", message: "Confirming on Polygon…" };
+  // No upper time limit: 1Click still swaps a deposit that came in late (up to 72 h), and the swap
+  // ties it to this invoice, so the merchant's money counts. It can't be from before the lock.
+  if (t.timestamp < q.createdAt.getTime() - 60_000) return { status: "rejected", message: "This payment is older than the price lock." };
+  const updated = await markPaid(inv, q, txHash, t.from, new Date(t.timestamp), t.value);
+  if (updated) {
+    metrics.invoicePaid("USDT", "swap");
+    return { status: "paid", invoice: updated };
+  }
+  const fresh = await getInvoice(inv.id);
+  return fresh?.status === "paid"
+    ? { status: "paid", invoice: fresh }
+    : { status: "rejected", message: "This transaction was already used." };
+}
+
+/**
  * Find payments for unpaid invoices that we never got a transaction hash for: the payer closed
  * the app too early, or paid NIM from another wallet via the payment link / QR.
  * NIM: scan the merchant's recent transactions for the invoice memo.
@@ -576,6 +625,8 @@ export function publicInvoice(inv: Invoice) {
     merchantAddress: inv.merchantAddress,
     merchantName: inv.merchantName,
     acceptsUsdt: !!inv.merchantEvmAddress,
+    /** "Pay from another chain" (lib/payin): USDT/USDC from Tron, BNB Chain, Solana… arriving as USDT on Polygon. */
+    payFromOtherChains: env.PAYIN_LIVE === "true" && !!inv.merchantEvmAddress && !inv.isDemo,
     merchantEvmAddress: inv.merchantEvmAddress,
     clientName: inv.clientName,
     items: inv.items,

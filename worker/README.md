@@ -13,6 +13,7 @@ web app and makes outgoing HTTPS requests.
 | `health`   | 5 min | Warns merchants whose URL has failed for 24 h, removes it after 5 days (emails both times)                                                                                         |
 | `withdraw` | 5 s   | Moves open withdrawals forward: claims swaps (gasless), confirms delivery on-chain. Only with `WITHDRAW_LIVE=true`                                                                 |
 | `stuck`    | 5 min | Logs withdrawals paid but not delivered after 30 minutes. Only with `WITHDRAW_LIVE=true`                                                                                           |
+| `payin`    | 10 s  | Follows payments from other chains (Tron, BNB Chain, Solana…): marks the invoice paid once the USDT reaches the merchant on Polygon. Off with `PAYIN_LIVE=false`                   |
 
 The worker runs the web app's own code from `src/lib` (the same payment matching, the same schema),
 so the two can't disagree about whether an invoice is paid. Node runs the TypeScript directly; there
@@ -20,20 +21,21 @@ is no build step.
 
 ## Environment
 
-| Variable                               | Required  | Notes                                                                                                        |
-| -------------------------------------- | --------- | ------------------------------------------------------------------------------------------------------------ |
-| `DATABASE_URL`                         | yes       | The **same** Postgres database as the web app                                                                |
-| `WEBHOOK_KEY_SECRET`                   | yes       | The **same** value as the web app (it decrypts the stores' secrets)                                          |
-| `SITE_URL`                             | yes       | The web app's public address, e.g. `https://nimbill.example`, for links                                      |
-| `NODE_ENV`                             | yes       | `production` (the Docker image sets it)                                                                      |
-| `NIMIQ_RPC_URL`                        | no        | Same defaults as the web app                                                                                 |
-| `POLYGON_RPC_URL`                      | no        |                                                                                                              |
-| `COINGECKO_API_KEY`                    | no        | USD values of payments                                                                                       |
-| `RESEND_API_KEY`, `MAIL_FROM`          | no        | "Invoice paid" emails for payments the worker finds                                                          |
-| `LOG_LEVEL`, `NEXT_PUBLIC_SENTRY_DSN`  | no        | Logs and error reports                                                                                       |
-| `WITHDRAW_LIVE`                        | no        | `true` to run real withdrawals. Same value as the web app                                                    |
-| `WITHDRAW_MNEMONIC`                    | with live | The **same** recovery phrase as the web app (it claims the swaps). See [withdrawals](../docs/withdrawals.md) |
-| `ETHEREUM_RPC_URL`, `ARBITRUM_RPC_URL` | no        | Confirm withdrawals on those chains. Defaults: publicnode, arb1                                              |
+| Variable                               | Required  | Notes                                                                                                                      |
+| -------------------------------------- | --------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `DATABASE_URL`                         | yes       | The **same** Postgres database as the web app                                                                              |
+| `WEBHOOK_KEY_SECRET`                   | yes       | The **same** value as the web app (it decrypts the stores' secrets)                                                        |
+| `SITE_URL`                             | yes       | The web app's public address, e.g. `https://nimbill.example`, for links                                                    |
+| `NODE_ENV`                             | yes       | `production` (the Docker image sets it)                                                                                    |
+| `NIMIQ_RPC_URL`                        | no        | Same defaults as the web app                                                                                               |
+| `POLYGON_RPC_URL`                      | no        |                                                                                                                            |
+| `COINGECKO_API_KEY`                    | no        | USD values of payments                                                                                                     |
+| `RESEND_API_KEY`, `MAIL_FROM`          | no        | "Invoice paid" emails for payments the worker finds                                                                        |
+| `LOG_LEVEL`, `NEXT_PUBLIC_SENTRY_DSN`  | no        | Logs and error reports                                                                                                     |
+| `WITHDRAW_LIVE`                        | no        | `true` to run real withdrawals. Same value as the web app                                                                  |
+| `WITHDRAW_MNEMONIC`                    | with live | The **same** recovery phrase as the web app (it claims the swaps). See [withdrawals](../docs/withdrawals.md)               |
+| `ETHEREUM_RPC_URL`, `ARBITRUM_RPC_URL` | no        | Confirm withdrawals on those chains. Defaults: publicnode, arb1                                                            |
+| `PAYIN_LIVE`, `ONECLICK_API_KEY`       | no        | Payments from other chains. Same values as the web app. See [payments from other chains](../docs/pay-from-other-chains.md) |
 
 ## Run it
 

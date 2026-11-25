@@ -333,6 +333,8 @@ function SharePanel({
   const url = origin ? `${origin}/i/${inv.id}` : "";
   const [showQr, setShowQr] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // The plain NimBill link: it opens in any browser, where the client can pay with Nimiq Pay or
+  // (payFromOtherChains) from another chain. Inside Nimiq Pay it goes straight to paying.
   const nimiqPayUrl = url ? openInNimiqPayLink(url) : "";
   const shareText = `Invoice ${inv.number} from ${inv.merchantName}: ${formatFiat(inv.total, inv.currency)}. Pay with NIM${inv.acceptsUsdt ? " or USDT" : ""}:`;
 
@@ -340,30 +342,32 @@ function SharePanel({
     <Card className="space-y-3">
       <CardHeader
         title="Get paid"
-        description={`Send this link to ${inv.clientName}. It opens the invoice in Nimiq Pay, where they can pay in a few taps.`}
+        description={
+          inv.payFromOtherChains
+            ? `Send this link to ${inv.clientName}. It opens in any browser: they can pay with Nimiq Pay, or with crypto from another chain or exchange.`
+            : `Send this link to ${inv.clientName}. It opens the invoice, and they pay in a few taps with Nimiq Pay.`
+        }
       />
       <ViewedStatus viewedAt={viewedAt} />
       {/* Overdue: the reminder comes first, it's the one thing to do now. */}
       {late > 0 && <RemindMenu inv={inv} clientEmail={clientEmail} />}
-      <CodeBlock>{nimiqPayUrl || "…"}</CodeBlock>
+      <CodeBlock>{url || "…"}</CodeBlock>
       <div className="grid grid-cols-2 gap-2">
         {canShare ? (
-          <Button onClick={() => navigator.share({ title: `Invoice ${inv.number}`, text: shareText, url: nimiqPayUrl }).catch(() => {})}>
-            Share
-          </Button>
+          <Button onClick={() => navigator.share({ title: `Invoice ${inv.number}`, text: shareText, url }).catch(() => {})}>Share</Button>
         ) : (
-          <AnchorButton href={`https://wa.me/?text=${encodeURIComponent(`${shareText} ${nimiqPayUrl}`)}`} target="_blank" rel="noreferrer">
+          <AnchorButton href={`https://wa.me/?text=${encodeURIComponent(`${shareText} ${url}`)}`} target="_blank" rel="noreferrer">
             WhatsApp
           </AnchorButton>
         )}
-        <CopyButton text={nimiqPayUrl} label="Copy link" />
+        <CopyButton text={url} label="Copy link" />
       </div>
       <Button variant="secondary" block onClick={() => setShowQr((s) => !s)}>
         {showQr ? "Hide QR code" : "Show QR code (in person)"}
       </Button>
-      {showQr && nimiqPayUrl && (
+      {showQr && url && (
         <div className="flex flex-col items-center gap-2 border border-line py-4">
-          <QRCodeSVG value={nimiqPayUrl} size={220} level="M" />
+          <QRCodeSVG value={url} size={220} level="M" />
           <p className="text-xs text-muted">Client scans with their phone camera</p>
         </div>
       )}
@@ -384,7 +388,7 @@ function SharePanel({
             <RemindActions inv={inv} clientEmail={clientEmail} size="sm" />
           </div>
         )}
-        <CopyButton text={url} label="Copy plain web link" size="sm" block className="min-h-11" />
+        <CopyButton text={nimiqPayUrl} label="Copy Nimiq Pay link" size="sm" block className="min-h-11" />
         <Button
           variant="danger"
           size="sm"

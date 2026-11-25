@@ -9,6 +9,7 @@ import { formatAsset, formatFiat } from "@/lib/currencies";
 import { AppError, Errors } from "@/lib/errors";
 import { MAX_TIP, PayerEmail } from "@/lib/schemas";
 import { CurrencyLabel } from "./CurrencyIcon";
+import { CoinLogo, PayFromOtherChain, savedPayinId } from "./PayFromOtherChain";
 import {
   Alert,
   AnchorButton,
@@ -63,6 +64,10 @@ export function PayPanel({
   const [phase, setPhase] = useState<Phase>({ k: "choose" });
   const [error, setError] = useState<string | null>(null);
   const [external, setExternal] = useState(false);
+  // "Pay from another chain" (PayFromOtherChain): opened by the client, or straight away when this
+  // browser already started such a payment for this invoice.
+  // (The panel only renders after the invoice loads in the browser, so reading storage here is safe.)
+  const [otherChain, setOtherChain] = useState(() => inv.payFromOtherChains && !!savedPayinId(inv.id));
   const [tipChoice, setTipChoice] = useState<TipChoice>("0");
   const [customTip, setCustomTip] = useState("");
   const [payerEmail, setPayerEmail] = useState("");
@@ -198,7 +203,32 @@ export function PayPanel({
     <Card className="space-y-4" aria-live="polite">
       <CardHeader title="Pay this invoice" />
 
-      {phase.k === "choose" || phase.k === "quoting" ? (
+      {otherChain && inv.payFromOtherChains ? (
+        <PayFromOtherChain
+          inv={inv}
+          tip={tip}
+          payerEmail={cleanEmail && !emailInvalid ? cleanEmail : undefined}
+          blocked={tipTooLarge || emailInvalid}
+          extras={
+            <>
+              {canTip && (
+                <TipPicker
+                  inv={inv}
+                  choice={tipChoice}
+                  onChoice={setTipChoice}
+                  custom={customTip}
+                  onCustom={setCustomTip}
+                  tip={tip}
+                  tooLarge={tipTooLarge}
+                />
+              )}
+              <PayerEmailField value={payerEmail} onChange={setPayerEmail} invalid={emailInvalid} />
+            </>
+          }
+          onPaid={(paid) => onPaid(paid, cleanEmail && !emailInvalid ? cleanEmail : undefined)}
+          onBack={() => setOtherChain(false)}
+        />
+      ) : phase.k === "choose" || phase.k === "quoting" ? (
         <>
           {canSwitch && (
             <SegmentedControl kind="radio" label="Pay with" size="md" block options={ASSETS} value={asset} onChange={setAsset} />
@@ -233,6 +263,19 @@ export function PayPanel({
             <>
               <PayerEmailField value={payerEmail} onChange={setPayerEmail} invalid={emailInvalid} />
               <OpenInNimiqPay text="Pay in a few taps with the Nimiq Pay wallet." />
+              {inv.payFromOtherChains && (
+                <div className="space-y-1.5">
+                  <Button variant="secondary" block onClick={() => setOtherChain(true)}>
+                    Pay from another chain or exchange
+                  </Button>
+                  <p className="flex items-center justify-center gap-2 text-xs text-muted">
+                    {(["USDT", "USDC", "BTC", "ETH", "SOL", "BNB", "TRX"] as const).map((c) => (
+                      <CoinLogo key={c} coin={c} className="h-4 w-4" />
+                    ))}
+                    <span>and more</span>
+                  </p>
+                </div>
+              )}
               <TextButton className="w-full" onClick={() => setExternal(true)}>
                 I use a different Nimiq wallet
               </TextButton>

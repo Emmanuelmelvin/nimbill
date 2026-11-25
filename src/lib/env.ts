@@ -40,6 +40,15 @@ const Schema = z.object({
   ),
   LENDASWAP_API_URL: withDefault(z.url(), "https://api.lendaswap.com"),
 
+  // "Pay from another chain" (lib/payin): a client pays with USDT/USDC on Tron, BNB Chain, Solana…
+  // and NEAR Intents' 1Click API swaps it into USDT on Polygon, sent straight to the merchant.
+  // NimBill never holds the money or any key. PAYIN_LIVE="false" hides the option.
+  // ONECLICK_API_KEY is the partner JWT from partners.near-intents.org: without it 1Click adds
+  // 0.25% to every payment and may set a higher minimum.
+  PAYIN_LIVE: withDefault(z.enum(["true", "false"]), "true"),
+  ONECLICK_API_URL: withDefault(z.url(), "https://1click.chaindefuser.com"),
+  ONECLICK_API_KEY: optional(z.string()),
+
   // Demo invoice
   DEMO_MERCHANT_ADDRESS: optional(z.string()),
   DEMO_MERCHANT_NAME: optional(z.string().max(80)),
