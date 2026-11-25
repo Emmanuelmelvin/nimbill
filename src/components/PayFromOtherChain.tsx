@@ -76,7 +76,7 @@ export function CoinLogo({ coin, className }: { coin: Coin; className?: string }
 }
 
 /** The coin's logo, with the chain's logo in the corner when it isn't the coin's own (USDT on Tron, ETH on Base). */
-export function PayinCoinIcon({ source, size = "md" }: { source: PayinSource; size?: "md" | "lg" }) {
+export function PayinCoinIcon({ source, size = "md" }: { source: Pick<PayinSource, "asset" | "badge">; size?: "md" | "lg" }) {
   const lg = size === "lg";
   return (
     <span aria-hidden className={cx("relative inline-flex shrink-0", lg ? "h-10 w-10" : "h-6 w-6")}>

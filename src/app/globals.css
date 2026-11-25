@@ -106,6 +106,18 @@
 .marquee:hover {
   animation-play-state: paused;
 }
+.marquee-coins {
+  animation: marquee 55s linear infinite;
+}
+.marquee-coins:hover {
+  animation-play-state: paused;
+}
+.packet-flow {
+  animation: packet-flow 2.1s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.route-swap {
+  animation: route-swap 0.35s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
 
 /* Fades in when the element (or a parent) gets data-in from useInView. */
 .reveal {
@@ -251,6 +263,30 @@
     transform: translateX(-50%);
   }
 }
+@keyframes packet-flow {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0;
+  }
+  15%,
+  85% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(460%);
+    opacity: 0;
+  }
+}
+@keyframes route-swap {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
 @keyframes stamp {
   from {
     opacity: 0;
@@ -320,6 +356,9 @@
   .blink,
   .scan,
   .marquee,
+  .marquee-coins,
+  .packet-flow,
+  .route-swap,
   .stamp,
   .chip-pop,
   .stack-in {

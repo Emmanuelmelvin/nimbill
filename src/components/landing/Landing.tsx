@@ -24,6 +24,7 @@ import { useNimiq } from "@/lib/client/nimiq";
 import { useSignIn } from "@/lib/client/session";
 import { CURRENCIES } from "@/lib/currencies";
 import { SiteFooter } from "@/components/site/SiteFooter";
+import { AnyChainVisualizer, SupportedCoinsMarquee } from "./AnyChainShowcase";
 import { ReceiptDemo } from "./ReceiptDemo";
 
 /** Inline style that sets the animation / transition delay used by the classes in globals.css. */
@@ -38,6 +39,7 @@ export function Landing() {
       <CurrencyTicker />
       <LiveStats />
       <HowItWorks />
+      <AnyChainSection />
       <Verification />
       <Features />
       <PaySection />
@@ -59,9 +61,11 @@ const NAV_GROUPS: { title: string; items: NavItem[] }[] = [
     title: "Product",
     items: [
       { href: "#how", label: "How it works", text: "Create, share, get paid in about a minute." },
+      { href: "#any-chain", label: "Pay from any chain", text: "Clients pay with USDT, USDC, BTC, ETH, SOL and more." },
       { href: "/pay", label: "Pay an invoice", text: "Got a Nimbill number? Pay it from any wallet." },
       { href: "/cheques", label: "Cheques", text: "Write a NIM cheque anyone can cash with a link." },
       { href: "/stats", label: "Payments & stats", text: "Every payment, linked to its blockchain transaction." },
+      { href: "/blog", label: "Blog", text: "New features, guides and deep dives from NimBill." },
     ],
   },
   {
@@ -295,7 +299,7 @@ function Hero() {
             <CallToAction />
           </div>
           <ul className="fade-up mt-6 flex flex-wrap gap-2" style={delay(1100)}>
-            {["No account for clients", "Wallet to wallet", `${CURRENCIES.length} currencies`].map((t) => (
+            {["No account for clients", "Wallet to wallet", `${CURRENCIES.length} currencies`, "Pay from 10+ chains"].map((t) => (
               <li key={t} className="border border-line bg-paper px-2 py-1 font-mono text-[11px] text-muted">
                 {t}
               </li>
@@ -521,7 +525,7 @@ const STEPS = [
   {
     n: "03",
     title: "Get paid",
-    text: "Your client pays in NIM or USDT at a live rate locked for 5 minutes. It's marked paid once it's on the blockchain.",
+    text: "Your client pays in NIM or USDT via Nimiq Pay, or with 11 coins from any wallet or exchange. Marked paid once verified on-chain.",
     visual: (
       <div className="flex items-center justify-between border border-ink bg-ink px-2 py-1.5 font-mono text-[11px] text-paper">
         <span>INV-0042</span>
@@ -564,6 +568,38 @@ function HowItWorks() {
   );
 }
 
+function AnyChainSection() {
+  return (
+    <section id="any-chain" className="scroll-mt-16 border-b border-line">
+      <Container className="pt-16 pb-6 sm:pt-24 sm:pb-10">
+        <div className="grid items-center gap-10 lg:grid-cols-[0.95fr_1.05fr]">
+          <div>
+            <SectionHead
+              index="02"
+              label="Pay from any chain"
+              title="Your client doesn't need Nimiq Pay."
+              text="Clients can pay with USDT, USDC, BTC, ETH, SOL and 6 more coins across 10+ networks from any wallet or exchange. You still receive exact USDT on Polygon straight in Nimiq Pay."
+            />
+            <Reveal delayMs={180} className="mt-6 flex flex-wrap items-center gap-3">
+              <span className="border border-ink bg-ink px-2.5 py-1 font-mono text-[11px] font-semibold text-paper">
+                22 ROUTES · 11 COINS
+              </span>
+              <span className="border border-line bg-subtle px-2.5 py-1 font-mono text-[11px] text-muted">Automatic refund if short</span>
+              <TextLink href="/blog/pay-from-any-chain" muted className="text-sm">
+                Read how it works →
+              </TextLink>
+            </Reveal>
+          </div>
+          <Reveal delayMs={150}>
+            <AnyChainVisualizer />
+          </Reveal>
+        </div>
+      </Container>
+      <SupportedCoinsMarquee />
+    </section>
+  );
+}
+
 const CHECKS = [
   ["Included in a block", "confirmed"],
   ["Pays the merchant's address", "NQ42 8K3M … 7Q2F"],
@@ -579,7 +615,7 @@ function Verification() {
     <section className="border-b border-line bg-subtle">
       <Container className="grid items-center gap-10 py-16 sm:py-24 lg:grid-cols-2">
         <SectionHead
-          index="02"
+          index="03"
           label="Verification"
           title="Paid means paid."
           text="A transaction hash from the browser is never trusted on its own. The server reads the payment from the blockchain and checks all of this before an invoice is marked paid."
@@ -639,7 +675,7 @@ function Features() {
   return (
     <section className="border-b border-line">
       <Container className="py-16 sm:py-24">
-        <SectionHead index="03" label="Built for freelancers" title="Everything after you hit send." />
+        <SectionHead index="04" label="Built for freelancers" title="Everything after you hit send." />
         <div ref={ref} data-in={inView || undefined} className="mt-10 grid gap-4 sm:mt-14 sm:grid-cols-2">
           <div className={cx(card, "reveal flex flex-col sm:row-span-2")} style={delay(0)}>
             <span aria-hidden className={glyph}>
@@ -710,10 +746,10 @@ function PaySection() {
     <section className="border-b border-line bg-subtle">
       <Container className="grid items-center gap-10 py-16 sm:py-20 lg:grid-cols-2">
         <SectionHead
-          index="04"
+          index="05"
           label="Paying someone?"
           title="Got a Nimbill number?"
-          text="No account needed. Paste the number you were sent to see the invoice and pay it from any Nimiq wallet."
+          text="No account needed. Paste the number you were sent to see the invoice and pay it from Nimiq Pay or any other wallet."
         />
         <Reveal delayMs={150}>
           <PayByNumber />

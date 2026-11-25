@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import HowWeBuiltCheques from "./how-we-built-cheques";
 import MoneyInToMoneyOut from "./money-in-to-money-out";
+import PayFromAnyChain from "./pay-from-any-chain";
 import PayWithNimBill from "./pay-with-nimbill";
 
 // The blog: one TypeScript file per post in this folder, listed here newest first.
@@ -21,6 +22,16 @@ export type Post = {
 const MERCICHIDI = { name: "mercichidi", url: "https://x.com/mercichidi" };
 
 export const POSTS: Post[] = [
+  {
+    slug: "pay-from-any-chain",
+    title: "Pay from any chain: let clients pay from the wallet they already use",
+    description:
+      "Clients without Nimiq Pay can now pay any NimBill invoice with USDT, USDC, BTC, ETH, SOL and 6 more coins across 10+ chains from any wallet or exchange. You still receive exact USDT on Polygon, verified on-chain.",
+    date: "2026-11-26",
+    author: MERCICHIDI,
+    tags: ["Product", "Global Payments"],
+    Body: PayFromAnyChain,
+  },
   {
     slug: "money-in-to-money-out",
     title: "From money in to money out: how we built non-custodial withdrawals",

@@ -27,15 +27,16 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 
 > **Try it in 30 seconds:** open the [live app](https://nimbill.mblob.me) in Nimiq Pay and tap **"Pay a sample invoice"**. It runs the whole flow, from quote to on-chain receipt, for about $0.05.
 
-|                                   |                                                                                              |
-| --------------------------------- | -------------------------------------------------------------------------------------------- |
-| **No account for clients**        | They open one link in Nimiq Pay and pay in a few taps.                                       |
-| **Wallet to wallet**              | NimBill never holds funds.                                                                   |
-| **Verified on-chain**             | The server reads every payment from the blockchain before an invoice is marked paid.         |
-| **19 currencies**                 | Naira, Shillings, Cedis, Euros, Rupees and more, at a live rate locked for 5 minutes.        |
-| **Made for people and AI agents** | A public JSON API, an OpenAPI spec, and an MCP server that gives an agent its own wallet.    |
-| **Pay with NimBill for stores**   | Your store creates invoices, customers pay wallet to wallet, and a signed webhook says when. |
-| **Get your money out**            | Turn NIM into USDC or USDT on Polygon, Ethereum or Arbitrum through an atomic swap.          |
+|                                   |                                                                                                             |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| **No account for clients**        | They open one link in any browser and pay in Nimiq Pay or from any other wallet or exchange.                |
+| **Pay from any chain**            | Clients pay with USDT, USDC, BTC, ETH, SOL and 6 more across 10+ chains; you receive exact USDT on Polygon. |
+| **Wallet to wallet**              | NimBill never holds funds.                                                                                  |
+| **Verified on-chain**             | The server reads every payment from the blockchain before an invoice is marked paid.                        |
+| **19 currencies**                 | Naira, Shillings, Cedis, Euros, Rupees and more, at a live rate locked for 5 minutes.                       |
+| **Made for people and AI agents** | A public JSON API, an OpenAPI spec, and an MCP server that gives an agent its own wallet.                   |
+| **Pay with NimBill for stores**   | Your store creates invoices, customers pay wallet to wallet, and a signed webhook says when.                |
+| **Get your money out**            | Turn NIM into USDC or USDT on Polygon, Ethereum or Arbitrum through an atomic swap.                         |
 
 ## How it works
 
@@ -43,8 +44,8 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 
 1. **Create.** Price the job in your currency. The live NIM total shows as you type.
 2. **Share.** Send one link over WhatsApp, use the share sheet, show a QR code in person, or read out a short `NMN-` number.
-3. **Pay.** The client taps **Get price**. The fiat total is converted at the live rate, rounded **up** so you never get less than you invoiced, and **locked for 5 minutes**.
-4. **Verified.** The server checks the transaction on the blockchain, then both sides get a receipt with the rate used and a link to the transaction.
+3. **Pay.** In Nimiq Pay, the client taps **Get price** to lock the rate for 5 minutes and pay in NIM or USDT. Clients without Nimiq Pay pick **Pay from another chain or exchange** and send USDT, USDC, BTC, ETH, SOL, or 6 more coins from any wallet or exchange.
+4. **Verified.** The server checks the transaction on the Nimiq or Polygon blockchain, then both sides get a receipt with the rate used and a link to the transaction.
 
 ## Features
 
@@ -65,6 +66,21 @@ Built for the [Nimiq Mini Apps Competition — Cycle III](https://miniappscompet
 - **Coins and currencies you can recognise.** The real NIM and USDT logos appear wherever a coin is mentioned, and every currency picker shows the country's flag.
 - **Receipts that hold up.** The rate used, both addresses and a link to the transaction. Download as PDF.
 - **Public usage page** (`/stats`). Every paid invoice links to its on-chain transaction.
+
+## Pay from another chain: any wallet, any exchange
+
+![Pay from another chain screens: picking from 22 coin and network routes with a refund address, sending to a one-time deposit address with QR code and countdown, and the invoice marked paid and verified on Polygon.](docs/readme/pay-other-chain.png)
+
+Most clients don't have Nimiq Pay yet, but many already hold USDT on Tron, USDC on Base or Solana, or BTC, ETH, and SOL in a wallet or exchange. **Pay from another chain** lets them pay any NimBill invoice from whatever wallet they already use—while you still receive the exact locked **USDT on Polygon** straight in your Nimiq Pay wallet.
+
+- **22 routes across 11 coins and 10+ chains.** Dollar coins (USDT on Tron, BNB Chain, Solana, Ethereum, Arbitrum; USDC on BNB Chain, Solana, Ethereum, Arbitrum, Base, Polygon) and native coins (BTC, ETH on Ethereum/Arbitrum/Base, SOL, BNB, TRX, POL, AVAX, LTC, DOGE).
+- **Exact USDT arrives, never held by NimBill.** Powered by [NEAR Intents' 1Click API](https://docs.near-intents.org/integration/distribution-channels/1click-api) using `EXACT_OUTPUT` quotes: fees and price-movement buffers (0.5% for stablecoins, 2% for fast native coins, 3% for BTC/LTC/DOGE) sit on the sender side, and any unused buffer goes back to the client's refund address.
+- **Per-chain refund address guard.** Before a deposit address is created, NimBill validates the client's refund address for that exact chain (EIP-55, Tron Base58Check, Solana, Bitcoin/Litecoin Bech32/Bech32m, Dogecoin). Short or unfillable deposits are refunded automatically by 1Click.
+- **Verified on Polygon, even if the tab closes.** NimBill never trusts a swap status on its own: `settleSwapPayment` verifies the actual Polygon USDT transfer before calling `markPaid`, firing receipts and store webhooks as usual. The browser polls every 5 s (and resumes on reload), while the background worker keeps watching through 1Click's 72-hour late-deposit window.
+
+Controlled with `PAYIN_LIVE` (default `true`) and optional `ONECLICK_API_KEY`. Full notes, limits and statuses: [docs/pay-from-other-chains.md](docs/pay-from-other-chains.md).
+
+> **Want to know how cross-chain payments work under the hood?** Read the blog post: [**Pay from any chain: let clients pay from the wallet they already use →**](https://nimbill.mblob.me/blog/pay-from-any-chain).
 
 ## Withdraw: get your money out
 
@@ -202,7 +218,7 @@ In a desktop browser the app works too, but wallet actions show an "Open in Nimi
 - **Next.js 16** (App Router, TypeScript, Tailwind CSS 4), mobile-first
 - **@nimiq/mini-app-sdk** for the Nimiq provider; **viem** for ERC-20 encoding
 - **Postgres** via Drizzle ORM: [Neon](https://neon.tech) in production, embedded [PGlite](https://pglite.dev) locally (zero setup)
-- **Nimiq RPC** ([rpc.nimiqwatch.com](https://rpc.nimiqwatch.com)), **Polygon RPC**, **CoinGecko** prices and the **Nimiq Validators API**
+- **Nimiq RPC** ([rpc.nimiqwatch.com](https://rpc.nimiqwatch.com)), **Polygon RPC**, **NEAR Intents 1Click API** (cross-chain payins), **Lendaswap** (withdrawals), **CoinGecko** prices and the **Nimiq Validators API**
 - `@noble/curves` and `@noble/hashes` for signature verification and cheque keys
 - A small **webhook worker** (Node, no build step, no open port) that runs the app's own code from `src/lib`
 
@@ -256,21 +272,22 @@ Recurring invoices · multi-language (via `window.nimiqPay.language`) · cash-ou
 
 ## Resources
 
-|                      |                                                                                                                                                                                                                                                                                                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Try it**           | [Live app](https://nimbill.mblob.me) · [96-second demo video](demo/nimbill-demo.mp4) ([storyboard](demo/STORYBOARD.md)) · [Live usage with on-chain proof](https://nimbill.mblob.me/stats)                                                                                                                                                                          |
-| **Developer docs**   | [Introduction](https://nimbill.mblob.me/docs) · [Quick start](https://nimbill.mblob.me/docs/quick-start) · [How payments work](https://nimbill.mblob.me/docs/how-it-works) · [Board API](https://nimbill.mblob.me/docs/api) · [Sending the payment](https://nimbill.mblob.me/docs/sending) · [Safety and limits](https://nimbill.mblob.me/docs/safety)              |
-| **Pay with NimBill** | [Webhooks guide](https://nimbill.mblob.me/docs/webhooks) · [Worker README](worker/README.md) · [Introducing Pay with NimBill](https://nimbill.mblob.me/blog/pay-with-nimbill)                                                                                                                                                                                       |
-| **Cheques**          | [How we built non-custodial cheques on Nimiq](https://nimbill.mblob.me/blog/how-we-built-cheques) ([`docs/cheques.md`](docs/cheques.md)) · [Write or cash a cheque](https://nimbill.mblob.me/cheques)                                                                                                                                                               |
-| **Withdrawals**      | [From money in to money out (blog post)](https://nimbill.mblob.me/blog/money-in-to-money-out) · [Setup, safety and the first real test](docs/withdrawals.md) · [Lendaswap](https://lendaswap.com)                                                                                                                                                                   |
-| **AI assistants**    | [Overview](https://nimbill.mblob.me/ai) · [Claude](https://nimbill.mblob.me/ai/claude) · [ChatGPT](https://nimbill.mblob.me/ai/chatgpt) · [Cursor](https://nimbill.mblob.me/ai/cursor) · [Grok, Gemini and others](https://nimbill.mblob.me/ai/other) · [Your own agent](https://nimbill.mblob.me/ai/own-agent)                                                     |
-| **MCP agent wallet** | [Overview](https://nimbill.mblob.me/mcp) · [Connect your AI](https://nimbill.mblob.me/mcp/connect) · [Fund your agent](https://nimbill.mblob.me/mcp/funding) · [All 15 tools](https://nimbill.mblob.me/mcp/tools) · [Security](https://nimbill.mblob.me/mcp/security) · [npm package](https://www.npmjs.com/package/nimbill-mcp) · [`mcp/README.md`](mcp/README.md) |
-| **Machine-readable** | [llms.txt](https://nimbill.mblob.me/llms.txt) · [openapi.json](https://nimbill.mblob.me/openapi.json) · [skill.md](https://nimbill.mblob.me/skill.md)                                                                                                                                                                                                               |
-| **Nimiq**            | [Nimiq Pay](https://nimiq.com/nimiq-pay) · [Mini App SDK](https://www.npmjs.com/package/@nimiq/mini-app-sdk) · [Mini Apps Competition, Cycle III](https://miniappscompetition.com/cycle3)                                                                                                                                                                           |
+|                        |                                                                                                                                                                                                                                                                                                                                                                     |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Try it**             | [Live app](https://nimbill.mblob.me) · [96-second demo video](demo/nimbill-demo.mp4) ([storyboard](demo/STORYBOARD.md)) · [Live usage with on-chain proof](https://nimbill.mblob.me/stats)                                                                                                                                                                          |
+| **Developer docs**     | [Introduction](https://nimbill.mblob.me/docs) · [Quick start](https://nimbill.mblob.me/docs/quick-start) · [How payments work](https://nimbill.mblob.me/docs/how-it-works) · [Board API](https://nimbill.mblob.me/docs/api) · [Sending the payment](https://nimbill.mblob.me/docs/sending) · [Safety and limits](https://nimbill.mblob.me/docs/safety)              |
+| **Pay with NimBill**   | [Webhooks guide](https://nimbill.mblob.me/docs/webhooks) · [Worker README](worker/README.md) · [Introducing Pay with NimBill](https://nimbill.mblob.me/blog/pay-with-nimbill)                                                                                                                                                                                       |
+| **Cheques**            | [How we built non-custodial cheques on Nimiq](https://nimbill.mblob.me/blog/how-we-built-cheques) ([`docs/cheques.md`](docs/cheques.md)) · [Write or cash a cheque](https://nimbill.mblob.me/cheques)                                                                                                                                                               |
+| **Pay from any chain** | [Pay from any chain (blog post)](https://nimbill.mblob.me/blog/pay-from-any-chain) · [How it works, coins and limits](docs/pay-from-other-chains.md) · [NEAR Intents 1Click API](https://docs.near-intents.org/integration/distribution-channels/1click-api)                                                                                                        |
+| **Withdrawals**        | [From money in to money out (blog post)](https://nimbill.mblob.me/blog/money-in-to-money-out) · [Setup, safety and the first real test](docs/withdrawals.md) · [Lendaswap](https://lendaswap.com)                                                                                                                                                                   |
+| **AI assistants**      | [Overview](https://nimbill.mblob.me/ai) · [Claude](https://nimbill.mblob.me/ai/claude) · [ChatGPT](https://nimbill.mblob.me/ai/chatgpt) · [Cursor](https://nimbill.mblob.me/ai/cursor) · [Grok, Gemini and others](https://nimbill.mblob.me/ai/other) · [Your own agent](https://nimbill.mblob.me/ai/own-agent)                                                     |
+| **MCP agent wallet**   | [Overview](https://nimbill.mblob.me/mcp) · [Connect your AI](https://nimbill.mblob.me/mcp/connect) · [Fund your agent](https://nimbill.mblob.me/mcp/funding) · [All 15 tools](https://nimbill.mblob.me/mcp/tools) · [Security](https://nimbill.mblob.me/mcp/security) · [npm package](https://www.npmjs.com/package/nimbill-mcp) · [`mcp/README.md`](mcp/README.md) |
+| **Machine-readable**   | [llms.txt](https://nimbill.mblob.me/llms.txt) · [openapi.json](https://nimbill.mblob.me/openapi.json) · [skill.md](https://nimbill.mblob.me/skill.md)                                                                                                                                                                                                               |
+| **Nimiq**              | [Nimiq Pay](https://nimiq.com/nimiq-pay) · [Mini App SDK](https://www.npmjs.com/package/@nimiq/mini-app-sdk) · [Mini Apps Competition, Cycle III](https://miniappscompetition.com/cycle3)                                                                                                                                                                           |
 
 ## About the screenshots
 
-The screens above are the real NimBill interface, captured at phone and desktop size from a local development server with a throwaway test account (the webhook URL shown is a sample). The earnings history on the dashboard is sample data, and the wallet confirmation and "paid" result are simulated (no real NIM moved). On the Withdraw screens the NIM balance is a sample; the quote is live from Lendaswap, and nothing was paid. To see a real payment, pay the sample invoice in the [live app](https://nimbill.mblob.me).
+The screens above are the real NimBill interface, captured at phone and desktop size from a local development server with a throwaway test account (the webhook URL shown is a sample). The earnings history on the dashboard is sample data, and the wallet confirmation, cross-chain deposit and "paid" results are simulated (no real NIM or USDT moved). On the Withdraw screens the NIM balance is a sample; the quote is live from Lendaswap, and nothing was paid. To see a real payment, pay the sample invoice in the [live app](https://nimbill.mblob.me).
 
 ## License
 
