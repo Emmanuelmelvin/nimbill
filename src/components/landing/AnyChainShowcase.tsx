@@ -52,7 +52,7 @@ export function AnyChainVisualizer() {
         </div>
         <span className="inline-flex items-center gap-1.5 border border-ink px-2 py-0.5 font-mono text-[11px] font-semibold">
           <span aria-hidden className="blink h-1.5 w-1.5 bg-ink" />
-          EXACT OUTPUT
+          EXACT AMOUNT
         </span>
       </div>
 
@@ -70,7 +70,7 @@ export function AnyChainVisualizer() {
 
         {/* Flowing rail */}
         <div className="flex flex-col items-center justify-center px-1" aria-hidden>
-          <span className="font-mono text-[10px] tracking-wider text-muted uppercase">1Click swap</span>
+          <span className="font-mono text-[10px] tracking-wider text-muted uppercase">Swapped</span>
           <div className="relative my-2 h-1.5 w-24 overflow-hidden bg-line sm:w-20">
             <span className="packet-flow absolute inset-y-0 left-0 w-6 bg-ink" />
           </div>

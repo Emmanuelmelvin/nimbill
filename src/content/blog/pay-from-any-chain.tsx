@@ -100,16 +100,15 @@ export default function PayFromAnyChain() {
         </CoinText>
       </p>
       <p>
-        We built Pay from another chain backwards using{" "}
-        <a href="https://docs.near-intents.org/integration/distribution-channels/1click-api">NEAR Intents&apos; 1Click API</a> with{" "}
-        <code>EXACT_OUTPUT</code> quotes:
+        We built Pay from another chain backwards: it starts from the exact amount you should receive and works out what your client needs
+        to send.
       </p>
 
       <figure className="my-8 border border-ink bg-subtle">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/blog/pay-other-chain/how-swap-works.png"
-          alt="Four steps of a cross-chain NimBill payment: locking an exact USDT output quote, sending to a one-time deposit address, 1Click swapping directly to the merchant on Polygon, and NimBill verifying the Polygon transfer on-chain."
+          alt="Four steps of a cross-chain NimBill payment: locking the exact USDT amount, sending to a one-time deposit address, the swap paying the merchant directly on Polygon, and NimBill checking the Polygon transfer itself."
           className="block w-full"
         />
       </figure>
@@ -120,9 +119,9 @@ export default function PayFromAnyChain() {
           direct Polygon USDT payments already use—held for the deposit window plus a 20-minute delivery margin.
         </li>
         <li>
-          <strong>Quote the exact output.</strong> NimBill asks 1Click for a one-time deposit address on the client&apos;s chain that
-          delivers <em>at least</em> that exact USDT amount to the merchant&apos;s Polygon address. Swap fees sit on the sender&apos;s side,
-          and the amount to send is rounded up cleanly so it is easy to type into an exchange.
+          <strong>Get a one-time address.</strong> NimBill asks our swap partner for a one-time deposit address on the client&apos;s chain
+          that delivers <em>at least</em> that exact USDT amount to the merchant&apos;s Polygon address. Swap fees sit on the sender&apos;s
+          side, and the amount to send is rounded up cleanly so it is easy to type into an exchange.
         </li>
         <li>
           <strong>Send from any wallet or exchange.</strong> The client scans the QR code or copies the deposit address and exact amount.
@@ -137,27 +136,25 @@ export default function PayFromAnyChain() {
 
       <h2 id="refund-safety">Guardrails before any money moves</h2>
       <p>
-        Before NimBill even asks 1Click for a deposit address, the client enters a refund address on the chain they are paying from. Sending
-        a refund to the wrong network usually means losing it, so NimBill validates every refund address strictly on both the pay screen and
-        the server: EIP-55 checksums for EVM chains, Base58Check for Tron, 32-byte keys for Solana, legacy and Bech32/Bech32m (SegWit and
-        Taproot) for Bitcoin and Litecoin, and Dogecoin version bytes.
+        Before NimBill even creates a deposit address, the client enters a refund address on the chain they are paying from. Sending a
+        refund to the wrong network usually means losing it, so NimBill checks that every refund address really belongs to that network and
+        has no typos. A Tron address pasted for a Bitcoin payment, or an address with one wrong character, is caught before any money moves.
       </p>
 
       <Notice title="What if too little arrives, or the price moves past the buffer?">
         <p>
           If an exchange deducts a withdrawal fee from the amount sent, or if a native coin&apos;s price drops past the buffer while the
-          deposit is in flight, 1Click cannot fill the exact USDT output. Instead of delivering a short invoice or holding the funds, 1Click
-          automatically refunds the deposit back to the client&apos;s refund address. Because the merchant never received the funds, no
-          store webhook is fired.
+          deposit is in flight, the swap can&apos;t deliver the exact USDT amount. Instead of delivering a short payment or holding the
+          funds, the deposit goes straight back to the client&apos;s refund address. The merchant never received anything, so the invoice
+          simply stays unpaid.
         </p>
       </Notice>
 
       <h2 id="verify-on-polygon">We never take a swap status on faith</h2>
       <p>
         <CoinText>
-          Our rule for invoices has never changed: <strong>paid means verified on the blockchain.</strong> Even when 1Click reports{" "}
-          <code>SUCCESS</code>, NimBill does not immediately mark the invoice paid. Instead, <code>settleSwapPayment</code> takes the
-          reported Polygon payout hash and checks the transfer directly against Polygon RPC:
+          Our rule for invoices has never changed: <strong>paid means verified on the blockchain.</strong> Even when the swap reports that
+          it is done, NimBill does not mark the invoice paid on its word. It looks up the payout on Polygon itself and checks that:
         </CoinText>
       </p>
       <ul>
@@ -167,9 +164,8 @@ export default function PayFromAnyChain() {
         <li>That transaction hash has never paid another invoice.</li>
       </ul>
       <p>
-        Only after those checks pass does NimBill run the exact same <code>markPaid</code> flow used by direct Nimiq Pay payments—meaning
-        PDF receipts, merchant email notifications, payer receipts, and signed <code>invoice.paid</code> store webhooks all work identically
-        without any extra integration.
+        Only after those checks pass does NimBill mark the invoice paid, exactly as it does for a Nimiq Pay payment. PDF receipts, email
+        notifications to you and your client, and online-store notifications all work the same, with nothing extra to set up.
       </p>
 
       <h2 id="close-the-tab">Built for real life: close the tab, late payouts still land</h2>
@@ -182,20 +178,19 @@ export default function PayFromAnyChain() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/blog/pay-other-chain/late-and-background.png"
-          alt="Diagram showing how Pay from another chain handles live 5-second polling, reload recovery, background worker tracking across 1Click's 72-hour late-deposit window, smart buffers, and refund address checks."
+          alt="Diagram showing how Pay from another chain keeps the pay screen up to date, picks a payment back up after a reload, keeps watching for up to three days after the tab is closed, and uses price buffers and refund address checks."
           className="block w-full"
         />
       </figure>
 
       <p>
-        While the pay page is open, it polls every 5 seconds and saves the active payment ID in the browser so reloading picks right back
-        up. Once the client sends, they can close the tab immediately. Our background worker continues watching every open payment—and
-        because 1Click keeps deposit addresses open for 72 hours past the client&apos;s displayed deadline, NimBill keeps checking
-        periodically through that entire window so even a delayed exchange withdrawal still settles the invoice cleanly.
+        While the pay page is open, it updates every few seconds and remembers the payment in the browser, so reloading picks right back up.
+        Once the client sends, they can close the tab immediately. NimBill keeps watching every open payment in the background for up to
+        three days, so even a delayed exchange withdrawal still settles the invoice cleanly.
       </p>
       <p>
-        And if the invoice was already paid another way or cancelled before a late swap arrived, NimBill records the swap as{" "}
-        <code>delivered_unmatched</code> instead of counting the invoice paid twice or overwriting its receipt.
+        And if the invoice was already paid another way, or cancelled, before a late payment arrived, NimBill notes it separately instead of
+        counting the invoice paid twice or overwriting its receipt.
       </p>
 
       <h2 id="full-circle">Any wallet in, any wallet out</h2>
@@ -208,9 +203,8 @@ export default function PayFromAnyChain() {
         </CoinText>
       </p>
       <p>
-        Create an invoice in NimBill and share the link to try it out, read the technical notes in{" "}
-        <a href="https://github.com/Emmanuelmelvin/nimbill/blob/main/docs/pay-from-other-chains.md">docs/pay-from-other-chains.md</a>, or
-        say hi and tell us which chain you want next on <a href="https://x.com/mercichidi">X</a>.
+        Create an invoice in NimBill and share the link to try it out, or say hi and tell us which chain you want next on{" "}
+        <a href="https://x.com/mercichidi">X</a>.
       </p>
     </>
   );

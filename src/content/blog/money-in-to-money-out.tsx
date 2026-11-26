@@ -90,11 +90,10 @@ export default function MoneyInToMoneyOut() {
 
       <p>
         <CoinText>
-          Before you approve anything, NimBill fetches a live quote from <a href="https://lendaswap.com">Lendaswap</a> and shows you the
-          full picture on one calm review screen: the exact USDC or USDT that will arrive, the small provider and network fees, and about
-          how much NIM it will take. Better yet, you do not need any extra coins in your destination wallet to pay for network gas fees.
-          Even if you are withdrawing into a brand-new Polygon, Ethereum, or Arbitrum wallet with a zero balance, your stablecoins arrive
-          ready to use.
+          Before you approve anything, NimBill fetches a live quote from our swap partner and shows you the full picture on one calm review
+          screen: the exact USDC or USDT that will arrive, the small provider and network fees, and about how much NIM it will take. Better
+          yet, you do not need any extra coins in your destination wallet to pay for network gas fees. Even if you are withdrawing into a
+          brand-new Polygon, Ethereum, or Arbitrum wallet with a zero balance, your stablecoins arrive ready to use.
         </CoinText>
       </p>
 
@@ -138,7 +137,7 @@ export default function MoneyInToMoneyOut() {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src="/blog/withdraw/atomic-bridge.png"
-          alt="Four steps of a NimBill withdrawal: asking for an exact amount, approving a hold payment in Nimiq Pay, receiving stablecoins via Lendaswap, and blockchain confirmation."
+          alt="Four steps of a NimBill withdrawal: asking for an exact amount, approving a hold payment in Nimiq Pay, receiving stablecoins from the swap partner, and blockchain confirmation."
           className="block w-full"
         />
       </figure>

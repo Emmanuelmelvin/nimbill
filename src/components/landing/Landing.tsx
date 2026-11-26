@@ -655,7 +655,7 @@ function Verification() {
             </tbody>
           </table>
           <div className="flex flex-wrap gap-2 border-t border-ink px-4 py-3">
-            {["Nimiq RPC", "Polygon · 5 confirmations", "No middleman"].map((t) => (
+            {["Checked on Nimiq", "Polygon · 5 confirmations", "No middleman"].map((t) => (
               <span key={t} className="border border-line px-2 py-0.5 font-mono text-[11px] text-muted">
                 {t}
               </span>
