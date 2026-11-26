@@ -517,7 +517,6 @@ export function CryptoWithdraw() {
             rows={[
               { term: "You sent", detail: about(withdrawal?.sendEstimate ?? quote.sendEstimate, quote.payWith) },
               { term: "To", detail: quote.destination, mono: true },
-              { term: "Via", detail: quote.providerName },
               ...(withdrawal ? [{ term: "Reference", detail: withdrawal.id, mono: true }] : []),
               ...(withdrawal?.destinationTxHash ? [{ term: "Transaction", detail: withdrawal.destinationTxHash, mono: true }] : []),
             ]}
@@ -637,12 +636,12 @@ function Review({
           ...(quote.receiveMin !== quote.receiveAmount
             ? [{ term: "At least", detail: `${stable(quote.receiveMin)} ${quote.asset} if the price moves` }]
             : []),
-          { term: "Via", detail: `${quote.providerName} · about ${Math.round(quote.etaSeconds / 60)} min` },
+          { term: "Arrives in", detail: `about ${Math.round(quote.etaSeconds / 60)} min` },
         ]}
       />
       <p className="mt-3 text-xs text-muted">
-        Nimiq Pay shows the exact amount when you approve, including its own fee. Swaps are executed non-custodially by {quote.providerName}{" "}
-        via a Lightning hold invoice; NimBill never holds your funds.
+        Nimiq Pay shows the exact amount when you approve, including its own fee. Your payment is only held until the stablecoins arrive,
+        and comes back if the swap can&apos;t finish. NimBill never holds your funds.
       </p>
       <div className="mt-4 flex items-center justify-between border-t border-line pt-4 text-sm">
         <span className="text-muted">Quote valid for</span>
