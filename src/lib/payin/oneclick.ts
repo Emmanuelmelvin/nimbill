@@ -3,7 +3,7 @@ import { z } from "zod";
 import { serviceHttp } from "../clients/shared";
 import { env } from "../env";
 import { AppError, Errors } from "../errors";
-import { POLYGON_USDT_ASSET_ID, type PayinSource } from "./sources";
+import { POLYGON_USDT_ASSET_ID, minimumMessage, type PayinSource } from "./sources";
 
 // NEAR Intents' 1Click API (https://docs.near-intents.org/integration/distribution-channels/1click-api).
 //
@@ -31,9 +31,11 @@ const http = serviceHttp({
 });
 
 /** Turn 1Click's reason for refusing a quote into something the client can act on. */
-export function readableRefusal(message: string): string {
+export function readableRefusal(message: string, source?: PayinSource): string {
   const min = /minimum swap amount is \$?([\d.,]+)/i.exec(message);
-  if (min) return `Paying from another chain needs at least $${min[1]} right now. For a smaller amount, pay with Nimiq Pay.`;
+  // The minimum is per network: name the coin and suggest networks that take smaller payments.
+  if (min && source) return minimumMessage(source, min[1]);
+  if (min) return `This network needs at least $${min[1]} right now. Pick another network, or pay with Nimiq Pay.`;
   if (/amount is too low|too small/i.test(message))
     return "This amount is too small to pay from another chain. Pay with Nimiq Pay instead.";
   if (/refundTo|refund/i.test(message)) return "That refund address was not accepted. Check it is on the chain you pay from.";
@@ -79,27 +81,35 @@ export const oneclick = {
     refundTo: string;
     deadline: Date;
   }): Promise<OneClickQuote> {
-    const r = await http.post(
-      "v0/quote",
-      {
-        dry: false,
-        swapType: "EXACT_OUTPUT",
-        // The buffer on the client's side: small for dollar coins, bigger for coins whose price moves.
-        slippageTolerance: opts.source.slippageBps,
-        originAsset: opts.source.assetId,
-        depositType: "ORIGIN_CHAIN",
-        destinationAsset: POLYGON_USDT_ASSET_ID,
-        amount: opts.receiveUnits,
-        refundTo: opts.refundTo,
-        refundType: "ORIGIN_CHAIN",
-        recipient: opts.recipient,
-        recipientType: "DESTINATION_CHAIN",
-        deadline: opts.deadline.toISOString(),
-        referral: "nimbill",
-        quoteWaitingTimeMs: 3000,
-      },
-      { schema: QuoteResponse },
-    );
+    const r = await http
+      .post(
+        "v0/quote",
+        {
+          dry: false,
+          swapType: "EXACT_OUTPUT",
+          // The buffer on the client's side: small for dollar coins, bigger for coins whose price moves.
+          slippageTolerance: opts.source.slippageBps,
+          originAsset: opts.source.assetId,
+          depositType: "ORIGIN_CHAIN",
+          destinationAsset: POLYGON_USDT_ASSET_ID,
+          amount: opts.receiveUnits,
+          refundTo: opts.refundTo,
+          refundType: "ORIGIN_CHAIN",
+          recipient: opts.recipient,
+          recipientType: "DESTINATION_CHAIN",
+          deadline: opts.deadline.toISOString(),
+          referral: "nimbill",
+          quoteWaitingTimeMs: 3000,
+        },
+        { schema: QuoteResponse },
+      )
+      .catch((e: unknown) => {
+        // mapError has no idea which coin was asked for; say it here.
+        if (AppError.is(e) && e.code === "BAD_REQUEST" && typeof e.details?.oneclick === "string") {
+          throw Errors.badRequest(readableRefusal(e.details.oneclick, opts.source), { cause: e, details: e.details });
+        }
+        throw e;
+      });
     return { ...r.quote, correlationId: r.correlationId, signature: r.signature };
   },
 

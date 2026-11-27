@@ -36,6 +36,12 @@ export type PayinSource = {
   slippageBps: number;
   /** How long the client has to send, in minutes. */
   depositWindowMin: number;
+  /**
+   * The smallest payment, in US dollars, 1Click currently takes from this chain (it calls this a
+   * temporary limit; checked 2026-11-27, with or without a partner key). Used to start small
+   * invoices on another network; 1Click's own answer is what counts, so it never blocks a payment.
+   */
+  minUsd?: number;
   /** Where the client can look up their deposit on the chain they paid from. */
   explorerTx: (hash: string) => string;
 };
@@ -52,7 +58,7 @@ const btcTx = (h: string) => `https://mempool.space/tx/${h}`;
 const ltcTx = (h: string) => `https://litecoinspace.org/tx/${h}`;
 const dogeTx = (h: string) => `https://dogechain.info/tx/${h}`;
 
-type Base = Pick<PayinSource, "id" | "asset" | "chain" | "badge" | "addressKind" | "assetId" | "decimals" | "explorerTx">;
+type Base = Pick<PayinSource, "id" | "asset" | "chain" | "badge" | "addressKind" | "assetId" | "decimals" | "explorerTx" | "minUsd">;
 
 /** A dollar coin: 0.5% buffer, 30 minutes to send, rounded to the cent. */
 const stable = (s: Base): PayinSource => ({ ...s, kind: "stable", showDecimals: 2, slippageBps: 50, depositWindowMin: 30 });
@@ -75,6 +81,7 @@ export const PAYIN_SOURCES: readonly PayinSource[] = [
     decimals: 6,
     explorerTx: tronTx,
     assetId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near",
+    minUsd: 100,
   }),
   stable({
     id: "bnb-usdt",
@@ -254,6 +261,7 @@ export const PAYIN_SOURCES: readonly PayinSource[] = [
     showDecimals: 2,
     explorerTx: tronTx,
     assetId: "nep141:tron.omft.near",
+    minUsd: 100,
   }),
   native({
     id: "polygon-pol",
@@ -314,6 +322,26 @@ export function getPayinSource(id: string): PayinSource | undefined {
 
 /** "USDT on Tron", "ETH on Arbitrum", or just "BTC" for a coin on its own chain. */
 export const sourceLabel = (s: PayinSource) => (s.badge ? `${s.asset} on ${s.chain}` : s.asset);
+
+/** The coin to offer first for a payment of about `usd` dollars: the first one with no minimum above it. */
+export function defaultSourceFor(usd: number | null): PayinSource {
+  if (usd === null) return PAYIN_SOURCES[0];
+  return PAYIN_SOURCES.find((s) => !s.minUsd || s.minUsd <= usd) ?? PAYIN_SOURCES[0];
+}
+
+/** "USDT on BNB Chain or Solana": dollar coins on other networks with no minimum, to suggest instead of `s`. */
+export function alternativesTo(s: PayinSource): string {
+  const chains = [
+    ...new Set(
+      PAYIN_SOURCES.filter((o) => o.kind === "stable" && o.asset === "USDT" && !o.minUsd && o.chain !== s.chain).map((o) => o.chain),
+    ),
+  ];
+  return `USDT on ${chains.slice(0, 2).join(" or ")}`;
+}
+
+/** What to tell the client when `s` needs at least `min` dollars and their payment is smaller. */
+export const minimumMessage = (s: PayinSource, min: number | string) =>
+  `${sourceLabel(s)} needs at least $${min} right now. Pick another network, such as ${alternativesTo(s)}.`;
 
 // ---------- refund address ----------
 

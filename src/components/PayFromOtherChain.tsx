@@ -3,7 +3,15 @@ import { QRCodeSVG } from "qrcode.react";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { api, type PublicInvoice, type PublicPayin } from "@/lib/client/api";
 import { AppError } from "@/lib/errors";
-import { PAYIN_SOURCES, checkRefundAddress, getPayinSource, type Coin, type PayinSource } from "@/lib/payin/sources";
+import {
+  PAYIN_SOURCES,
+  checkRefundAddress,
+  defaultSourceFor,
+  getPayinSource,
+  minimumMessage,
+  type Coin,
+  type PayinSource,
+} from "@/lib/payin/sources";
 import type { ChainId } from "@/lib/withdraw/chains";
 import { BTC_LOGO, DOGE_LOGO, LTC_LOGO } from "./coin-logo-shapes";
 import { ChainLogo, TokenLogo } from "./withdraw/logos";
@@ -29,6 +37,27 @@ import {
 
 const OPEN = new Set<PublicPayin["status"]>(["awaiting_deposit", "incomplete", "swapping"]);
 const storageKey = (invoiceId: string) => `nimbill:payin:${invoiceId}`;
+
+/**
+ * About how many US dollars `amount` (in `currency`) is, from the live USDT rate. Null while the
+ * rate loads or if it can't be had; it only picks which coin to offer first, so close is enough.
+ */
+function useUsdValue(currency: string, amount: number): number | null {
+  const [perUsd, setPerUsd] = useState<number | null>(currency === "USD" ? 1 : null);
+  useEffect(() => {
+    if (currency === "USD") return;
+    let alive = true;
+    api<{ rates: { USDT: number } }>(`/api/rates?currency=${encodeURIComponent(currency)}`)
+      .then((r) => alive && r.rates.USDT > 0 && setPerUsd(r.rates.USDT))
+      .catch(() => {
+        // No rate: Tron stays first, and the swap service's answer explains any minimum.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [currency]);
+  return perUsd ? amount / perUsd : null;
+}
 
 /** The payment this browser started for an invoice, so a reload picks it up again. */
 export function savedPayinId(invoiceId: string): string | null {
@@ -125,7 +154,10 @@ export function PayFromOtherChain({
   onPaid: (inv: PublicInvoice) => void;
   onBack: () => void;
 }) {
-  const [sourceId, setSourceId] = useState(PAYIN_SOURCES[0].id);
+  // Until the client picks, start on a coin whose network takes a payment this size (Tron has a minimum).
+  const usd = useUsdValue(inv.currency, Number(inv.total) + tip);
+  const [picked, setPicked] = useState<string | null>(null);
+  const sourceId = picked ?? defaultSourceFor(usd).id;
   const [refundTo, setRefundTo] = useState("");
   const [touched, setTouched] = useState(false);
   const [starting, setStarting] = useState(false);
@@ -134,6 +166,8 @@ export function PayFromOtherChain({
   const [resuming, setResuming] = useState(() => !!savedPayinId(inv.id));
   const source = getPayinSource(sourceId)!;
   const check = checkRefundAddress(source, refundTo);
+  // Only a hint: the swap service's own answer decides, and it may lift the minimum.
+  const belowMinimum = usd !== null && !!source.minUsd && usd < source.minUsd;
 
   const stopped = useRef(false);
   useEffect(() => {
@@ -230,11 +264,12 @@ export function PayFromOtherChain({
           options={OPTIONS}
           value={sourceId}
           onChange={(v) => {
-            setSourceId(v);
+            setPicked(v);
             setTouched(false);
           }}
         />
       </Field>
+      {belowMinimum && source.minUsd && <Alert kind="warn">{minimumMessage(source, source.minUsd)}</Alert>}
       {source.kind === "native" && (
         <p className="-mt-2 text-xs text-muted">
           {source.asset}&apos;s price moves, so the amount to send includes a {source.slippageBps / 100}% buffer and you have{" "}

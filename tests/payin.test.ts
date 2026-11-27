@@ -31,7 +31,8 @@ afterAll(() => {
   else process.env.ONECLICK_API_URL = previousUrl;
 });
 
-const { PAYIN_SOURCES, checkRefundAddress, formatUnits, getPayinSource, roundUpTo } = await import("../src/lib/payin/sources.ts");
+const { PAYIN_SOURCES, alternativesTo, checkRefundAddress, defaultSourceFor, formatUnits, getPayinSource, roundUpTo } =
+  await import("../src/lib/payin/sources.ts");
 const { readableRefusal } = await import("../src/lib/payin/oneclick.ts");
 const { advancePayin, publicPayin, statusFrom } = await import("../src/lib/payin/service.ts");
 const { getDb } = await import("../src/lib/db/index.ts");
@@ -127,6 +128,23 @@ test("1Click's refusals become something the client can act on", () => {
   assert.match(readableRefusal("Temporary swap limits: minimum swap amount is $100"), /at least \$100/);
   assert.match(readableRefusal("Amount is too low for bridge"), /too small/);
   assert.match(readableRefusal("something new"), /Nimiq Pay/);
+  // With the coin known, the minimum names it and points to networks without one.
+  assert.equal(
+    readableRefusal("Temporary swap limits: minimum swap amount is $100", tron),
+    "USDT on Tron needs at least $100 right now. Pick another network, such as USDT on BNB Chain or Solana.",
+  );
+  assert.match(readableRefusal("Temporary swap limits: minimum swap amount is $100", getPayinSource("tron-trx")!), /^TRX needs/);
+});
+
+test("small payments start on a network without a minimum", () => {
+  assert.equal(defaultSourceFor(null).id, "tron-usdt", "no dollar value known: the usual first coin");
+  assert.equal(defaultSourceFor(150).id, "tron-usdt");
+  assert.equal(defaultSourceFor(100).id, "tron-usdt");
+  const small = defaultSourceFor(40);
+  assert.equal(small.minUsd ?? 0, 0);
+  assert.equal(small.id, "bnb-usdt");
+  for (const s of PAYIN_SOURCES)
+    assert.doesNotMatch(alternativesTo(s), new RegExp(`\\b${s.chain}\\b`), `${s.id} isn't its own alternative`);
 });
 
 test("1Click's statuses map to ours; SUCCESS is not paid until Polygon is checked", () => {
